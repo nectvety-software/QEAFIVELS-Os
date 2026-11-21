@@ -44,6 +44,8 @@ required = [
     "vendor/lib64/libcld80211.so", "vendor/lib64/libperipheral_client.so",
     "vendor/lib64/libmdmdetect.so", "vendor/lib64/libqmiservices.so",
     "vendor/etc/wifi/WCNSS_qcom_cfg.ini",
+    "lib/firmware/bdwlan.bin", "lib/firmware/regdb.bin",
+    "lib/firmware/wlanmdsp.mbn",
     "etc/qeaf/radio-firmware-status.txt",
 ]
 missing = [name for name in required if name not in entries]

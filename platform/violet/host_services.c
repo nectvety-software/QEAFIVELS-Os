@@ -645,8 +645,9 @@ static char *const kPdListenArgs[] = {
 };
 static char *const kTftpArgs[] = { "tqftpserv", "-d", NULL };
 static char *const kRmtfsArgs[] = { "rmtfs", "-P", "-r", "-v", NULL };
-/* Usage says "-dd for more": pass it as one getopt flag. -n keeps the daemon
- * in the foreground so the launcher's redirected stderr is inherited. */
+/* Match the exact device init service:
+ * service vendor.cnss-daemon /vendor/bin/cnss-daemon -n -l
+ * -n keeps it in the foreground so stdout/stderr are captured by the launcher. */
 static char *const kCnssArgs[] = { "cnss-daemon", "-n", "-l", NULL };
 
 static void rebind_ath10k(void)

@@ -136,6 +136,10 @@ def stage_root():
                     os.path.join(fwdir, "qcom", "qcs615")) else None
             elif low.startswith("bdwlan."):
                 shutil.copy2(src, os.path.join(fwdir, low))
+            elif low == "regdb.bin":
+                # Qualcomm regulatory database is a real firmware input;
+                # keep the canonical lowercase name used by the vendor stack.
+                shutil.copy2(src, os.path.join(fwdir, "regdb.bin"))
 
         # Make the upgrade auditable from the phone itself: `wifi fw` prints
         # this file verbatim. Hash the exact WLAN pieces we stage so the
@@ -150,6 +154,7 @@ def stage_root():
         staged = sorted(name for name in os.listdir(NEWFW)
                         if os.path.isfile(os.path.join(NEWFW, name)) and
                         (name.lower() == "wlanmdsp.mbn" or
+                         name.lower() == "regdb.bin" or
                          name.lower().startswith("bdwlan.")))
         for name in staged:
             digest = hashlib.sha256()
