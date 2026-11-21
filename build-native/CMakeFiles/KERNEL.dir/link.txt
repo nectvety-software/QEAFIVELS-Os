@@ -1,0 +1,3 @@
+"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\KERNEL.dir/objects.a
+C:\msys64\mingw64\bin\ar.exe qc CMakeFiles\KERNEL.dir/objects.a @CMakeFiles\KERNEL.dir\objects1.rsp
+C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wchar -mno-red-zone -fno-builtin -Wall -Wextra -mgeneral-regs-only -mno-stack-arg-probe -std=c11 -g -nostdlib -Wl,--subsystem,10 -Wl,--entry,efi_main -Wl,--disable-dynamicbase -Wl,--disable-nxcompat -Wl,-Map,kernel.map -Wl,--whole-archive CMakeFiles\KERNEL.dir/objects.a -Wl,--no-whole-archive -o KERNEL.EFI -Wl,--out-implib,libKERNEL.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\KERNEL.dir\linkLibs.rsp

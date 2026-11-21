@@ -1,0 +1,6 @@
+app HelloVQEAF
+print "Hello from QEAPP"
+print "Ung dung mau co cau truc thu muc."
+print "Ma nguon: src/main.qe"
+print "Bieu tuong: assets/icon.rgba"
+print "Build lai: python build.py --config all"

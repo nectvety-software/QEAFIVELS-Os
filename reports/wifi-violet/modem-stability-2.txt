@@ -1,0 +1,101 @@
+# fine monitor started 2026-11-21 15:59:49
+
+2026-11-21 15:59:49 ===== wifi up =====
+seq=4
+### wifi up
+wifi up: Đang nạp firmware
+wifi bring: stage=1 vendor=1 modem=1 mounted=1 copied=0 files=0 persist=1 links=241 wlan=0 modem_started=0 retries=0
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: not started
+hostsvc binder: absent
+hostsvc wlan: not started (on=0 errno=0)
+wifi note: modem start requested by QEAF native service manager
+wifi modem: fd=-1 rc=0 thread_done=0
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: not started
+hostsvc binder: absent
+hostsvc wlan: not started (on=0 errno=0)
+qrtr-ns: nid=0x1 bound=1 lookups=24 servers=24 nodes=3 fwd=72 rebinds=0 short=0
+qrtr-ns pkts: hello=2 lookup=24 server=43 del_server=0 bye=0 del_client=12
+qrtr-ns last: server 0x301 from node 0x5
+qrtr-ns lookups: 0x45/0x0->0x4024 0x2b/0x14->0x4025 0x40/0x1->0x4026 0x2b/0x17->0x4027 0x2b/0x12->0x4028 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x18/0x0->0x4039 0x18/0x1->0x403a 0x18/0x43->0x403b 0x301/0x0->0x403d 0x42/0x0->0x4042
+qrtr-ns servers: 0x1001/0x0@0x1:0x0 0x34/0x1@0x1:0x0 0x1001/0x1@0x1:0x0 0x41d/0x0@0x1:0x0 0x1000/0x0@0x0:0x0 wifi p82: not FAT: unknown bps=512 spc=32 fats=2 root=512 fat=49 total=0
+wifi firmware_class.path: /vendor/firmware_mnt/image
+wifi wlan fwpath: /vendor/firmware
+wifi wlan params: country_code=(null) con_mode=0 qdf_log_dump_at_kernel_enable=Y enable_11d=-1 enable_dfs_chan_scan=-1 fwpath=/vendor/firmware qdf_log_flush_timer_period=0 timer_multiplier=1 con_mode_epping=0 con_mode_ftm=0
+wifi boot:
+wifi rproc: absent
+wifi image: adspr.jsn, adsps.jsn, adspua.jsn, cdspr.jsn, qdsp6m.qdb, modemr.jsn (273 entries)
+wifi pil files: modem.b00 modem.b01 modem.b02 modem.b03 modem.b04 modem.b05 modem.b06 modem.b07 modem.b08 modem.b09 modem.b10 modem.b11 modem.b12 modem.b14 modem.b15 modem.b16 modem.b17 modem.b18 modem.b20 modem.b21 modem.b22 modem.b23 modem.b24 modem.b25 modem.b26 modem.b27 modem.b28 modem.b29 modem.mdt wlanmdsp.mbn
+wifi wlan0 mac: absent
+### echo devcheck1795251587469
+devcheck1795251587469
+
+
+===== 2026-11-21 15:59:57 T+5s =====
+QEAFIVELS OS 0.3.0; device violet; usb_mode=mtp; usb_cable=1; orientation=portrait; auto_rotate=0; control_lun=QEAFRESCUE; stage=loop; ui=1; page=2; drm=1; power=on; uptime=109s
+RMTFS UIO ready: client=1 addr=0xf0901000 size=0x200000 mmap=0x7f9cdee000
+--- cnss-daemon ---
+wifi: wlan0 present: no
+wifi: dmesg (68 lines): ing subsys-pil-tz 8300000.qcom,turing: cdsp: Brought out of reset
+DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz 62400000.qcom,lpass: adsp: Brought out of reset
+DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz aae0000.qcom,venus: venus: Brought out of reset
+DEVICE=+i2c:3-004c subsys-restart: __subsystem_get(): Changing subsys fw_name to modem subsys-pil-tz 4080000.qcom,mss: modem: loading from 0x000000008b000000 to 0x0000000092e00000
+DEVICE=+platform:4080000.qcom,mss subsys-pil-tz 4080000.qcom,mss: modem: Brought out of reset
+DEVICE=+platform:4080000.qcom,mss subsys-pil-tz 4080000.qcom,mss: modem: Power/Clock ready interrupt received
+DEVICE=+platform:4080000.qcom,mss qrtr: Modem QMI Readiness RX cmd:0x2 node[0x0] sysmon-qmi: ssctl_new_server: Connection established between QMI handle and modem's SSCTL service
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: not started
+hostsvc binder: absent
+hostsvc wlan: p74 not mounted or factory WLAN MAC absent/invalid; WLAN blocked (on=0 errno=0)
+wifi modem: fd=11 rc=1 thread_done=1
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: not started
+hostsvc binder: absent
+hostsvc wlan: p74 not mounted or factory WLAN MAC absent/invalid; WLAN blocked (on=0 errno=0)
+
+===== 2026-11-21 16:00:06 T+14s =====
+QEAFIVELS OS 0.3.0; device violet; usb_mode=mtp; usb_cable=1; orientation=portrait; auto_rotate=0; control_lun=QEAFRESCUE; stage=loop; ui=1; page=2; drm=1; power=on; uptime=118s
+RMTFS UIO ready: client=1 addr=0xf0901000 size=0x200000 mmap=0x7f9cdee000
+--- cnss-daemon ---
+wifi: wlan0 present: no
+wifi: dmesg (68 lines): ing subsys-pil-tz 8300000.qcom,turing: cdsp: Brought out of reset
+DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz 62400000.qcom,lpass: adsp: Brought out of reset
+DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz aae0000.qcom,venus: venus: Brought out of reset
+DEVICE=+i2c:3-004c subsys-restart: __subsystem_get(): Changing subsys fw_name to modem subsys-pil-tz 4080000.qcom,mss: modem: loading from 0x000000008b000000 to 0x0000000092e00000
+DEVICE=+platform:4080000.qcom,mss subsys-pil-tz 4080000.qcom,mss: modem: Brought out of reset
+DEVICE=+platform:4080000.qcom,mss subsys-pil-tz 4080000.qcom,mss: modem: Power/Clock ready interrupt received
+DEVICE=+platform:4080000.qcom,mss qrtr: Modem QMI Readiness RX cmd:0x2 node[0x0] sysmon-qmi: ssctl_new_server: Connection established between QMI handle and modem's SSCTL service
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: not started
+hostsvc binder: absent
+hostsvc wlan: p74 not mounted or factory WLAN MAC absent/invalid; WLAN blocked (on=0 errno=0)
+wifi modem: fd=11 rc=1 thread_done=1
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: not started
+hostsvc binder: absent
+hostsvc wlan: p74 not mounted or factory WLAN MAC absent/invalid; WLAN blocked (on=0 errno=0)

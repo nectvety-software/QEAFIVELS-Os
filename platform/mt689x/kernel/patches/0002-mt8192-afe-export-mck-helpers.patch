@@ -1,0 +1,17 @@
+diff --git a/sound/soc/mediatek/mt8192/mt8192-afe-clk.c b/sound/soc/mediatek/mt8192/mt8192-afe-clk.c
+index 8eecd6d16..c5aa23f0d 100644
+--- a/sound/soc/mediatek/mt8192/mt8192-afe-clk.c
++++ b/sound/soc/mediatek/mt8192/mt8192-afe-clk.c
+@@ -616,6 +616,12 @@ void mt8192_mck_disable(struct mtk_base_afe *afe, int mck_id)
+ 		clk_disable_unprepare(afe_priv->clk[m_sel_id]);
+ }
+ 
++/* The MT6893 machine card is a separate module (SND_SOC_MT6893_MT6359=m)
++ * and calls these two helpers from its hw_params/free paths. The vendor
++ * tree always built the AFE in, so they were never exported. */
++EXPORT_SYMBOL_GPL(mt8192_mck_enable);
++EXPORT_SYMBOL_GPL(mt8192_mck_disable);
++
+ int mt8192_init_clock(struct mtk_base_afe *afe)
+ {
+ 	struct mt8192_afe_private *afe_priv = afe->platform_priv;

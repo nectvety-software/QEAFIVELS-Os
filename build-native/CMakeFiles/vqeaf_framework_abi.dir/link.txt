@@ -1,0 +1,2 @@
+C:\msys64\mingw64\bin\ar.exe qc libvqeaf_framework_abi.a CMakeFiles/vqeaf_framework_abi.dir/framework/core/abi.c.obj
+C:\msys64\mingw64\bin\ranlib.exe libvqeaf_framework_abi.a

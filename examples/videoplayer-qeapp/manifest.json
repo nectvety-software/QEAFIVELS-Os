@@ -1,0 +1,19 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 3,
+  "runtime": "native",
+  "id": "org.vqeaf.videoplayer",
+  "name": "Video Player",
+  "version": "1.0.0",
+  "description": "QVF video player exercising the framework API v3 blit_pixels and read_file_part calls",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/arm64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.3.0",
+  "architecture": ["arm64"],
+  "permissions": ["ui.display", "input.receive", "storage.read"],
+  "dependencies": [],
+  "signature": null
+}

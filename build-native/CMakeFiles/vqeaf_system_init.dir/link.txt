@@ -1,0 +1,2 @@
+C:\msys64\mingw64\bin\ar.exe qc libvqeaf_system_init.a CMakeFiles/vqeaf_system_init.dir/system/init/init.c.obj
+C:\msys64\mingw64\bin\ranlib.exe libvqeaf_system_init.a

@@ -1,0 +1,19 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 5,
+  "runtime": "native",
+  "id": "org.vqeaf.hello-native",
+  "name": "Hello Native QEAPP",
+  "version": "1.0.0",
+  "description": "Native QEAPP v5 template (validation-only)",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/arm64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.2.0",
+  "architecture": ["arm64"],
+  "permissions": ["ui.display"],
+  "dependencies": [],
+  "signature": null
+}

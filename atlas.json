@@ -1,0 +1,133 @@
+{
+  "$schema": "vqeaf-boot-ui-atlas/v1",
+  "name": "VQEAF OS x86_64 UEFI boot-mode UI atlas",
+  "version": 1,
+  "note": "Generated atlas/spec for boot splash and recovery screens. All artwork is procedural C (no binary sprites). Reference patterns from QeafdropOs (ARM64/violet).",
+  "canvas": {
+    "virtual": { "w": 360, "h": 780 },
+    "scale": "K = gfx_width() / 360",
+    "device_panel": "720x1280 (QEMU portrait GOP)",
+    "device_K": 2,
+    "pixel_format": "RGB565"
+  },
+  "palette": {
+    "bg":         "#080D1A",
+    "bg_deep":    "#000000",
+    "panel":      "#111C33",
+    "surface":    "#1E1E1E",
+    "surface_hi": "#2D2D2D",
+    "border":     "#3C4043",
+    "accent":     "#35E0C0",
+    "accent_dim": "#1A73E8",
+    "cyan":       "#D2E3FC",
+    "text":       "#EAF2FF",
+    "dim":        "#8494B4",
+    "danger":     "#F28B82",
+    "wave_1":     "#0B1A33",
+    "wave_2":     "#12305C",
+    "wave_3":     "#1A73E8"
+  },
+  "procedural_sprites": [
+    { "id": "vlogo",       "function": "bui_vlogo",   "description": "chevron with V notch, gradient wings, dark fold, specular edge" },
+    { "id": "rings",       "function": "bui_rings",   "description": "three concentric circles, integer sqrt, arc highlight" },
+    { "id": "wordmark",    "function": "bui_wordmark","description": "VQEAF in text colour, OS in cyan, 2-unit gap" },
+    { "id": "waves",       "function": "bui_waves",   "description": "three dark sine ribbons with neon crests, 64-entry integer sine table" },
+    { "id": "topbar",      "function": "bui_topbar",  "description": "small V mark + VQEAF OS at left, mode label at right" },
+    { "id": "confirm",     "function": "bui_confirm", "description": "modal scrim, action name, CANCEL/CONFIRM, CANCEL selected by default" },
+    { "id": "icons",       "function": "bui_icon",    "description": "16x16 virtual pixel icons, ids 0..9" }
+  ],
+  "icons": [
+    "PLAY", "REBOOT", "DOWNLOAD", "GEAR", "POWER",
+    "DATABASE", "TRASH", "BROOM", "SATELLITE", "INFO"
+  ],
+  "screens": {
+    "boot_splash": {
+      "app_id": 0,
+      "name": "boot splash",
+      "topbar_mode": "VQEAF Boot Manager 0.3",
+      "regions": [
+        { "id": "vlogo",    "box": [136, 150, 88, 88] },
+        { "id": "wordmark", "box": [60, 270, 240, 35] },
+        { "id": "tagline",  "box": [0, 350, 360, 16], "text": "HỆ ĐIỀU HÀNH ĐỘC LẬP", "align": "center" },
+        { "id": "progress", "box": [50, 455, 260, 16] },
+        { "id": "stage",    "box": [0, 495, 360, 16], "align": "center" },
+        { "id": "footer",   "box": [0, 752, 360, 16], "text": "VQEAF OS  |  GIAO THỨC KHỞI ĐỘNG V3  |  GOP", "align": "center" },
+        { "id": "waves",    "box": [0, 720, 360, 60] }
+      ]
+    },
+    "recovery": {
+      "app_id": 6,
+      "name": "recovery",
+      "topbar_mode": "Recovery Mode",
+      "regions": [
+        { "id": "rings",    "box": [92, 62, 176, 176], "centre": [180, 150], "radius": 88 },
+        { "id": "vlogo",    "box": [125, 112, 110, 76] },
+        { "id": "wordmark", "box": [60, 248, 240, 28] },
+        { "id": "subtitle", "box": [120, 284, 120, 14], "text": "Recovery" },
+        { "id": "menu", "box": [16, 318, 328, 306],
+          "row_height": 46, "row_step": 52,
+          "items": [
+            { "i": 0, "label": "Reboot System",    "icon": "DATABASE",  "intent": "REBOOT" },
+            { "i": 1, "label": "Apply Update",     "icon": "DOWNLOAD",  "intent": "FLASH",      "confirm": true },
+            { "i": 2, "label": "Wipe Data",        "icon": "TRASH",     "intent": "WIPE_DATA",  "confirm": true },
+            { "i": 3, "label": "Wipe Cache",       "icon": "BROOM",     "intent": "WIPE_CACHE", "confirm": true },
+            { "i": 4, "label": "Advanced Options", "icon": "SATELLITE", "intent": "BOOT_LOG" },
+            { "i": 5, "label": "Power Off",        "icon": "POWER",     "intent": "POWEROFF",   "confirm": true }
+          ]
+        },
+        { "id": "tips", "box": [16, 636, 328, 74], "border": "dashed",
+          "lines": ["Tips:", "Use Volume to navigate", "Press Power to select"] },
+        { "id": "footer", "box": [0, 720, 360, 20], "text": "VQEAF OS   |   Recovery v1.0" },
+        { "id": "waves", "box": [0, 720, 360, 60] }
+      ]
+    },
+    "fastboot": {
+      "app_id": 7,
+      "name": "fastboot",
+      "topbar_mode": "Fastboot Mode",
+      "regions": [
+        { "id": "vlogo",    "box": [90, 88, 180, 125] },
+        { "id": "wordmark", "box": [60, 230, 240, 35] },
+        { "id": "tagline",  "box": [60, 272, 240, 8],  "text": "Your World, Your Rules." },
+        { "id": "info_card", "box": [16, 300, 328, 132],
+          "rows": [
+            { "label": "Device",  "value": "x86_64 UEFI QEMU" },
+            { "label": "Model",   "value": "VQEAF_RNP" },
+            { "label": "Version", "value": "v1.0.0.0" },
+            { "label": "Build",   "value": "2026-11-10_001" }
+          ]
+        },
+        { "id": "menu", "box": [16, 452, 328, 224],
+          "selected_style": "rounded pill, teal border",
+          "items": [
+            { "i": 0, "label": "Continue",      "box": [16, 452, 328, 46], "icon": "PLAY",     "intent": "CONTINUE" },
+            { "i": 1, "label": "Recovery Mode", "box": [16, 512, 328, 38], "icon": "REBOOT",   "intent": "RECOVERY" },
+            { "i": 2, "label": "Update Mode",   "box": [16, 554, 328, 38], "icon": "DOWNLOAD", "intent": "UPDATE" },
+            { "i": 3, "label": "Factory Reset", "box": [16, 596, 328, 38], "icon": "GEAR",     "intent": "FACTORY_RESET", "confirm": true },
+            { "i": 4, "label": "Power Off",     "box": [16, 638, 328, 38], "icon": "POWER",    "intent": "POWER_OFF",     "confirm": true }
+          ]
+        },
+        { "id": "hint", "box": [40, 680, 280, 36],
+          "lines": ["Use Volume to navigate", "Press Power to select"] },
+        { "id": "waves", "box": [0, 720, 360, 60] }
+      ]
+    }
+  },
+  "confirm_dialog": {
+    "box": [24, 250, 312, 220],
+    "cancel_button": [40, 408, 132, 42],
+    "confirm_button": [188, 408, 132, 42],
+    "default_selection": "CANCEL"
+  },
+  "safety": {
+    "model": "GUI only queues intents; no privileged operation is executed here",
+    "writable_partition": "none on x86_64 UEFI reference (QEMU virtual disks only)",
+    "never_written": ["host physical partitions", "UEFI NVRAM variables"],
+    "confirm_required": ["FLASH", "FACTORY_RESET", "WIPE_DATA", "WIPE_CACHE", "POWEROFF", "POWER_OFF"]
+  },
+  "verification": {
+    "harness": "tests/recovery_gui_test.c",
+    "checks": 49,
+    "previews": ["out/bootui_fastboot.png", "out/bootui_recovery.png", "out/bootui_confirm.png"]
+  }
+}

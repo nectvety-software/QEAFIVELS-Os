@@ -1,0 +1,61 @@
+# QEAF kernel fragment for MT6891/MT6893 (chopin/ares).
+#
+# chopin_defconfig already carries the storage (SCSI_UFSHCD), USB (MTU3,
+# MT6360 Type-C), display (DRM_MEDIATEK_V2 + K10A panel) and KVM pieces.
+# This fragment adds only what the truck has no line for, or where the
+# defconfig leaves the feature as a module and QEAF needs it at boot.
+#
+# Every symbol here was checked against the driver Kconfig in the
+# 7.3.3-mt6893-xiaomi-chopin tree; nothing is aspirational.
+
+# --- storage: MT6893 UFS host hooks (11270000.ufshci) -----------------------
+CONFIG_SCSI_UFS_MEDIATEK=y
+CONFIG_PHY_MTK_UFS=y
+
+# --- Bluetooth: BTIF transport + MT6893 combo HCI ---------------------------
+# MTK_COMBO_BT depends on MTK_BTIF && BT, and neither is in the defconfig.
+CONFIG_MTK_BTIF=y
+CONFIG_MTK_COMBO_BT=y
+# The downstream MediaTek BT driver is built into vmlinux, but the generic BT
+# core is a module in chopin_defconfig (CONFIG_BT=m). A built-in caller cannot
+# resolve hci_* from a module, so the core must be built in as well.
+CONFIG_BT=y
+
+# --- audio: MT6359 codec + MT8192 AFE + chopin machine card ----------------
+# The speaker amps are a CS35L41 pair on AFE I2S3; SND_SOC_MT6893_MT6359 is
+# the machine driver that binds them to the "mediatek,mt6893-audio" AFE.
+# The whole ALSA stack stays modular: the defconfig pins SND=m and several
+# unrelated drivers select it, so y is not reachable without dragging those
+# in as built-ins.  These .ko files are packaged into the image and loaded by
+# platform/mt689x at boot.
+CONFIG_SND_SOC=m
+CONFIG_SND_SOC_MT8192=m
+CONFIG_SND_SOC_MT6893_MT6359=m
+CONFIG_SND_SOC_MT6359=m
+CONFIG_SND_SOC_MT6359_ACCDET=m
+CONFIG_SND_SOC_CS35L41_I2C=m
+
+# --- touch: Novatek NVT SPI panel (ts_novatek@0) ---------------------------
+CONFIG_TOUCHSCREEN_NOVATEK_NVT_TS=y
+
+# --- auto-rotate: SCP-owned sensor hub, published as IIO --------------------
+# The accelerometer is not on an I2C bus in the board DTS; it belongs to the
+# sensor hub firmware (mediatek,scp-sensorhub), so this is the only path to
+# real accelerometer samples.
+CONFIG_MTK_TINYSYS_SCP_SUPPORT=y
+CONFIG_MTK_SENSORHUB=y
+# Same built-in/modular split for the SCP transport: scp/rv/*.c and the sensor
+# hub are built in and call mtk_ipi_* / mtk_mbox_* directly. Those providers
+# are tristate in Kconfig and unset by the defconfig, so pull them in as y.
+CONFIG_MTK_MBOX=y
+CONFIG_RPMSG_MTK_MBOX=y
+CONFIG_MTK_IPI=y
+
+# --- USB gadget: QEAF rescue/provisioning over the Type-C port -------------
+CONFIG_USB_CONFIGFS=y
+CONFIG_USB_CONFIGFS_F_FS=y
+CONFIG_USB_CONFIGFS_MASS_STORAGE=y
+CONFIG_USB_CONFIGFS_ACM=y
+
+# --- fbdev emulation so a plain /dev/fb0 also exists next to KMS -----------
+CONFIG_DRM_FBDEV_EMULATION=y

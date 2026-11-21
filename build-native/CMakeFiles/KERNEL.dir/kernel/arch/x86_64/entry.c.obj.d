@@ -1,0 +1,45 @@
+CMakeFiles/KERNEL.dir/kernel/arch/x86_64/entry.c.obj: \
+ D:\QEAFIVELS-Os\kernel\arch\x86_64\entry.c \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/boot_protocol.h \
+ C:/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include/stdint.h \
+ C:/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include/stdint-gcc.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/serial.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/rtc.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/memory.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/scheduler.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/security.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/arch_x86_64.h \
+ D:/QEAFIVELS-Os/bootloader/core/efi_minimal.h \
+ D:/QEAFIVELS-Os/bootloader/core/efi_types.h \
+ C:/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include/stddef.h \
+ C:/msys64/mingw64/include/stddef.h C:/msys64/mingw64/include/crtdefs.h \
+ C:/msys64/mingw64/include/corecrt.h C:/msys64/mingw64/include/_mingw.h \
+ C:/msys64/mingw64/include/_mingw_mac.h \
+ C:/msys64/mingw64/include/_mingw_secapi.h \
+ C:/msys64/mingw64/include/vadefs.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/kheap.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/vm.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/elf.h \
+ D:/QEAFIVELS-Os/user/hello_elf.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/input.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/power_menu.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/input.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/driver.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/capability.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/storage.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/vfs.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/el0_abi.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/fs_fat16.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/block.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/block.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/power.h \
+ D:/QEAFIVELS-Os/system/ui/include/vqeaf/ui.h \
+ D:/QEAFIVELS-Os/system/ui/include/vqeaf/update_screen.h \
+ D:/QEAFIVELS-Os/system/ui/include/vqeaf/gfx.h \
+ D:/QEAFIVELS-Os/system/ui/include/vqeaf/phone_shell.h \
+ D:/QEAFIVELS-Os/system/ui/include/vqeaf/recovery_screen.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/virtio_blk.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/ahci.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/vfs.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/partition.h \
+ D:/QEAFIVELS-Os/system/core/include/vqeaf/fs_fat16.h

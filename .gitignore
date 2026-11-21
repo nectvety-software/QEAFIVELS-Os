@@ -1,0 +1,22 @@
+build/
+dist/
+out/
+temp/
+.workbuddy-ai/
+.cloud-attachments/
+# Windows cannot index this vendored symlink (reparse point).
+platform/violet/hosttools/src/qrtr/ci/ubuntu.cross-compile.sh
+platform/violet/hosttools/src/qrtr/ci/ubuntu.sh
+__pycache__/
+*.pyc
+*.pdb
+*.ilk
+*.obj
+*.o
+*.map
+*.log
+*.img
+*.efi
+
+# Windows reparse points (vendored symlinks) cannot be indexed
+platform/violet/hosttools/src/tqftpserv/ci/ubuntu.sh

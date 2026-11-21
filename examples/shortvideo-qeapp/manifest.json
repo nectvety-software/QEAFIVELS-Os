@@ -1,0 +1,19 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 5,
+  "runtime": "native",
+  "id": "org.vqeaf.shortvideo",
+  "name": "Short Video",
+  "version": "1.0.0",
+  "description": "Vertical short-clip feed: streams QVF frames with read_file_part, lays the rail and tabs out with the framework API v5 weight split",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/arm64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.3.0",
+  "architecture": ["arm64"],
+  "permissions": ["ui.display", "input.receive", "storage.read", "media.read"],
+  "dependencies": [],
+  "signature": null
+}

@@ -1,0 +1,15 @@
+vqeaf_ui_font_smoke 11 0.00404513
+vqeaf_update_screen_smoke 11 0.00316884
+vqeaf_screens_smoke 11 0.0037988
+vqeaf_phone_shell_smoke 11 0.0099301
+vqeaf_core_smoke 11 0.000889273
+vqeaf_kernel_core_smoke 11 0.000916355
+vqeaf_core_services_smoke 11 0.000866455
+vqeaf_system_v03_smoke 11 0.00110873
+vqeaf_vfs_mount_smoke 11 0.00121617
+vqeaf_violet_tap_smoke 11 0.00470666
+vqeaf_settings_smoke 6 0.0020977
+vqeaf_volume_lock_test 2 0.011375
+vqeaf_wcn3990_smoke 3 0.00872093
+vqeaf_wcn3990_phase2_smoke 1 0.0407276
+---

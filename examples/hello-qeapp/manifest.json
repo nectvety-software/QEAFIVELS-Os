@@ -1,0 +1,17 @@
+{
+  "format": "qeapp",
+  "format_version": 1,
+  "id": "org.vqeaf.hello",
+  "name": "Hello VQEAF",
+  "version": "1.0.0",
+  "description": "Structured QEAPP example with source and icon assets",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "src/main.qe",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.1.0",
+  "architecture": ["arm64", "x86_64"],
+  "permissions": [],
+  "dependencies": [],
+  "signature": null
+}

@@ -1,0 +1,10 @@
+{
+  "format": "vqeaf-boot-config",
+  "version": 1,
+  "default": "normal",
+  "entries": [
+    {"id": "normal", "image": "KERNEL.EFI", "mode": "normal"},
+    {"id": "recovery", "image": "RECOVERY.EFI", "mode": "recovery"}
+  ],
+  "timeout_seconds": 3
+}

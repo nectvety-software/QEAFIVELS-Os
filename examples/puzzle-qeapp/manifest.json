@@ -1,0 +1,24 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 4,
+  "runtime": "native",
+  "id": "org.vqeaf.puzzle",
+  "name": "Xếp Hình 4x4",
+  "version": "1.0.0",
+  "description": "Game xếp hình 15 ô đơn giản: trượt ô cạnh ô trống, đếm bước, xáo lại sau khi thắng",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/x86_64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.3.0",
+  "architecture": [
+    "x86_64"
+  ],
+  "permissions": [
+    "ui.display",
+    "input.receive"
+  ],
+  "dependencies": [],
+  "signature": null
+}

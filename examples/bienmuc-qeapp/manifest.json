@@ -1,0 +1,19 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 5,
+  "runtime": "native",
+  "id": "org.vqeaf.bienmuc",
+  "name": "Biển Mực",
+  "version": "1.0.0",
+  "description": "Bản port native QEAPP của game Java ME Biển Mực (Ink Seas): hải chiến vẽ tay trên giấy vở, đủ đợt sóng, KRAKEN, mực, lá chắn và đường đạn",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/arm64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.3.0",
+  "architecture": ["arm64"],
+  "permissions": ["ui.display", "input.receive"],
+  "dependencies": [],
+  "signature": null
+}

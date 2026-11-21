@@ -1,0 +1,3 @@
+app HelloVQEAF
+print "Hello from QEAPP"
+print "Chạy trên VQEAF OS"

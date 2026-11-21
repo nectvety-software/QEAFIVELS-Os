@@ -1,0 +1,20 @@
+diff --git a/drivers/gpu/drm/panel/leds-lm36273.c b/drivers/gpu/drm/panel/leds-lm36273.c
+index 17681ec20..5c4af53a4 100755
+--- a/drivers/gpu/drm/panel/leds-lm36273.c
++++ b/drivers/gpu/drm/panel/leds-lm36273.c
+@@ -623,12 +623,15 @@ static void lm36273_remove(struct i2c_client *client)
+ 
+ static const struct i2c_device_id lm36273_id[] = {
+ 	{ "I2C_LCD_BIAS", 0 },
++	{ "i2c_lcd_bias", 0 },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(i2c, lm36273_id);
+ 
+ static const struct of_device_id of_lm36273_i2c_match[] = {
+ 	{ .compatible = "mediatek,I2C_LCD_BIAS", },
++	/* The chopin DTS spells it lowercase; of matching is exact. */
++	{ .compatible = "mediatek,i2c_lcd_bias", },
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, of_lm36273_i2c_match);

@@ -1,0 +1,19 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 2,
+  "runtime": "native",
+  "id": "org.vqeaf.codeeditor",
+  "name": "Code Editor",
+  "version": "1.0.0",
+  "description": "Plain-text source editor ported from the MRE VXP CodeEditor app",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/arm64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.3.0",
+  "architecture": ["arm64"],
+  "permissions": ["ui.display", "input.receive", "storage.read"],
+  "dependencies": [],
+  "signature": null
+}

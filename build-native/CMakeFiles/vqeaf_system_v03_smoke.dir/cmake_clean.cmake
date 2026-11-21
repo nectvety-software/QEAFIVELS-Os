@@ -1,0 +1,41 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/kernel/core/security.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/kernel/core/security.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/kernel/core/vfs.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/kernel/core/vfs.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/block.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/block.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/capability.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/capability.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/discovery.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/discovery.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/driver.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/driver.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/fs_fat16.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/fs_fat16.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/input.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/input.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/partition.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/partition.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/power.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/power.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/power_menu.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/power_menu.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/service_manager.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/service_manager.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/storage.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/storage.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/text.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/system/core/text.c.obj.d"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/tests/system_v03_smoke.c.obj"
+  "CMakeFiles/vqeaf_system_v03_smoke.dir/tests/system_v03_smoke.c.obj.d"
+  "libvqeaf_system_v03_smoke.dll.a"
+  "vqeaf_system_v03_smoke.exe"
+  "vqeaf_system_v03_smoke.exe.manifest"
+  "vqeaf_system_v03_smoke.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang C)
+  include(CMakeFiles/vqeaf_system_v03_smoke.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

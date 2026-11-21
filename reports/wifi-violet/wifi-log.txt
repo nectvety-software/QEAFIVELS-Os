@@ -1,0 +1,109 @@
+# captured 2026-11-21T15:53:53
+# volume F:
+
+===== wifi log =====
+seq=14
+### wifi log
+--- pd-mapper ---
+pd-mapper: failed to open remoteproc class: No such file or directory
+pd-mapper: fallback found 12 PD json files
+pd-mapper: loaded 18 domain/service entries
+
+--- tqftpserv ---
+(no output)
+--- rmtfs ---
+failed to open /dev/qcom_rmtfs_mem1: No such file or directory
+falling back to uio access
+RMTFS UIO ready: client=1 addr=0xf0901000 size=0x200000 mmap=0x7f94c80000
+registering services
+
+--- wlfwd ---
+(no output)
+--- pdr-restart ---
+(no output)
+--- pd-listen ---
+pd-listen: watching real QRTR service 0x42 for msm/modem/wlan_pd
+
+--- cnss-daemon ---
+(no output)
+--- qlookup ---
+(no output)
+--- linkerconfig ---
+(no output)
+--- wpa_supplicant ---
+(no output)
+--- gnss-hal ---
+(no output)
+wifi: /sys/class/net: ip6tnl0, ip_vti0, sit0, lo, bond0, dummy0, bonding_masters, ip6_vti0
+wifi: wlan0 present: no
+wifi: dmesg (61 lines): essfully subsys-pil-tz aae0000.qcom,venus: for venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz aae0000.qcom,venus: for md_venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus minidump-id not found for ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for md_ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,kgsl-hyp: for a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp subsys-pil-tz soc:qcom,kgsl-hyp: for md_a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp msm_sharedmem: msm_sharedmem_probe: Device created for client 'rmtfs' usbcore: registered new interface driver usb-storage wlan_hdd_state wlan major(500) initialized iommu: Adding device soc:usb_audio_qmi_dev to group 27 ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource rmnet_ipa3 started initialization RNDIS_IPA module is loaded. subsys-pil-tz 8300000.qcom,turing: cdsp: loading from 0x0000000093500000 to 0x0000000095300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 62400000.qcom,lpass: adsp: loading from 0x0000000095300000 to 0x0000000097100000
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 8300000.qcom,turing: cdsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 8300000.qcom,turing: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-restart: __subsystem_get(): Changing subsys fw_name to venus subsys-pil-tz aae0000.qcom,venus: venus: loading from 0x0000000092e00000 to 0x0000000093300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz 8300000.qcom,turing: cdsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing sysmon-qmi: ssctl_new_server: Connection established between QMI handle and cdsp's SSCTL service subsys-pil-tz 62400000.qcom,lpass: adsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 62400000.qcom,lpass: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass sysmon-qmi: ssctl_new_server: Connection established between QMI handle and adsp's SSCTL service subsys-pil-tz 62400000.qcom,lpass: adsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz aae0000.qcom,venus: venus: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus firmware tas2563_uCDSP.bin: _request_firmware_load: firmware state wait timeout: rc = -110
+ SUBSYSTEM=firmware
+ DEVICE=+firmware:tas2563_uCDSP.bin tas2563 3-004c: tas2563_uCDSP.bin firmware is not loaded.
+ SUBSYSTEM=i2c
+ DEVICE=+i2c:3-004c
+wifi bring: stage=1 vendor=1 modem=1 mounted=1 copied=0 files=0 persist=1 links=241 wlan=0 modem_started=0 retries=0
+hostsvc pd-mapper: running pid=482
+hostsvc pd-listen: running pid=483
+hostsvc tqftpserv: running pid=485
+hostsvc rmtfs: running pid=486
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: not started
+hostsvc binder: absent
+hostsvc wlan: not started (on=0 errno=0)
+wifi note: modem not started (opt-in; `wifi up` boots it)
+wifi modem: fd=-1 rc=0 thread_done=0
+hostsvc pd-mapper: running pid=482
+hostsvc pd-listen: running pid=483
+hostsvc tqftpserv: running pid=485
+hostsvc rmtfs: running pid=486
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: not started
+hostsvc binder: absent
+hostsvc wlan: not started (on=0 errno=0)
+qrtr-ns: nid=0x1 bound=1 lookups=24 servers=23 nodes=3 fwd=72 rebinds=0 short=0
+qrtr-ns pkts: hello=2 lookup=24 server=42 del_server=0 bye=0 del_client=12
+qrtr-ns last: server 0x301 from node 0x5
+qrtr-ns lookups: 0x2b/0x14->0x4023 0x2b/0x12->0x4024 0x45/0x0->0x4025 0x2b/0x17->0x4027 0x40/0x1->0x402b 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x18/0x43->0x4038 0x18/0x1->0x403a 0x18/0x0->0x4039 0x301/0x0->0x403b 0x42/0x0->0x4042
+qrtr-ns servers: 0x1001/0x0@0x1:0x0 0x1001/0x1@0x1:0x0 0x34/0x1@0x1:0x0 0x41d/0x0@0x1:0x0 0x1000/0x0@0x0:0x0 wifi p82: not FAT: unknown bps=512 spc=32 fats=2 root=512 fat=49 total=0
+wifi firmware_class.path: /vendor/firmware_mnt/image
+wifi wlan fwpath: /vendor/firmware
+wifi wlan params: country_code=(null) con_mode=0 qdf_log_dump_at_kernel_enable=Y enable_11d=-1 enable_dfs_chan_scan=-1 fwpath=/vendor/firmware qdf_log_flush_timer_period=0 timer_multiplier=1 con_mode_epping=0 con_mode_ftm=0
+wifi boot:
+wifi rproc: absent
+wifi image: adspr.jsn, adsps.jsn, adspua.jsn, cdspr.jsn, qdsp6m.qdb, modemr.jsn (273 entries)
+wifi pil files: modem.b00 modem.b01 modem.b02 modem.b03 modem.b04 modem.b05 modem.b06 modem.b07 modem.b08 modem.b09 modem.b10 modem.b11 modem.b12 modem.b14 modem.b15 modem.b16 modem.b17 modem.b18 modem.b20 modem.b21 modem.b22 modem.b23 modem.b24 modem.b25 modem.b26 modem.b27 modem.b28 modem.b29 modem.mdt wlanmdsp.mbn
+wifi wlan0 mac: absent
+### echo devcheck1795251210373
+devcheck1795251210373

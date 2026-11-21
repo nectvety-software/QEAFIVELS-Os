@@ -1,0 +1,108 @@
+# captured 2026-11-21T15:54:00
+# volume F:
+
+===== wifi svc =====
+seq=16
+### wifi svc
+wifi sys /sys/kernel: wakeup_reasons notes gpu dload qvr_external_sensor q6audio mm uevent_seqnum tracing ion slab iommu_groups boot_adsp irq shutdown_wlan fscaps uevent_helper rcu_normal debug config rcu_expedited cgroup boot_cdsp
+wifi sys /sys/class: avtimer pwm thermal android_usb udc icesdcc scsi_generic rc vtconsole dcc_sram ipa rpmsg msm-rng wakeup graphics scsi_device diag stm mem gpio qce msm_sps misc qvr_external_sensor regulator dma backlight pps uio spidev dual_role_usb bt-dev leds extcon qseecom net fastrpc mdio_bus lcd_bias lcd smcinvoke pci_bus i2c-adapter kgsl rfkill spi_master glinkpkt scsi_disk stm_source bluetooth ipa_adpl ieee80211 wlan devfreq sound firmware tty esoc-dev hdcp gsi_usb video4linux bdi power_supply tiload_node qg_battery subsys i2c-dev block qcom-battery phy input iommu ptp bsg xt_hardidletimer ipa_odl_ctl scsi_host ramdump dvb qg ...(91)
+wifi sys /sys/bus/msm_subsys/devices: subsys4 subsys2 subsys0 subsys5 subsys3 subsys1
+wifi subsys subsys4 name=ipa_fws
+  restart_level=SYSTEM
+  state=OFFLINING
+  restart: absent
+  shutdown: absent
+wifi subsys subsys2 name=cdsp
+  restart_level=SYSTEM
+  state=ONLINE
+  restart: absent
+  shutdown: absent
+wifi subsys subsys0 name=adsp
+  restart_level=SYSTEM
+  state=ONLINE
+  restart: absent
+  shutdown: absent
+wifi subsys subsys5 name=a612_zap
+  restart_level=SYSTEM
+  state=OFFLINING
+  restart: absent
+  shutdown: absent
+wifi subsys subsys3 name=venus
+  restart_level=SYSTEM
+  state=ONLINE
+  restart: absent
+  shutdown: absent
+wifi subsys subsys1 name=modem
+  restart_level=SYSTEM
+  state=OFFLINING
+  restart: absent
+  shutdown: absent
+wifi sys mss attrs: uevent of_node power driver driver_override subsystem subsys ramdump subsys1 modalias
+  mss boot: absent
+  mss shutdown: absent
+  mss subsystem: absent
+  mss runtime=unsupported
+wifi sys pil-tz: uevent 8300000.qcom,turing bind 62400000.qcom,lpass 4080000.qcom,mss soc:qcom,ipa_fws unbind soc:qcom,kgsl-hyp aae0000.qcom,venus
+wifi sys boot_adsp: ssr boot
+wifi sys boot_cdsp: boot
+wifi sys boot_slpi: absent (No such file or directory)
+  adsp boot: absent
+  wifi sys wlan initstate: absent
+  wifi sys icnss initstate: absent
+wifi sys /sys/class/remoteproc: absent (No such file or directory)
+wifi sys /sys/class/subsys: subsys_venus subsys_modem subsys_adsp subsys_a612_zap subsys_ipa_fws subsys_cdsp
+wifi sys /sys/class/misc: loop-control msm_audio_cal msm_wma tas2563 ecryptfs msm_amrwb msm_ape msm_g711alaw_in msm_aac msm_alac tun msm_qcelp_in msm_aac_in msm_g711mlaw msm_qcelp memory_bandwidth msm_multi_aac msm_g711alaw msm_amrnb_in msm_g711mlaw_in ion rfkill vga_arbiter msm_rtac msm_evrc_in msm_evrc fuse msm_hweffects msm_mp3 uinput network_throughput cpu_dma_latency uhid msm_amrwb_in ashmem device-mapper hw_random msm_wmapro msm_amrnb network_latency msm_amrwbplus
+wifi sys /sys/class/uio: uio0
+wifi sys /sys/class/rmtfs: absent (No such file or directory)
+wifi persist root: display bluetooth vpp misc time secnvm tp_test camera hvdcp_opti sensors fdsd data alarm lost+found qti_fp hlos_rfs rfs coresight drm stability misys audio subsys iar_db
+wifi persist wlan: absent (No such file or directory)
+wifi persist wifi: absent (No such file or directory)
+wifi persist qca: absent (No such file or directory)
+wifi sys rmtfs mem1: absent (No such file or directory)
+  rmtfs mem1 dev: absent
+  rmtfs mem1 phys_addr: absent
+  rmtfs mem1 size: absent
+wifi sys rmtfs attrs: absent (No such file or directory)
+wifi sys misc rmtfs: absent (No such file or directory)
+  misc rmtfs dev: absent
+  misc rmtfs phys: absent
+  misc rmtfs size: absent
+  rmtfs phys_addr: absent
+  rmtfs size: absent
+wifi sys /sys/bus/qrtr/devices: absent (No such file or directory)
+wifi sys /sys/kernel/debug/qrtr: absent (No such file or directory)
+wifi sys /dev: wlan disk qcom_rmtfs_uio1 video0 video2 video32 video1 video33 mmcblk0p32 mmcblk0p70 mmcblk0p42 mmcblk0p14 mmcblk0p80 mmcblk0p52 mmcblk0p2 mmcblk0p24 mmcblk0p62 mmcblk0p34 mmcblk0p72 mmcblk0p44 mmcblk0p16 mmcblk0p82 mmcblk0p54 mmcblk0p4 mmcblk0p26 mmcblk0p64 mmcblk0p36 mmcblk0p74 mmcblk0p46 mmcblk0p18 mmcblk0p84 mqrtr-ns: nid=0x1 bound=1 lookups=24 servers=23 nodes=3 fwd=72 rebinds=0 short=0
+qrtr-ns pkts: hello=2 lookup=24 server=42 del_server=0 bye=0 del_client=12
+qrtr-ns last: server 0x301 from node 0x5
+qrtr-ns lookups: 0x2b/0x14->0x4023 0x2b/0x12->0x4024 0x45/0x0->0x4025 0x2b/0x17->0x4027 0x40/0x1->0x402b 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x1->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x1001/0x0->0x402e 0x18/0x43->0x4038 0x18/0x1->0x403a 0x18/0x0->0x4039 0x301/0x0->0x403b 0x42/0x0->0x4042
+qrtr-ns servers: 0x1001/0x0@0x1:0x0 0x1001/0x1@0x1:0x0 0x34/0x1@0x1:0x0 0x41d/0x0@0x1:0x0 0x1000/0x0@0x0:0x0 0x40/0x1@0x0:0x0 0xe/0x0@0x0:0x0 0x42/0x4c@0xa:0x3 0x2b/0x17@0xa:0x2 0xf/0x40@0xa:0x1 0x33/0xd@0xa:0x6 0x18/0x43@0xa:0x9 0x2b/0x14@0x5:0x2 0xf/0x20@0x5:0x1 0x42/0x4a@0x5:0x3 0x33/0x5@0x5:0x6 0x18/0x1@0x5:0x8 0xf/0x21@0x5:0x9 0xf/0x22@0x5:0xa 0x33/0xc@0x5:0xd 0x190/0x0@0x5:0xe 0x1002/0x0@0x5:0xf 0x301/0x0@0x5:0x10
+qrtr-ns nodes: 0x0 0xa 0x5
+wifi: /sys/class/net: ip6tnl0, ip_vti0, sit0, lo, bond0, dummy0, bonding_masters, ip6_vti0
+wifi: wlan0 present: no
+wifi: dmesg (61 lines): essfully subsys-pil-tz aae0000.qcom,venus: for venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz aae0000.qcom,venus: for md_venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus minidump-id not found for ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for md_ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,kgsl-hyp: for a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp subsys-pil-tz soc:qcom,kgsl-hyp: for md_a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp msm_sharedmem: msm_sharedmem_probe: Device created for client 'rmtfs' usbcore: registered new interface driver usb-storage wlan_hdd_state wlan major(500) initialized iommu: Adding device soc:usb_audio_qmi_dev to group 27 ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource rmnet_ipa3 started initialization RNDIS_IPA module is loaded. subsys-pil-tz 8300000.qcom,turing: cdsp: loading from 0x0000000093500000 to 0x0000000095300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 62400000.qcom,lpass: adsp: loading from 0x0000000095300000 to 0x0000000097100000
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 8300000.qcom,turing: cdsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 8300000.qcom,turing: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-restart: __subsystem_get(): Changing subsys fw_name to venus subsys-pil-tz aae0000.qcom,venus: venus: loading from 0x0000000092e00000 to 0x0000000093300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz 8300000.qcom,turing: cdsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing sysmon-qmi: ssctl_new_server: Connection established between QMI handle and cdsp's SSCTL service subsys-pil-tz 62400000.qcom,lpass: adsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 62400000.qcom,lpass: Subsystem error monitoring/han

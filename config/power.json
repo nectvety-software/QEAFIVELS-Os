@@ -1,0 +1,8 @@
+{
+ "schema_version":1,
+ "screen_timeout":"1m",
+ "supported_screen_timeouts":["15s","1m","5m","30m","never"],
+ "idle_clock":"monotonic",
+ "default_policy":"screen-only",
+ "notes":"Display timeout must not stop calls, audio, alarms, kernel scheduling, or emergency services."
+}

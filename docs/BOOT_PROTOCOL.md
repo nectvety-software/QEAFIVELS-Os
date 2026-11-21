@@ -1,0 +1,12 @@
+# VQEAF Boot Handoff Protocol
+Magic: eight bytes VQEAFBT0. Version 3. Architecture id 1 means x86_64; 2 means arm64. Boot modes: 0 normal, 1 recovery.
+The Boot Manager passes VqeafBootInfoV3 through the child EFI image Loaded Image Protocol LoadOptions field during StartImage. It includes protocol version/size, architecture, boot mode, system table, parent image handle and (filled by the kernel before ExitBootServices) the EFI memory-map address, byte size, descriptor size and descriptor version.
+
+## Version 3: GOP framebuffer
+Before StartImage the Boot Manager locates EFI_GRAPHICS_OUTPUT_PROTOCOL (GUID 9042A9DE-23DC-4A38-96FB-7ADED080516A), selects the shipped portrait 9:16 geometry (`bootloader/core/display_mode.c`), records the resulting base/size and geometry, and draws the boot splash directly into the linear framebuffer. The added fields are `framebuffer_base`, `framebuffer_size`, `framebuffer_width`, `framebuffer_height`, `framebuffer_stride`, `framebuffer_format` (0 = RGB byte order, 1 = BGR byte order, 0xFFFFFFFF = none). `framebuffer_size == 0` means no usable linear framebuffer; the kernel must fall back to serial-only output.
+
+Display selection order: an exact 9:16 portrait GOP mode if firmware advertises one; otherwise a custom 720x1280x32 Bochs VBE mode programmed through ports 0x1CE/0x1CF, and only after reading back the dispi ID and the programmed registers; otherwise the current GOP mode. The handoff always describes the **live** display, so a custom VBE mode may report different width/height/stride than the GOP protocol's `Mode->Info`. Consumers must trust `VqeafBootInfoV3`, not a later GOP query (no GOP call is legal after ExitBootServices anyway).
+The kernel maps the framebuffer range into its own page tables with write + cache-disable before using it. After ExitBootServices no UEFI Boot Service (including GOP Blt) may be called; both the splash and the native UI only ever write framebuffer memory. The Boot Manager stalls ~1.2 s so the splash is visible.
+
+The kernel validates the handoff, obtains a sufficiently sized memory-map buffer and retries GetMemoryMap + ExitBootServices when the map key is stale. Once ExitBootServices succeeds, no UEFI Boot Services function may be called. The map buffer remains reserved as EFI loader data and is parsed by the physical page allocator.
+This is an internal x86_64 bring-up ABI, not yet a stable cross-architecture or third-party boot ABI. Changes require version bumps and matching Boot Manager/kernel updates.

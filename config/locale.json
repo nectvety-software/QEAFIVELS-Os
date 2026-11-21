@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "locale": "vi-VN",
+  "language": "vi",
+  "region": "VN",
+  "encoding": "UTF-8",
+  "fallback_locales": ["en-US"],
+  "font": {
+    "family": "Ubuntu",
+    "regular": "assets/fonts/Ubuntu-Regular.ttf",
+    "bold": "assets/fonts/Ubuntu-Bold.ttf",
+    "license": "assets/fonts/LICENCE.txt",
+    "runtime_bitmap": "system/ui/include/vqeaf/font_ubuntu.h",
+    "generator": "scripts/generate_ubuntu_bitmap.ps1",
+    "glyph_coverage": "ASCII + Vietnamese Latin"
+  }
+}

@@ -1,0 +1,589 @@
+/* SPDX-License-Identifier: MIT */
+/* platform/violet/ui/vqeaf_qeapp_device.c - native QEAPP execution on violet.
+ *
+ * The loader follows docs/QEAPP_NATIVE_ABI_V2.md: validate the signed package
+ * and the .qen structure, copy code/rodata/data into a 4096-byte-aligned
+ * 2 MiB arena, resolve the lifecycle exports, and call them through the frozen
+ * AAPCS64 API table. The module never gets a kernel pointer, a file descriptor
+ * or a syscall: it only sees the API table below.
+ *
+ * The run happens in a forked child. The frame lives in a MAP_SHARED mapping
+ * created before fork, so a clean child leaves the pixels visible to the shell
+ * while a crash or a hang cannot touch them.
+ */
+#include "vqeaf_qeapp_device.h"
+
+#include "qeaf_api.h"
+#include "qeaf_native_abi.h"
+#include "vqeaf/font8x8.h"
+#include "vqeaf_qeapp.h"
+#include "vqeaf_qeapp_native.h"
+#include "vqeaf_qeapp_sandbox.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+
+#define ARENA_CAP (2u * 1024u * 1024u)
+#define FRAME_BYTES ((size_t)VQEAF_QEAPP_DEVICE_W * VQEAF_QEAPP_DEVICE_HEIGHT * 4u)
+
+typedef void *(*create_fn)(const qeaf_app_api_v2 *);
+typedef int (*life_fn)(void *);
+typedef void (*destroy_fn)(void *);
+
+static uint32_t *g_frame;
+static char g_life[128];
+static char g_process[128];
+static uint32_t g_hash;
+static volatile int g_page_pending;
+
+static uint32_t rd32(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static uint32_t fnv1a32(const uint8_t *data, size_t size)
+{
+    uint32_t value = 0x811C9DC5u;
+    for(size_t i = 0; i < size; i++) {
+        value ^= data[i];
+        value *= 0x01000193u;
+    }
+    return value;
+}
+
+/* ---- framework API v2, implemented by the phone ------------------------- */
+
+static uint32_t g_permissions;
+
+static void api_log(const char *message)
+{
+    printf("log: %s\n", message ? message : "(null)");
+}
+
+static void raster_text(int x, int y, const char *utf8, uint32_t weight)
+{
+    int bold = (weight == QEAF_TEXT_WEIGHT_BOLD);
+    int cx = x;
+    for(const unsigned char *p = (const unsigned char *)utf8; *p; p++) {
+        unsigned char c = *p < 128 ? *p : (unsigned char)'?';
+        const uint8_t *glyph = vqeaf_font8x8[c];
+        for(int row = 0; row < 8; row++) {
+            for(int col = 0; col < 8; col++) {
+                if(!(glyph[row] & (1u << col))) continue;
+                int px = cx + col, py = y + row;
+                if(px >= 0 && py >= 0 && px < VQEAF_QEAPP_DEVICE_W &&
+                   py < VQEAF_QEAPP_DEVICE_HEIGHT)
+                    g_frame[(uint32_t)py * VQEAF_QEAPP_DEVICE_W + (uint32_t)px] =
+                        0xFFFFFFFFu;
+                /* Bold weight: the 8x8 bitmap face has no separate bold cut,
+                 * so dilate each glyph pixel one column right for a heavier
+                 * raster. Same QEAPP bold weight as the host simulator. */
+                if(bold && px + 1 >= 0 && py >= 0 &&
+                   px + 1 < VQEAF_QEAPP_DEVICE_W && py < VQEAF_QEAPP_DEVICE_HEIGHT)
+                    g_frame[(uint32_t)py * VQEAF_QEAPP_DEVICE_W + (uint32_t)(px + 1)] =
+                        0xFFFFFFFFu;
+            }
+        }
+        cx += 8;
+    }
+}
+
+static int api_draw(int x, int y, const char *utf8)
+{
+    if(!(g_permissions & QEAF_PERM_UI_DISPLAY) || utf8 == NULL || g_frame == NULL)
+        return -1;
+    raster_text(x, y, utf8, QEAF_TEXT_WEIGHT_REGULAR);
+    return 0;
+}
+
+static int api_request_permission(const char *permission)
+{
+    uint32_t bit = qeaf_permission_bit(permission);
+    return (bit != 0u && (g_permissions & bit) != 0u) ? 1 : 0;
+}
+
+/* No storage capability is granted to the device runtime yet: the child has no
+ * rescue-volume handle and this must stay an honest refusal, not a stub that
+ * pretends to have read a file. */
+static int api_read_file(const char *path, void **out, size_t *size)
+{
+    (void)path;
+    if(out) *out = NULL;
+    if(size) *size = 0;
+    return -1;
+}
+
+static void api_free(void *ptr)
+{
+    free(ptr);
+}
+
+/* ---- framework API v3/v4 additions, implemented by the phone -------------- */
+
+static int api_blit_pixels(int x, int y, int w, int h, int stride,
+                           const uint16_t *rgb565)
+{
+    if(!(g_permissions & QEAF_PERM_UI_DISPLAY) || rgb565 == NULL || g_frame == NULL)
+        return -1;
+    if(w <= 0 || h <= 0 || stride < w) return -1;
+    for(int row = 0; row < h; row++) {
+        int py = y + row;
+        if(py < 0 || py >= VQEAF_QEAPP_DEVICE_HEIGHT) continue;
+        for(int col = 0; col < w; col++) {
+            int px = x + col;
+            if(px < 0 || px >= VQEAF_QEAPP_DEVICE_W) continue;
+            uint16_t c = rgb565[(size_t)row * (size_t)stride + (size_t)col];
+            uint32_t r = ((c >> 11) & 0x1Fu) * 255u / 31u;
+            uint32_t g = ((c >> 5) & 0x3Fu) * 255u / 63u;
+            uint32_t b = (c & 0x1Fu) * 255u / 31u;
+            g_frame[(uint32_t)py * VQEAF_QEAPP_DEVICE_W + (uint32_t)px] =
+                0xFF000000u | (r << 16) | (g << 8) | b;
+        }
+    }
+    return 0;
+}
+
+/* No storage capability on the device runtime: an honest refusal, matching
+ * api_read_file. The caller's buffer is left untouched. */
+static int api_read_file_part(const char *path, uint32_t offset, size_t size,
+                              void *out)
+{
+    (void)path; (void)offset; (void)size; (void)out;
+    return -1;
+}
+
+static int api_draw_text_weighted(int x, int y, const char *utf8, uint32_t weight)
+{
+    if(!(g_permissions & QEAF_PERM_UI_DISPLAY) || utf8 == NULL || g_frame == NULL)
+        return -1;
+    if(weight != QEAF_TEXT_WEIGHT_REGULAR && weight != QEAF_TEXT_WEIGHT_BOLD)
+        return -1;
+    raster_text(x, y, utf8, weight);
+    return 0;
+}
+
+/* ---- framework API v5 additions, implemented by the phone ---------------- */
+
+/* Pure proportional layout split: no permission and no framebuffer side
+ * effect, so it runs even for an app without ui.display. The shared inline
+ * keeps the device pixel-identical to the host simulator and arm64 harness. */
+static int api_layout_split_weighted(int x, int y, int w, int h, uint32_t axis,
+                                     const uint32_t *weights, uint32_t n,
+                                     uint32_t gap, qeaf_rect_t *out)
+{
+    return qeaf_layout_split_rect(x, y, w, h, axis, weights, n, gap, out);
+}
+
+/* ---- module execution ---------------------------------------------------- */
+
+static void report_lifecycle(const char *stage)
+{
+    size_t used = strlen(g_life);
+    if(used + strlen(stage) + 2 >= sizeof(g_life)) return;
+    if(used > 0) g_life[used++] = ' ';
+    snprintf(g_life + used, sizeof(g_life) - used, "%s", stage);
+}
+
+/* Which framework API table the module imports (2, 3, 4 or 5). Mirrors the host
+ * simulator's check_imports: exactly one known import, and the header
+ * abi_version byte must agree. Returns -1 on a malformed/mismatched table. */
+static int device_api_version(const uint8_t *module, uint32_t code,
+                              uint32_t rodata, uint32_t data, uint32_t imports,
+                              char *error, size_t cap)
+{
+    uint8_t abi_version = module[10];
+    size_t off = 64u + code + rodata + data;
+    size_t end = off + imports;
+    int found_v2 = 0, found_v3 = 0, found_v4 = 0, found_v5 = 0;
+    size_t i = off;
+    while(i < end) {
+        size_t j = i;
+        while(j < end && module[j] != 0u) j++;
+        if(j >= end || j == i) {
+            snprintf(error, cap, "device runtime: imports table malformed");
+            return -1;
+        }
+        const char *name = (const char *)(module + i);
+        if(strcmp(name, QEAPP_IMPORT_API_V2) == 0) found_v2 = 1;
+        else if(strcmp(name, QEAPP_IMPORT_API_V3) == 0) found_v3 = 1;
+        else if(strcmp(name, QEAPP_IMPORT_API_V4) == 0) found_v4 = 1;
+        else if(strcmp(name, QEAPP_IMPORT_API_V5) == 0) found_v5 = 1;
+        else {
+            snprintf(error, cap, "device runtime: unknown framework import: %s",
+                     name);
+            return -1;
+        }
+        i = j + 1;
+    }
+    if(found_v2 + found_v3 + found_v4 + found_v5 != 1) {
+        snprintf(error, cap,
+                 "device runtime: module must import exactly one framework API");
+        return -1;
+    }
+    int version = found_v5 ? 5 : (found_v4 ? 4 : (found_v3 ? 3 : 2));
+    if(abi_version != 0 && abi_version != (uint8_t)version) {
+        snprintf(error, cap, "device runtime: header abi_version %u does not "
+                 "match its import (api v%d)", (unsigned)abi_version, version);
+        return -1;
+    }
+    return version;
+}
+
+static int device_exec(const uint8_t *package, size_t size,
+                       uint32_t effective_permissions,
+                       char *error, size_t cap)
+{
+    const uint8_t *module = NULL;
+    size_t module_size = 0;
+    uint8_t *arena = MAP_FAILED;
+    uint32_t code, rodata, data, bss, imports, exports, arch;
+    size_t total;
+    create_fn fn_create = NULL;
+    life_fn fn_start = NULL, fn_pause = NULL, fn_resume = NULL, fn_stop = NULL;
+    destroy_fn fn_destroy = NULL;
+
+    g_life[0] = '\0';
+    g_hash = 0;
+    memset(g_frame, 0, FRAME_BYTES);
+
+    {
+        vqeaf_qeapp_native_info_t info;
+        if(vqeaf_qeapp_inspect_native(package, size, &info, &module, &module_size,
+                                      error, cap) != 0)
+            return -1;
+        if(info.arch_id != VQEAF_QEN_ARCH_ARM64) {
+            snprintf(error, cap, "device runtime: package architecture is not arm64");
+            return -1;
+        }
+        /* Runtime capabilities are the intersection of the signed manifest and persisted user grants. */
+        g_permissions = info.permissions & effective_permissions;
+    }
+    if(vqeaf_qeapp_native_validate_module(module, module_size,
+                                          VQEAF_QEN_ARCH_ARM64) != 0) {
+        snprintf(error, cap, "device runtime: invalid .qen module");
+        return -1;
+    }
+
+    arch = module[11];
+    code = rd32(module + 21);
+    rodata = rd32(module + 25);
+    data = rd32(module + 29);
+    bss = rd32(module + 33);
+    imports = rd32(module + 41);
+    exports = rd32(module + 45);
+    if(arch != VQEAF_QEN_ARCH_ARM64) {
+        snprintf(error, cap, "device runtime: module is not arm64");
+        return -1;
+    }
+    total = (size_t)code + rodata + data + bss;
+    if(total == 0 || total > ARENA_CAP) {
+        snprintf(error, cap, "device runtime: module exceeds the 2 MiB arena");
+        return -1;
+    }
+
+    arena = mmap(NULL, ARENA_CAP, PROT_READ | PROT_WRITE | PROT_EXEC,
+                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if(arena == MAP_FAILED) {
+        snprintf(error, cap, "device runtime: arena mmap failed (%d)", errno);
+        return -1;
+    }
+    memcpy(arena, module + 64, code);
+    memcpy(arena + code, module + 64 + code, rodata);
+    memcpy(arena + code + rodata, module + 64 + code + rodata, data);
+    memset(arena + code + rodata + data, 0, bss);
+    __builtin___clear_cache((char *)arena, (char *)arena + total);
+
+    {
+        size_t off = 64u + code + rodata + data + imports;
+        size_t end = off + exports;
+        while(off < end) {
+            size_t name_end = off;
+            while(name_end < end && module[name_end] != 0u) name_end++;
+            if(name_end >= end || name_end + 5 > end) break;
+            const char *name = (const char *)(module + off);
+            void *fn = arena + rd32(module + name_end + 1);
+            if(strcmp(name, QEAPP_EXPORT_CREATE) == 0) fn_create = (create_fn)fn;
+            else if(strcmp(name, QEAPP_EXPORT_START) == 0) fn_start = (life_fn)fn;
+            else if(strcmp(name, QEAPP_EXPORT_PAUSE) == 0) fn_pause = (life_fn)fn;
+            else if(strcmp(name, QEAPP_EXPORT_RESUME) == 0) fn_resume = (life_fn)fn;
+            else if(strcmp(name, QEAPP_EXPORT_STOP) == 0) fn_stop = (life_fn)fn;
+            else if(strcmp(name, QEAPP_EXPORT_DESTROY) == 0) fn_destroy = (destroy_fn)fn;
+            off = name_end + 5;
+        }
+    }
+    if(fn_create == NULL || fn_start == NULL || fn_stop == NULL ||
+       fn_destroy == NULL) {
+        snprintf(error, cap, "device runtime: module is missing lifecycle exports");
+        munmap(arena, ARENA_CAP);
+        return -1;
+    }
+
+    {
+        int api_version = device_api_version(module, code, rodata, data, imports,
+                                             error, cap);
+        if(api_version < 0) {
+            munmap(arena, ARENA_CAP);
+            return -1;
+        }
+        qeaf_app_api_v2 api;
+        qeaf_app_api_v3 api_v3;
+        qeaf_app_api_v4 api_v4;
+        qeaf_app_api_v5 api_v5;
+        const qeaf_app_api_v2 *table;
+        void *handle;
+
+        api.size = (uint32_t)sizeof(api);
+        api.abi_version = VQEAF_APP_API_V2_VERSION;
+        api.log_utf8 = api_log;
+        api.draw_text = api_draw;
+        api.request_permission = api_request_permission;
+        api.read_file = api_read_file;
+        api.free = api_free;
+
+        api_v3.size = (uint32_t)sizeof(api_v3);
+        api_v3.abi_version = VQEAF_APP_API_V3_VERSION;
+        api_v3.log_utf8 = api_log;
+        api_v3.draw_text = api_draw;
+        api_v3.request_permission = api_request_permission;
+        api_v3.read_file = api_read_file;
+        api_v3.free = api_free;
+        api_v3.blit_pixels = api_blit_pixels;
+        api_v3.read_file_part = api_read_file_part;
+
+        api_v4.size = (uint32_t)sizeof(api_v4);
+        api_v4.abi_version = VQEAF_APP_API_V4_VERSION;
+        api_v4.log_utf8 = api_log;
+        api_v4.draw_text = api_draw;
+        api_v4.request_permission = api_request_permission;
+        api_v4.read_file = api_read_file;
+        api_v4.free = api_free;
+        api_v4.blit_pixels = api_blit_pixels;
+        api_v4.read_file_part = api_read_file_part;
+        api_v4.draw_text_weighted = api_draw_text_weighted;
+
+        api_v5.size = (uint32_t)sizeof(api_v5);
+        api_v5.abi_version = VQEAF_APP_API_V5_VERSION;
+        api_v5.log_utf8 = api_log;
+        api_v5.draw_text = api_draw;
+        api_v5.request_permission = api_request_permission;
+        api_v5.read_file = api_read_file;
+        api_v5.free = api_free;
+        api_v5.blit_pixels = api_blit_pixels;
+        api_v5.read_file_part = api_read_file_part;
+        api_v5.draw_text_weighted = api_draw_text_weighted;
+        api_v5.layout_split_weighted = api_layout_split_weighted;
+
+        table = api_version == 5 ? (const qeaf_app_api_v2 *)&api_v5
+              : api_version == 4 ? (const qeaf_app_api_v2 *)&api_v4
+              : api_version == 3 ? (const qeaf_app_api_v2 *)&api_v3
+              : &api;
+        handle = fn_create(table);
+        report_lifecycle("create");
+        if(handle == NULL) {
+            snprintf(error, cap, "device runtime: create() returned no handle");
+            munmap(arena, ARENA_CAP);
+            return -1;
+        }
+        if(fn_start(handle) == 0) report_lifecycle("start");
+        if(fn_pause && fn_pause(handle) == 0) report_lifecycle("pause");
+        if(fn_resume && fn_resume(handle) == 0) report_lifecycle("resume");
+        if(fn_stop(handle) == 0) report_lifecycle("stop");
+        fn_destroy(handle);
+        report_lifecycle("destroy");
+    }
+
+    g_hash = fnv1a32((const uint8_t *)g_frame, FRAME_BYTES);
+    printf("lifecycle: %s\n", g_life);
+    printf("framebuffer: %dx%d hash=0x%08x\n", VQEAF_QEAPP_DEVICE_W,
+           VQEAF_QEAPP_DEVICE_HEIGHT, g_hash);
+    printf("outstanding allocs: 0\n");
+    fflush(stdout);
+    munmap(arena, ARENA_CAP);
+    return 0;
+}
+
+/* ---- guarded launcher ---------------------------------------------------- */
+
+static uint64_t now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)(ts.tv_nsec / 1000000);
+}
+
+int vqeaf_qeapp_device_launch(const uint8_t *package, size_t size,
+                              uint32_t effective_permissions,
+                              char *report, size_t report_cap,
+                              char *error, size_t error_cap)
+{
+    int pipefd[2];
+    pid_t pid;
+    int status = 0;
+    int timed_out = 0;
+    size_t used = 0;
+    char out[4096];
+
+    if(report == NULL || report_cap == 0) return -1;
+    report[0] = '\0';
+    if(error == NULL || error_cap == 0) return -1;
+    error[0] = '\0';
+    if(package == NULL || size == 0) {
+        snprintf(error, error_cap, "device runtime: empty package");
+        return -1;
+    }
+    /* SECURITY GATE: fork inherits the shell UID, and API-table checks alone
+     * cannot constrain direct syscalls. The child therefore drops to an
+     * unprivileged uid/gid, closes every inherited descriptor and installs a
+     * seccomp allowlist before any module code runs; if any layer is refused
+     * the app stays blocked (vqeaf_qeapp_sandbox_apply() is fail-closed). */
+    if(g_frame == NULL) {
+        void *map = mmap(NULL, FRAME_BYTES, PROT_READ | PROT_WRITE,
+                         MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+        if(map == MAP_FAILED) {
+            snprintf(error, error_cap, "device runtime: frame mmap failed (%d)",
+                     errno);
+            return -1;
+        }
+        g_frame = (uint32_t *)map;
+    }
+    g_process[0] = '\0';
+    if(pipe(pipefd) != 0) {
+        snprintf(error, error_cap, "device runtime: pipe failed (%d)", errno);
+        return -1;
+    }
+    pid = fork();
+    if(pid < 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        snprintf(error, error_cap, "device runtime: fork failed (%d)", errno);
+        return -1;
+    }
+    if(pid == 0) {
+        char child_error[256];
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        dup2(pipefd[1], STDERR_FILENO);
+        close(pipefd[1]);
+        child_error[0] = '\0';
+        int rc = vqeaf_qeapp_sandbox_apply(child_error, sizeof(child_error));
+        if(rc != 0) {
+            printf("error: %s\n", child_error[0] ? child_error : "sandbox");
+            fflush(stdout);
+            _exit(1);
+        }
+        rc = device_exec(package, size, effective_permissions,
+                         child_error, sizeof(child_error));
+        if(rc != 0)
+            printf("error: %s\n", child_error[0] ? child_error : "unknown");
+        fflush(stdout);
+        _exit(rc == 0 ? 0 : 1);
+    }
+    close(pipefd[1]);
+    /* The child is its own process with its own unprivileged identity: the
+     * measured uid below is the sandbox uid, not the shell's. */
+    snprintf(g_process, sizeof(g_process),
+             "app pid %d · shell pid %d · app uid %u · seccomp",
+             (int)pid, (int)getpid(), vqeaf_qeapp_sandbox_uid());
+    {
+        uint64_t deadline = now_ms() + VQEAF_QEAPP_DEVICE_TIMEOUT_MS;
+        for(;;) {
+            pid_t r = waitpid(pid, &status, WNOHANG);
+            if(r == pid) break;
+            if(r < 0) break;
+            if(now_ms() > deadline) {
+                kill(pid, SIGKILL);
+                waitpid(pid, &status, 0);
+                timed_out = 1;
+                break;
+            }
+            usleep(10000);
+        }
+    }
+    for(;;) {
+        if(used + 1 >= sizeof(out)) break;
+        ssize_t got = read(pipefd[0], out + used, sizeof(out) - 1 - used);
+        if(got <= 0) break;
+        used += (size_t)got;
+    }
+    out[used] = '\0';
+    close(pipefd[0]);
+    /* The identity line is part of the report so the device itself states the
+     * uid and the seccomp layer that actually applied, instead of the caller
+     * assuming them. */
+    snprintf(report, report_cap, "%s%s%s", out, out[0] ? "\n" : "",
+             g_process);
+
+    if(timed_out) {
+        /* Carry the module's own last lines: a timeout without them says the
+         * run was killed but not how far the module got. */
+        snprintf(error, error_cap,
+                 "device runtime: module exceeded %d ms and was killed%s%s",
+                 VQEAF_QEAPP_DEVICE_TIMEOUT_MS, out[0] ? " | " : "", out);
+        return -1;
+    }
+    if(WIFSIGNALED(status)) {
+        snprintf(error, error_cap,
+                 "device runtime: module crashed (signal %d); shell survived",
+                 WTERMSIG(status));
+        return -1;
+    }
+    if(!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        const char *why = strstr(out, "error:");
+        snprintf(error, error_cap, "device runtime: module run failed%s%s",
+                 why ? ": " : "", why ? why + 6 : "");
+        return -1;
+    }
+    {
+        const char *h = strstr(out, "hash=0x");
+        const char *life = strstr(out, "lifecycle:");
+        if(h) g_hash = (uint32_t)strtoul(h + 7, NULL, 16);
+        if(life) {
+            size_t n = 0;
+            life += 10;
+            while(life[n] && life[n] != '\n' && n + 1 < sizeof(g_life)) n++;
+            memcpy(g_life, life, n);
+            g_life[n] = '\0';
+        }
+    }
+    g_page_pending = 1;
+    return 0;
+}
+
+const uint32_t *vqeaf_qeapp_device_frame(void)
+{
+    return g_frame;
+}
+
+const char *vqeaf_qeapp_device_lifecycle(void)
+{
+    return g_life;
+}
+
+const char *vqeaf_qeapp_device_process(void)
+{
+    return g_process;
+}
+
+uint32_t vqeaf_qeapp_device_hash(void)
+{
+    return g_hash;
+}
+
+int vqeaf_qeapp_device_page_pending(void)
+{
+    return g_page_pending;
+}
+
+void vqeaf_qeapp_device_page_ack(void)
+{
+    g_page_pending = 0;
+}

@@ -1,0 +1,31 @@
+# .agents — VQEAF OS Agent Pack
+
+This folder is the canonical development guidance for coding agents working in this repository.
+
+## Read order
+1. `AGENTS.md` — always-on engineering rules and safety boundaries.
+2. `prompts/MASTER_DEVELOPMENT_PROMPT.md` — full OS mission, architecture, capabilities and implementation priorities.
+3. `prompts/FEATURE_BACKLOG.md` — feature inventory and acceptance evidence.
+4. Relevant skill under `skills/<name>/SKILL.md` before changing that subsystem.
+
+## Skills
+- `os-architecture`: architecture and module boundaries.
+- `kernel-core`: boot handoff, kernel, memory, scheduler, IPC and VFS.
+- `device-drivers`: hardware abstraction, drivers and capability reporting.
+- `framework-ui`: native framework, compositor, shell and screen timeout.
+- `qeapp-games`: QEAPP ABI/runtime and game framework.
+- `security-privacy`: permissions, biometrics, secure boot and developer mode.
+- `system-apps`: file manager, clock, radio, telephony, audio, sensors and browser.
+- `sdk-testing`: CLI, reproducible builds and verification.
+- `violet-port`: build, package, flash and verify the aarch64 PID 1 on the Redmi Note 7 Pro (p77/recovery only, consent + two flash proofs).
+
+## Independent AArch64 kernel gate
+`kernel/arch/aarch64` is the freestanding ARM64 kernel (QEMU virt). Build with
+`python scripts/build_kernel_aarch64.py`, verify with
+`python scripts/test_kernel_aarch64.py` (boots QEMU, injects real keystrokes,
+asserts UART markers and a clean PSCI exit; includes the F4 credential/VFS
+checks). Emulator evidence only — it says nothing about Violet hardware, which
+is the separate `platform/violet` transport track.
+
+## Important
+These are implementation instructions, not claims that all listed OS features already exist. Follow `docs/STATUS.md` and mark hardware-dependent work as blocked until tested on supported hardware.

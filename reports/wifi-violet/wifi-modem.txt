@@ -1,0 +1,75 @@
+# captured 2026-11-21T15:53:57
+# volume F:
+
+===== wifi modem =====
+seq=15
+### wifi modem
+wifi sys /sys/kernel: wakeup_reasons notes gpu dload qvr_external_sensor q6audio mm uevent_seqnum tracing ion slab iommu_groups boot_adsp irq shutdown_wlan fscaps uevent_helper rcu_normal debug config rcu_expedited cgroup boot_cdsp
+wifi sys /sys/class: avtimer pwm thermal android_usb udc icesdcc scsi_generic rc vtconsole dcc_sram ipa rpmsg msm-rng wakeup graphics scsi_device diag stm mem gpio qce msm_sps misc qvr_external_sensor regulator dma backlight pps uio spidev dual_role_usb bt-dev leds extcon qseecom net fastrpc mdio_bus lcd_bias lcd smcinvoke pci_bus i2c-adapter kgsl rfkill spi_master glinkpkt scsi_disk stm_source bluetooth ipa_adpl ieee80211 wlan devfreq sound firmware tty esoc-dev hdcp gsi_usb video4linux bdi power_supply tiload_node qg_battery subsys i2c-dev block qcom-battery phy input iommu ptp bsg xt_hardidletimer ipa_odl_ctl scsi_host ramdump dvb qg ...(91)
+wifi sys /sys/bus/msm_subsys/devices: subsys4 subsys2 subsys0 subsys5 subsys3 subsys1
+wifi subsys subsys4 name=ipa_fws
+  restart_level=SYSTEM
+  state=OFFLINING
+  restart: absent
+  shutdown: absent
+wifi subsys subsys2 name=cdsp
+  restart_level=SYSTEM
+  state=ONLINE
+  restart: absent
+  shutdown: absent
+wifi subsys subsys0 name=adsp
+  restart_level=SYSTEM
+  state=ONLINE
+  restart: absent
+  shutdown: absent
+wifi subsys subsys5 name=a612_zap
+  restart_level=SYSTEM
+  state=OFFLINING
+  restart: absent
+  shutdown: absent
+wifi subsys subsys3 name=venus
+  restart_level=SYSTEM
+  state=ONLINE
+  restart: absent
+  shutdown: absent
+wifi subsys subsys1 name=modem
+  restart_level=SYSTEM
+  state=OFFLINING
+  restart: absent
+  shutdown: absent
+wifi sys mss attrs: uevent of_node power driver driver_override subsystem subsys ramdump subsys1 modalias
+  mss boot: absent
+  mss shutdown: absent
+  mss subsystem: absent
+  mss runtime=unsupported
+wifi sys pil-tz: uevent 8300000.qcom,turing bind 62400000.qcom,lpass 4080000.qcom,mss soc:qcom,ipa_fws unbind soc:qcom,kgsl-hyp aae0000.qcom,venus
+wifi sys boot_adsp: ssr boot
+wifi sys boot_cdsp: boot
+wifi sys boot_slpi: absent (No such file or directory)
+  adsp boot: absent
+  wifi sys wlan initstate: absent
+  wifi sys icnss initstate: absent
+wifi sys /sys/class/remoteproc: absent (No such file or directory)
+wifi sys /sys/class/subsys: subsys_venus subsys_modem subsys_adsp subsys_a612_zap subsys_ipa_fws subsys_cdsp
+wifi sys /sys/class/misc: loop-control msm_audio_cal msm_wma tas2563 ecryptfs msm_amrwb msm_ape msm_g711alaw_in msm_aac msm_alac tun msm_qcelp_in msm_aac_in msm_g711mlaw msm_qcelp memory_bandwidth msm_multi_aac msm_g711alaw msm_amrnb_in msm_g711mlaw_in ion rfkill vga_arbiter msm_rtac msm_evrc_in msm_evrc fuse msm_hweffects msm_mp3 uinput network_throughput cpu_dma_latency uhid msm_amrwb_in ashmem device-mapper hw_random msm_wmapro msm_amrnb network_latency msm_amrwbplus
+wifi sys /sys/class/uio: uio0
+wifi sys /sys/class/rmtfs: absent (No such file or directory)
+wifi persist root: display bluetooth vpp misc time secnvm tp_test camera hvdcp_opti sensors fdsd data alarm lost+found qti_fp hlos_rfs rfs coresight drm stability misys audio subsys iar_db
+wifi persist wlan: absent (No such file or directory)
+wifi persist wifi: absent (No such file or directory)
+wifi persist qca: absent (No such file or directory)
+wifi sys rmtfs mem1: absent (No such file or directory)
+  rmtfs mem1 dev: absent
+  rmtfs mem1 phys_addr: absent
+  rmtfs mem1 size: absent
+wifi sys rmtfs attrs: absent (No such file or directory)
+wifi sys misc rmtfs: absent (No such file or directory)
+  misc rmtfs dev: absent
+  misc rmtfs phys: absent
+  misc rmtfs size: absent
+  rmtfs phys_addr: absent
+  rmtfs size: absent
+wifi sys /sys/bus/qrtr/devices: absent (No such file or directory)
+wifi sys /sys/kernel/debug/qrtr: absent (No such file or directory)
+wifi sys /dev: wlan disk qcom_rmtfs_uio1 video0 video2 video32 video1 video33 mmcblk0p32 mmcblk0p70 mmcblk0p42 mmcblk0p14 mmcblk0p80 mmcblk0p52 mmcblk0p2 mmcblk0p24 mmcblk0p62 mmcblk0p34 mmcblk0p72 mmcblk0p44 mmcblk0p16 mmcblk0p82 mmcblk0p54 mmcblk0p4 mmcblk0p26 mmcblk0p64 mmcblk0p36 mmcblk0p74 mmcblk0p46 mmcblk0p18 mmcblk0p84 m### echo devcheck1795251210374
+devcheck1795251210374

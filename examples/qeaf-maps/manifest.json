@@ -1,0 +1,10 @@
+{
+  "format": "qeapp", "format_version": 2, "abi_version": 3,
+  "runtime": "native", "id": "org.vqeaf.maps", "name": "QEAF Maps",
+  "version": "0.1.0",
+  "description": "Native map-style sample with streets, place pins and a show-list panel",
+  "publisher": "Qeafivels Software", "author": "QEAFIVELS OS examples",
+  "entry": "native/arm64/app.qen", "icon": "assets/icon.rgba",
+  "min_os": "0.2.0", "architecture": ["arm64"],
+  "permissions": ["ui.display"], "dependencies": [], "signature": null
+}
