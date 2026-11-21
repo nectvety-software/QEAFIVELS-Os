@@ -26,6 +26,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
@@ -268,17 +269,45 @@ static int binder_open_works(const char *path)
     return 1;
 }
 
+/* UAPI binderfs ioctl from include/uapi/linux/android/binderfs.h.
+ * Mounting binderfs creates only binder-control; individual devices must be
+ * allocated with BINDER_CTL_ADD. Merely looking for binderfs/binder after
+ * mount is insufficient and leaves cnss-daemon with no /dev/binder. */
+struct vio_binderfs_device {
+    char name[256];
+    uint32_t major;
+    uint32_t minor;
+};
+#define VIO_BINDER_CTL_ADD _IOWR('b', 1, struct vio_binderfs_device)
+
 static int ensure_binderfs_nodes(void)
 {
     static const char *const names[] = { "binder", "hwbinder", "vndbinder" };
+    char control[160];
+    int ctl = -1;
     struct stat st;
 
-    if(stat(BINDERFS_DIR, &st) != 0 && vio_mkdir_p(BINDERFS_DIR, 0755) != 0) {
+    if(stat(BINDERFS_DIR, &st) != 0 &&
+       vio_mkdir_p(BINDERFS_DIR, 0755) != 0) {
         vio_log("hostsvc: cannot create %s: %s", BINDERFS_DIR, strerror(errno));
         return -1;
     }
-    if(mount("binder", BINDERFS_DIR, "binder", 0, NULL) != 0 && errno != EBUSY) {
-        vio_log("hostsvc: mount binderfs failed: %s", strerror(errno));
+
+    snprintf(control, sizeof(control), "%s/binder-control", BINDERFS_DIR);
+    if(stat(control, &st) != 0) {
+        if(mount("binder", BINDERFS_DIR, "binder", 0, NULL) != 0) {
+            vio_log("hostsvc: mount binderfs failed: %s", strerror(errno));
+            return -1;
+        }
+    }
+    if(stat(control, &st) != 0 || !S_ISCHR(st.st_mode)) {
+        vio_log("hostsvc: %s is not the binderfs control device", control);
+        return -1;
+    }
+
+    ctl = open(control, O_RDWR | O_CLOEXEC);
+    if(ctl < 0) {
+        vio_log("hostsvc: open %s failed: %s", control, strerror(errno));
         return -1;
     }
 
@@ -287,86 +316,68 @@ static int ensure_binderfs_nodes(void)
         struct stat sst, dst_st;
 
         snprintf(src, sizeof(src), "%s/%s", BINDERFS_DIR, names[i]);
-        if(stat(src, &sst) != 0 || !S_ISCHR(sst.st_mode)) continue;
+        if(stat(src, &sst) != 0 || !S_ISCHR(sst.st_mode)) {
+            struct vio_binderfs_device req;
+
+            memset(&req, 0, sizeof(req));
+            snprintf(req.name, sizeof(req.name), "%s", names[i]);
+            if(ioctl(ctl, VIO_BINDER_CTL_ADD, &req) != 0) {
+                if(errno != EEXIST) {
+                    vio_log("hostsvc: BINDER_CTL_ADD %s failed: %s",
+                            names[i], strerror(errno));
+                    continue;
+                }
+            }
+        }
+
+        if(stat(src, &sst) != 0 || !S_ISCHR(sst.st_mode)) {
+            vio_log("hostsvc: binderfs did not publish %s", src);
+            continue;
+        }
+
         snprintf(dst, sizeof(dst), "/dev/%s", names[i]);
         if(stat(dst, &dst_st) == 0 && S_ISCHR(dst_st.st_mode) &&
-           major(dst_st.st_rdev) == major(sst.st_rdev)) continue;
-        unlink(dst);
+           major(dst_st.st_rdev) == major(sst.st_rdev) &&
+           minor(dst_st.st_rdev) == minor(sst.st_rdev))
+            continue;
+        if(stat(dst, &dst_st) == 0 && unlink(dst) != 0) {
+            vio_log("hostsvc: cannot replace %s: %s", dst, strerror(errno));
+            continue;
+        }
         if(symlink(src, dst) != 0) {
             vio_log("hostsvc: cannot link %s -> %s: %s", dst, src,
                     strerror(errno));
             continue;
         }
-        /* binderfs nodes are 0600 root; cnss-daemon also runs as root, but
-         * widen the published node like ueventd does when the fs allows it. */
         (void)chmod(src, 0666);
-        if(stat(dst, &dst_st) == 0 && S_ISCHR(dst_st.st_mode))
-            vio_log("hostsvc: %s -> %s (%u:%u)", dst, src,
-                    major(dst_st.st_rdev), minor(dst_st.st_rdev));
+        vio_log("hostsvc: %s -> %s (%u:%u)", dst, src,
+                major(sst.st_rdev), minor(sst.st_rdev));
     }
+
+    close(ctl);
     return binder_open_works("/dev/binder") ? 0 : -1;
 }
 
-/* Legacy single-device binder: discover the major at runtime rather than
- * hard-coding it; used only when binderfs is not in the kernel. */
-static int char_dev_major(const char *driver, unsigned *major_out)
-{
-    FILE *fp = fopen("/proc/devices", "r");
-    char line[160], name[64] = "";
-    unsigned major_no = 0;
-    int character_section = 0;
-
-    if(fp == NULL) return -1;
-    while(fgets(line, sizeof(line), fp) != NULL) {
-        if(strstr(line, "Character devices") != NULL) {
-            character_section = 1;
-            continue;
-        }
-        if(strstr(line, "Block devices") != NULL) break;
-        if(!character_section) continue;
-        if(sscanf(line, "%u %63s", &major_no, name) != 2) continue;
-        if(strcmp(name, driver) != 0) continue;
-        fclose(fp);
-        *major_out = major_no;
-        return 0;
-    }
-    fclose(fp);
-    return -1;
-}
-
-/* /proc/devices only gives the major. The vendor kernel does not expose a
- * sysfs `dev` file for binder, so probe the handful of minor numbers a char
- * device registered with register_chrdev() can use and keep the one that
- * really opens. This is how we found that 499:0 returns ENXIO on violet. */
+/* Never guess a binder major/minor. Prefer binderfs; for a legacy
+ * misc-device binder build, use the exact kernel-published sysfs dev number. */
 static int ensure_binder_node(void)
 {
-    static const char *node = "/dev/binder";
-    unsigned major_no;
-    struct stat st;
+    if(binder_open_works("/dev/binder")) return 0;
 
-    if(binder_open_works(node)) return 0;
-    if(binderfs_supported() && ensure_binderfs_nodes() == 0) return 0;
-    if(char_dev_major("binder", &major_no) != 0) return -1;
-    for(unsigned minor_no = 0; minor_no < 8; minor_no++) {
-        int fd;
+    if(binderfs_supported()) {
+        if(ensure_binderfs_nodes() == 0) return 0;
+        vio_log("hostsvc: binderfs is advertised but could not create binder");
+        return -1;
+    }
 
-        if(stat(node, &st) != 0 || !S_ISCHR(st.st_mode) ||
-           major(st.st_rdev) != major_no || minor(st.st_rdev) != minor_no) {
-            unlink(node);
-            if(mknod(node, S_IFCHR | 0666,
-                     makedev(major_no, minor_no)) < 0) continue;
-        }
-        fd = open(node, O_RDWR | O_CLOEXEC);
-        if(fd < 0) {
-            vio_log("hostsvc: binder %u:%u open failed: %s", major_no,
-                    minor_no, strerror(errno));
-            unlink(node);
-            continue;
-        }
-        close(fd);
-        vio_log("hostsvc: binder node ready at %u:%u", major_no, minor_no);
+    if(mknod_from_sys("/sys/class/misc", "binder") == 0 &&
+       binder_open_works("/dev/binder")) {
+        vio_log("hostsvc: legacy binder node created from sysfs dev attribute");
         return 0;
     }
+
+    vio_log("hostsvc: kernel exposes neither usable binderfs nor "
+            "/sys/class/misc/binder/dev");
     return -1;
 }
 
@@ -636,7 +647,7 @@ static char *const kTftpArgs[] = { "tqftpserv", "-d", NULL };
 static char *const kRmtfsArgs[] = { "rmtfs", "-P", "-r", "-v", NULL };
 /* Usage says "-dd for more": pass it as one getopt flag. -n keeps the daemon
  * in the foreground so the launcher's redirected stderr is inherited. */
-static char *const kCnssArgs[] = { "cnss-daemon", "-n", "-dd", NULL };
+static char *const kCnssArgs[] = { "cnss-daemon", "-n", "-l", NULL };
 
 static void rebind_ath10k(void)
 {
@@ -1044,9 +1055,14 @@ void vio_host_services_start_wlan(void)
     /* Native QEAF service manager owns CNSS. Match the Violet device-tree
      * invocation (-n -l); the custom WLFW QMI client is fallback-only.
      * CNSS is gated on the real p74 MAC above. It needs /dev/binder even in
-     * -n mode; create it from /proc/devices before the first exec. */
-    if(ensure_binder_node() != 0)
-        vio_log("hostsvc: binder node unavailable; CNSS cannot start");
+     * -n mode; create it through binderfs or the exact sysfs dev number. */
+    if(ensure_binder_node() != 0) {
+        snprintf(wlan_note, sizeof(wlan_note),
+                 "binder unavailable; CNSS not launched (no guessed device numbers)");
+        vio_log("hostsvc: %s", wlan_note);
+        launch_qrtr_lookup();
+        return;
+    }
     if(launch(svc_cnss, kCnssArgs) == 0) {
         snprintf(wlan_note, sizeof(wlan_note),
                  "CNSS daemon spawned by QEAF service manager (-n -l)");
