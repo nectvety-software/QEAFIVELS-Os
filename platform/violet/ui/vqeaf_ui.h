@@ -135,6 +135,8 @@ typedef struct {
 
 /* Opens a real image from UserData/Pictures in the full-screen preview. */
 void vqeaf_ui_open_picture(const char *name);
+/* Floating bottom-left thumbnail shown right after a real capture. */
+void vqeaf_ui_show_capture_thumb(const char *name);
 
 void vqeaf_ui_notify(const char *title, const char *body, const char *symbol,
                      uint32_t color);

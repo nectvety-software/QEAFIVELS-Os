@@ -183,6 +183,7 @@ static int snapshot_scanout(struct fat16_volume *vol)
  * Keeping it there means a PC sees the file immediately and no flash
  * partition is touched. */
 static unsigned shot_frame;
+static char g_last_shot[64];
 
 /* Captures are published inside the storage tree the OS advertises, so a PC
  * sees them next to the user's own files and the shell's folders can list
@@ -265,6 +266,7 @@ static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
             }
         }
         snprintf(name, cap, "SHOT%04u.BMP", ++shot_frame);
+        snprintf(g_last_shot, sizeof(g_last_shot), "%s", name);
         rc = capture_write(vol, "UserData/Pictures/", name, bmp, bmp_len) < 0 ?
              -4 : (int)bmp_len;
         free(bmp);
@@ -272,12 +274,14 @@ static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
             vio_log("shot: PNG encoder error %u; wrote BMP %s (%d bytes)",
                     lode_err, name, rc);
             vqeaf_ui_notify("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8);
+            vqeaf_ui_show_capture_thumb(name);
         }
         return rc;
     }
     free(rgba);
 
     snprintf(name, cap, "SHOT%04u.PNG", ++shot_frame);
+    snprintf(g_last_shot, sizeof(g_last_shot), "%s", name);
     if(capture_write(vol, "UserData/Pictures/", name, png, png_len) < 0)
         rc = -4;
     else
@@ -287,6 +291,7 @@ static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
     if(rc > 0) {
         vio_log("shot: %s (%ux%u PNG, %d bytes)", name, w, h, rc);
         vqeaf_ui_notify("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8);
+        vqeaf_ui_show_capture_thumb(name);
     }
     return rc;
 }
@@ -467,6 +472,8 @@ const char *vio_rec_status(void) { return g_rec_status; }
 
 /* Screenshot on demand, from the shell or the rescue `shot` verb. The volume
  * lock is what keeps a capture from racing the rescue worker's own writes. */
+const char *vio_last_screenshot(void) { return g_last_shot; }
+
 int vio_screenshot_now(void)
 {
     char name[24];

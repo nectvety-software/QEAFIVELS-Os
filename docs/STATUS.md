@@ -3398,3 +3398,17 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - **Kiểm chứng trên máy**: `media list` trước `UserData/Pictures: SHOT0001.BMP,
   SHOT0002.PNG`; sau `swipe3 150 0` xuất hiện thêm
   `SHOT0003.BMP(7581654B)` — vuốt 3 ngón chụp ảnh thật, VERIFIED.
+
+
+## Floating capture thumbnail góc trái dưới (2026-11-22)
+- Thêm `vqeaf_ui_show_capture_thumb(name)` trong `vqeaf_pages.c`: decode ảnh vừa
+  chụp bằng `gallery_make_thumb()` vào slot 1, tạo ô 120x96 viền tím ở góc trái
+  dưới (`LV_ALIGN_BOTTOM_LEFT`), tự ẩn sau 4 s, chạm để mở ảnh. Gọi từ
+  `screenshot_png()` cho mọi đường chụp (Control Center, Power+Volume, 3 ngón).
+- Theo dõi tên ảnh cuối qua `vio_last_screenshot()`.
+- Build OK (11.463.624 B); package/flash OK, ảnh
+  sha `8a1d228e921fdc91a7394217fbcfe8e55cafc8f9807ad34ff736f9aba014af1c`.
+- **Chưa VERIFIED trực quan**: ảnh chụp màn hình ngay sau `swipe3`
+  (`build/screens/device/shot-thumb*.png`) chưa thấy ô thumbnail; cần kiểm tra
+  lại LVGL refresh/layer trước khi báo PASS. Ảnh thật vẫn được lưu
+  (`SHOT0002.BMP` trong UserData/Pictures).

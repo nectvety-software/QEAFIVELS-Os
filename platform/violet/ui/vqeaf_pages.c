@@ -6207,6 +6207,57 @@ static int gallery_make_thumb(const char *path, int idx)
     return 0;
 }
 
+static lv_obj_t *g_capture_thumb;
+
+static void capture_thumb_dismiss(lv_timer_t *timer)
+{
+    (void)timer;
+    if(g_capture_thumb != NULL) {
+        lv_obj_delete(g_capture_thumb);
+        g_capture_thumb = NULL;
+    }
+}
+
+static void capture_thumb_tap_cb(lv_event_t *event)
+{
+    (void)event;
+    const char *path = (const char *)lv_event_get_user_data(event);
+    if(path != NULL) gallery_open_image(path);
+}
+
+void vqeaf_ui_show_capture_thumb(const char *name)
+{
+    static char path[288];
+    lv_obj_t *scr, *img;
+
+    if(name == NULL || name[0] == '\0' || strchr(name, '/') != NULL) return;
+    snprintf(path, sizeof(path), "/Pictures/%s", name);
+    /* Slot 1 keeps the gallery grid's thumbnails intact. */
+    if(gallery_make_thumb(path, 1) != 0) return;
+
+    scr = lv_layer_top();
+    if(scr == NULL) return;
+    if(g_capture_thumb != NULL) lv_obj_delete(g_capture_thumb);
+    g_capture_thumb = lv_obj_create(scr);
+    lv_obj_set_size(g_capture_thumb, 120, 96);
+    lv_obj_align(g_capture_thumb, LV_ALIGN_BOTTOM_LEFT, 16, -70);
+    lv_obj_clear_flag(g_capture_thumb, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(g_capture_thumb, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_pad_all(g_capture_thumb, 2, 0);
+    lv_obj_set_style_bg_color(g_capture_thumb, lv_color_hex(0x121A2E), 0);
+    lv_obj_set_style_border_color(g_capture_thumb, lv_color_hex(0x7A7AFF), 0);
+    lv_obj_set_style_border_width(g_capture_thumb, 2, 0);
+    lv_obj_add_event_cb(g_capture_thumb, capture_thumb_tap_cb,
+                        LV_EVENT_CLICKED, path);
+
+    img = lv_image_create(g_capture_thumb);
+    lv_image_set_src(img, &g_gallery_thumb_dsc[1]);
+    lv_obj_set_size(img, 112, 84);
+    lv_obj_center(img);
+
+    lv_timer_create(capture_thumb_dismiss, 4000, NULL);
+}
+
 static void gallery_close_cb(lv_event_t *event)
 {
     (void)event;

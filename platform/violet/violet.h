@@ -45,6 +45,21 @@ int vio_read_int(const char *path, int *out);
 uint64_t vio_monotonic_ms(void);
 void vio_sleep_ms(unsigned ms);
 
+/* Screen recorder: samples the live DRM scanout into a QVF1 clip
+ * (docs/QEAF_VIDEO_FORMAT.md, 240x416 RGB565 + LZ4) saved as
+ * UserData/Videos/VIDnnnn.QVF. Start only arms the recorder; the UI loop
+ * captures one frame per interval, so it never freezes the shell. */
+int  vio_rec_start(int fps, int seconds);
+int  vio_rec_stop(void);
+int  vio_rec_active(void);
+const char *vio_rec_status(void);
+
+/* Chụp màn hình: encodes the live scanout as a PNG into
+ * UserData/Pictures/SHOTnnnn.PNG. Returns the byte count or -errno. */
+int  vio_screenshot_now(void);
+/* Name of the most recent successfully written capture (RAM-only). */
+const char *vio_last_screenshot(void);
+
 int vio_mkdir_p(const char *path, unsigned mode);
 int vio_mount_fs(const char *source, const char *target, const char *type,
                  unsigned long flags, const char *data);
