@@ -1,0 +1,35 @@
+{
+  "created_utc": "2026-11-22T03:29:27.509318+00:00",
+  "files": [
+    {
+      "bytes": 14840,
+      "name": "WCNSS_qcom_cfg.ini",
+      "output_sha256": "4912726221374d42038bb706c057d425f8bd4cfa190b28eb6c828bcb055b68ad",
+      "source": "wifi/WCNSS_qcom_cfg.ini",
+      "source_sha256": "b2194e8fd76188398192b1c983a4e2c528ec75ef31dee298bee3c41b567eebd8"
+    },
+    {
+      "bytes": 266,
+      "name": "wpa_supplicant_overlay.conf",
+      "output_sha256": "79331b680d89d400a9a7858aeaf79a9070c68dcbcff898e440e4f66a58aadaf6",
+      "source": "wifi/wpa_supplicant_overlay.conf",
+      "source_sha256": "79331b680d89d400a9a7858aeaf79a9070c68dcbcff898e440e4f66a58aadaf6"
+    },
+    {
+      "bytes": 89,
+      "name": "p2p_supplicant_overlay.conf",
+      "output_sha256": "7725857f31e6c71ab56188463c20cdee73f6116a37173183071997ff5bba5f48",
+      "source": "wifi/p2p_supplicant_overlay.conf",
+      "source_sha256": "7725857f31e6c71ab56188463c20cdee73f6116a37173183071997ff5bba5f48"
+    }
+  ],
+  "notes": [
+    "No C driver exists in the crDroid device tree; qcacld-3.0/icnss are kernel/vendor components and are not copied.",
+    "Placeholder MAC addresses were removed; no MAC is synthesized.",
+    "Files are data only: no Android framework/Binder/HIDL dependency."
+  ],
+  "source": "C:\\Users\\doxuanhop\\AppData\\Local\\Temp\\opencode\\crdroid-violet",
+  "tool": "scripts/wifi/port_crdroid_config.py",
+  "upstream": "https://github.com/crdroidandroid/android_device_xiaomi_violet",
+  "upstream_commit": "faab5ba"
+}

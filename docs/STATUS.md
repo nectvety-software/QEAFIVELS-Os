@@ -3135,3 +3135,16 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Flash lần 2 (đổi tên file 8.3) build/gate/flash PASS nhưng máy kẹt `splash`,
   cần power-cycle tay; `QRLIVE.TXT` chưa verify, không báo PASS.
 - wlan0 vẫn absent; scan/DHCP/data chưa có bằng chứng.
+
+
+## Port config từ crDroid violet device tree (2026-11-22)
+- Clone audit `crdroidandroid/android_device_xiaomi_violet` @ faab5ba: repo
+  **không có driver C** (qcacld-3.0/icnss nằm ở kernel/vendor), chỉ có 3 file
+  config Wi-Fi + symlink fstab. HAL C++ trong repo là Android HIDL -> không port.
+- Port 3 config thật vào `firmware/violet/config/` + manifest provenance;
+  vô hiệu hoá MAC placeholder `000AF58989FF/FE` của vendor (không phải MAC máy).
+- `package_violet.py` stage config từ thư mục tracked + gate từ chối MAC giả.
+- Test `tests.wifi.test_crdroid_config_port` 4 tests OK; build OK; package OK
+  (sha `c246cbae...89ee`); config có trong ramdisk, MAC giả không có.
+- Docs: `docs/platforms/VIOLET_CRDROID_CONFIG_PORT.md`.
+- Không đổi trạng thái WLFW 0x45 / wlan0; config không giải quyết blocker.

@@ -244,7 +244,11 @@ def stage_root():
             os.chmod(apex_log, 0o644)
 
     # Real Wi-Fi config from the crDroid violet device tree (not a symlink).
-    WIFICFG = os.path.join(BUILD, "config-wifi")
+    # Canonical copy is tracked in firmware/violet/config; build/config-wifi
+    # remains as a local override for experiments only.
+    WIFICFG = os.path.join(ROOT, "firmware", "violet", "config")
+    if not os.path.isdir(WIFICFG):
+        WIFICFG = os.path.join(BUILD, "config-wifi")
     if os.path.isdir(WIFICFG):
         for np, dp in (
             ("WCNSS_qcom_cfg.ini", os.path.join("lib", "firmware", "wlan",
@@ -386,12 +390,26 @@ def main(argv=None):
 
     # qeaf-netd gate: the /init ELF must carry the honest net: log markers.
     # This is additive; the two gates above are unchanged.
-    netd_elf = os.path.join(BUILD, "violet", "vqeaf-init")
+    netd_elf = INIT
     netd_bin = open(netd_elf, "rb").read()
     for marker in (b"net: ", b"verified", b"blocked"):
         if marker not in netd_bin:
             print("package_violet: netd gate FAILED (missing %r)" % marker)
             return 1
+
+    # crDroid Wi-Fi config port gate: the tracked config must really be
+    # staged, and the vendor's placeholder MAC must never become active.
+    cfg_file = os.path.join(STAGE, "lib", "firmware", "wlan", "qca_cld",
+                            "WCNSS_qcom_cfg.ini")
+    cfg_manifest = os.path.join(ROOT, "firmware", "violet", "config",
+                                "manifest.json")
+    if not (os.path.isfile(cfg_file) and os.path.isfile(cfg_manifest)):
+        print("package_violet: crDroid Wi-Fi config gate FAILED (missing file)")
+        return 1
+    cfg_data = open(cfg_file, "rb").read()
+    if b"000AF58989FF" in cfg_data or b"000AF58989FE" in cfg_data:
+        print("package_violet: crDroid Wi-Fi config gate FAILED (fake MAC)")
+        return 1
 
     final_size = os.path.getsize(IMAGE)
     print()
