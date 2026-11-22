@@ -24,6 +24,15 @@ struct vio_touch {
     int swipe_step;
     int swipe_steps;
     int swipe_x0, swipe_y0, swipe_x1, swipe_y1;
+    /* Three-finger swipe -> screenshot. Raw MT slots are tracked separately
+     * from the single pointer used by LVGL. */
+#define VIO_TOUCH_MAX_SLOTS 5
+    int mt_id[VIO_TOUCH_MAX_SLOTS];
+    int mt_x[VIO_TOUCH_MAX_SLOTS], mt_y[VIO_TOUCH_MAX_SLOTS];
+    int active_count;
+    int three_active;
+    int three_x0, three_y0, three_last_x, three_last_y;
+    int three_finger_swipe;
 };
 
 int vio_touch_open(struct vio_touch *touch, const char *path, vio_panel_t *panel);
@@ -40,5 +49,10 @@ int vio_touch_hold(struct vio_touch *touch, int ui_x, int ui_y, int ms);
  * Steps 2..64. Same threading and one-slot rules as vio_touch_inject(). */
 int vio_touch_swipe(struct vio_touch *touch, int x0, int y0, int x1, int y1,
                     int steps);
+/* Returns 1 once when a completed three-finger swipe was seen, clearing it. */
+int vio_touch_take_three_finger(struct vio_touch *touch);
+/* Host-testable synthetic three-finger swipe: press three contacts, move by
+ * (dx,dy) raw units, release. Uses the exact same detector as real evdev. */
+int vio_touch_inject_three(struct vio_touch *touch, int dx, int dy);
 
 #endif /* HOMO_VIOLET_INPUT_H */

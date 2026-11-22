@@ -40,6 +40,7 @@ int vio_touch_open(struct vio_touch *touch, const char *path, vio_panel_t *panel
     unsigned char abs_bits[ABS_CNT / 8 + 1];
 
     memset(touch, 0, sizeof(*touch));
+    for(int i = 0; i < VIO_TOUCH_MAX_SLOTS; i++) touch->mt_id[i] = -1;
     touch->fd = -1;
     touch->panel = panel;
     touch->min_x = 0;
@@ -123,6 +124,82 @@ int vio_touch_swipe(struct vio_touch *touch, int x0, int y0, int x1, int y1,
     return vio_swipe_queue(&touch->tap, x0, y0, x1, y1, steps);
 }
 
+static void three_finger_report(struct vio_touch *touch);
+
+int vio_touch_take_three_finger(struct vio_touch *touch)
+{
+    if(touch == NULL || !touch->three_finger_swipe) return 0;
+    touch->three_finger_swipe = 0;
+    return 1;
+}
+
+int vio_touch_inject_three(struct vio_touch *touch, int dx, int dy)
+{
+    if(touch == NULL) return -1;
+    if(dx < -400) dx = -400;
+    if(dx > 400) dx = 400;
+    if(dy < -400) dy = -400;
+    if(dy > 400) dy = 400;
+    for(int i = 0; i < 3; i++) {
+        touch->mt_id[i] = 100 + i;
+        touch->mt_x[i] = 200;
+        touch->mt_y[i] = 300 + i * 30;
+    }
+    three_finger_report(touch);
+    for(int i = 0; i < 3; i++) {
+        touch->mt_x[i] += dx;
+        touch->mt_y[i] += dy;
+    }
+    three_finger_report(touch);
+    for(int i = 0; i < 3; i++) touch->mt_id[i] = -1;
+    three_finger_report(touch);
+    return 0;
+}
+
+/* Called on SYN_REPORT with the latest per-slot data. A three-finger gesture
+ * is active while at least three contacts are down; it fires when they are
+ * released after moving more than a panel-relative threshold. */
+static void three_finger_report(struct vio_touch *touch)
+{
+    int active = 0, sx = 0, sy = 0, i;
+
+    for(i = 0; i < VIO_TOUCH_MAX_SLOTS; i++) {
+        if(touch->mt_id[i] < 0) continue;
+        active++;
+        sx += touch->mt_x[i];
+        sy += touch->mt_y[i];
+    }
+    touch->active_count = active;
+
+    if(active >= 3) {
+        int cx = sx / active, cy = sy / active;
+        int dx, dy;
+        if(!touch->three_active) {
+            touch->three_active = 1;
+            touch->three_x0 = touch->three_last_x = cx;
+            touch->three_y0 = touch->three_last_y = cy;
+            return;
+        }
+        touch->three_last_x = cx;
+        touch->three_last_y = cy;
+        dx = cx - touch->three_x0;
+        dy = cy - touch->three_y0;
+        if(dx < 0) dx = -dx;
+        if(dy < 0) dy = -dy;
+        if(dx > 60 || dy > 60) touch->three_finger_swipe = 1;
+        return;
+    }
+
+    if(touch->three_active) {
+        int dx = touch->three_last_x - touch->three_x0;
+        int dy = touch->three_last_y - touch->three_y0;
+        if(dx < 0) dx = -dx;
+        if(dy < 0) dy = -dy;
+        if(dx > 60 || dy > 60) touch->three_finger_swipe = 1;
+        touch->three_active = 0;
+    }
+}
+
 /* Presents one synthetic contact step: press, then one move per poll along the
  * drag, then release. Returns 1 while the injection owns this poll, so the
  * real evdev queue is drained on the next one. */
@@ -194,9 +271,27 @@ void vio_touch_poll(struct vio_touch *touch)
             if(ev->type == EV_ABS) {
                 if(ev->code == ABS_MT_SLOT) {
                     touch->slot = ev->value;
+                    if(touch->slot < 0) touch->slot = 0;
+                    if(touch->slot >= VIO_TOUCH_MAX_SLOTS)
+                        touch->slot = VIO_TOUCH_MAX_SLOTS - 1;
                 }
-                else if(touch->slot != 0) {
-                    /* Finger 1..N: keep the first contact as the pointer. */
+                else if(touch->use_mt && ev->code == ABS_MT_POSITION_X) {
+                    touch->mt_x[touch->slot] = ev->value;
+                    if(touch->slot == 0) {
+                        touch->pending_x = ev->value;
+                        touch->have_x = 1;
+                    }
+                }
+                else if(touch->use_mt && ev->code == ABS_MT_POSITION_Y) {
+                    touch->mt_y[touch->slot] = ev->value;
+                    if(touch->slot == 0) {
+                        touch->pending_y = ev->value;
+                        touch->have_y = 1;
+                    }
+                }
+                else if(touch->use_mt && ev->code == ABS_MT_TRACKING_ID) {
+                    touch->mt_id[touch->slot] = ev->value;
+                    if(touch->slot == 0) touch->pending_pressed = ev->value >= 0;
                 }
                 else if(ev->code == ABS_MT_POSITION_X ||
                         (ev->code == ABS_X && !touch->use_mt)) {
@@ -216,6 +311,9 @@ void vio_touch_poll(struct vio_touch *touch)
                 touch->pending_pressed = ev->value != 0;
             }
             else if(ev->type == EV_SYN && ev->code == SYN_REPORT) {
+                if(touch->use_mt) three_finger_report(touch);
+                /* A three-finger gesture is not a single-pointer drag. */
+                if(touch->active_count >= 3) touch->pending_pressed = 0;
                 commit(touch);
             }
         }

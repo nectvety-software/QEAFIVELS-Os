@@ -214,6 +214,12 @@ static rescue_open_image_fn g_open_image;
 
 void rescue_set_open_image_hook(rescue_open_image_fn fn) { g_open_image = fn; }
 
+static rescue_three_finger_fn g_three_finger;
+void rescue_set_three_finger_hook(rescue_three_finger_fn fn)
+{
+    g_three_finger = fn;
+}
+
 void rescue_set_screenshot_hook(rescue_screenshot_fn fn) {
     g_screenshot = fn;
 }
@@ -1419,6 +1425,16 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 cat(resp, cap, "usb: mode set\n");
             else
                 cat(resp, cap, "usb: refused (gadget not started?)\n");
+        } else if (starts(line, "swipe3 ")) {
+            int dx = 0, dy = 0;
+            if(sscanf(line + 7, "%d %d", &dx, &dy) == 2 &&
+               g_three_finger != NULL) {
+                g_three_finger(dx, dy);
+                cat(resp, cap, "swipe3: injected\n");
+            } else {
+                cat(resp, cap, "swipe3: usage swipe3 DX DY\n");
+            }
+            g_result = 1;
         } else if (starts(line, "media open ")) {
             const char *name = line + 11;
             if(g_open_image == NULL)

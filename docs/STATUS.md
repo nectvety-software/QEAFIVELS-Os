@@ -3382,3 +3382,19 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Không khẳng định tính năng preview ảnh hoạt động. Cần debug thêm trên UI
   thread (LVGL layer_top / lifecycle) trước khi báo PASS.
 - Ảnh cuối đã flash sha `b0c2f79543626d1e7fd2740b05471da12a1584b577d9eeae5465de4ac6a6aaf2`.
+
+
+## Vuốt 3 ngón chụp màn hình (2026-11-22)
+- `violet_input.c` theo dõi từng slot MT (`ABS_MT_SLOT`, `ABS_MT_TRACKING_ID`,
+  `ABS_MT_POSITION_X/Y`), đếm contact active; khi >=3 contact và centroid di
+  chuyển >60 raw unit thì set cờ `three_finger_swipe`. Không coi gesture này
+  là drag chuột của LVGL (`pending_pressed=0` khi active>=3).
+- Main loop consume cờ và gọi cùng `screenshot_png(&lun.volume, ...)` với ô
+  Chụp màn hình / Power+Volume; thông báo tên file thật bằng `vqeaf_ui_notify`.
+- Thêm verb host-test `swipe3 DX DY` đi qua `vio_touch_inject_three()` — dùng
+  **cùng detector** với sự kiện evdev thật, không phải đường tắt giả.
+- Build OK (11.462.064 B); `tests.test_qeaf_three_finger` 4 tests OK; package/
+  flash OK, ảnh sha `fc8c4f8f2fc00c7be4681b722081c9cee20d8191fd5051d38f3dcc1dbe811e3d`.
+- **Kiểm chứng trên máy**: `media list` trước `UserData/Pictures: SHOT0001.BMP,
+  SHOT0002.PNG`; sau `swipe3 150 0` xuất hiện thêm
+  `SHOT0003.BMP(7581654B)` — vuốt 3 ngón chụp ảnh thật, VERIFIED.

@@ -916,6 +916,11 @@ static int start_phone_ui(void)
 /* Rescue `tap` verb: queue a click at canvas coordinates. Runs on the rescue
  * worker thread; the UI thread presents it through vio_touch_poll(), so the
  * hit-test path is the same one a finger uses. */
+static void inject_three_wrapper(int dx, int dy)
+{
+    vio_touch_inject_three(&touch, dx, dy);
+}
+
 static int ui_tap_hook(int x, int y)
 {
     if(!ui_ready || ui_display == NULL) return -1;
@@ -1334,6 +1339,7 @@ int main(void)
     rescue_set_snapshot_hook(snapshot_scanout);
     rescue_set_screenshot_hook(screenshot_png);
     rescue_set_open_image_hook(vqeaf_ui_open_picture);
+    rescue_set_three_finger_hook(inject_three_wrapper);
     rescue_set_status_hook(status_fields);
     rescue_set_tap_hook(ui_tap_hook);
     rescue_set_hold_hook(ui_hold_hook);
@@ -1460,6 +1466,22 @@ int main(void)
          * per-second sysfs refresh. Only the wake sources are polled. */
         vio_sleep_ms(sleeping ? 100 : 16);
         vio_wifi_poll();
+
+        /* Three-finger swipe: capture the real scanout. Same path as the
+         * Control Center tile and the Power+Volume shortcut. */
+        if(vio_touch_take_three_finger(&touch)) {
+            char sname[64] = "";
+            int slen;
+            volume_lock_acquire();
+            slen = lun.ready ?
+                   screenshot_png(&lun.volume, sname, sizeof(sname)) : -1;
+            volume_lock_release();
+            if(slen > 0)
+                vqeaf_ui_notify("Ảnh màn hình", sname, VQEAF_SYM_IMAGE, 0x35E0C8);
+            else
+                vqeaf_ui_notify("Ảnh màn hình", "Chụp không thành công",
+                                VQEAF_SYM_DELETE, 0xFF8A7A);
+        }
 
         if(drm_ready) {
             if(sigsetjmp(ui_recovery, 1) == 0) {

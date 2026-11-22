@@ -45,6 +45,9 @@ void rescue_set_screenshot_hook(rescue_screenshot_fn fn);
 typedef void (*rescue_open_image_fn)(const char *name);
 void rescue_set_open_image_hook(rescue_open_image_fn fn);
 
+typedef void (*rescue_three_finger_fn)(int dx, int dy);
+void rescue_set_three_finger_hook(rescue_three_finger_fn fn);
+
 /* Optional UI language switch. The platform registers a function that applies
  * a language value to the running UI and persists it. Returns 0 when the
  * language was applied, 1 when it was queued for the next desktop frame
