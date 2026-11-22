@@ -3438,3 +3438,15 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Đo lại: thư mục tồn tại nhưng rỗng; cnss-daemon pid=545, binder present;
   `wifi discover` vẫn `recv_calls=0 / NOT_REGISTERED`. BLOCKED giữ nguyên,
   không mock QMI. Chi tiết: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.
+
+
+## Wi-Fi: khoanh vùng blocker tới WLAN PD (2026-11-22)
+- `pd-listen` watch dùng lookup `0x42` instance 0, trong khi server thật là
+  instance `0x4c/0x4a` → không nhận NEW_SERVER. Chạy trực tiếp với node/port thật
+  `wifi listen 10 3 msm/modem/wlan_pd` cho kết quả thật:
+  **`result=1 error=45`** (PD lỗi).
+- `wifi pd 10 3 msm/modem/wlan_pd` (pdr-restart thật) → **`result 1 error 9`**.
+- `wifi discover` sau đó vẫn `0x45 NOT_REGISTERED`, `wlan0` absent.
+- Blockers chính xác hiện tại: WLAN PD lỗi + restart bị từ chối → firmware
+  WCN3990 không boot → không publish QMI 0x45. Không mock/bypass QMI.
+  Chi tiết: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.

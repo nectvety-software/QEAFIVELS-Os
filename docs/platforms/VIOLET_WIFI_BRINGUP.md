@@ -1092,3 +1092,31 @@ Việc tạo đúng thư mục calibration là cần thiết nhưng **chưa đ�
 service `0x45` thật từ modem, cnss-daemon ở trạng thái client không tìm thấy
 service → không sinh calibration, không có `wlan0`. Không đăng ký server giả,
 không trả QMI response giả. BLOCKED giữ nguyên.
+
+
+## Bằng chứng SERVREG / WLAN PD thật (2026-11-22)
+- `pd-listen` chế độ watch tra cứu `0x42` instance **0**, trong khi QRTR name
+  service báo server thật là `0x42/0x4c@node 10:port 3` và `0x42/0x4a@5:3`.
+  Name service khớp **chính xác instance**, nên lookup instance 0 không bao giờ
+  nhận được NEW_SERVER → log chỉ có dòng "watching", không có result/error.
+- Chạy chế độ trực tiếp với node/port thật:
+  `wifi listen 10 3 msm/modem/wlan_pd` →
+  ```
+  pd-listen: msm/modem/wlan_pd via servreg 10:3 result=1 error=45
+  ```
+  → **WLAN PD đang ở trạng thái lỗi thật**, không phải thiếu descriptor.
+  (`MODEMUW.JSN` trong firmware_mnt có `msm/modem/wlan_pd`, qmi_instance 180.)
+- Yêu cầu restart PD thật qua `pdr-restart`:
+  `wifi pd 10 3 msm/modem/wlan_pd` →
+  ```
+  restart msm/modem/wlan_pd: result 1 error 9
+  ```
+  → Restart cũng bị kernel/modem từ chối.
+- Sau đó `wifi discover` vẫn `recv_calls=0 / 0x45 NOT_REGISTERED / ENOENT`.
+
+### Kết luận
+Blocker giờ được khoanh vùng chính xác: **WLAN PD (msm/modem/wlan_pd) không
+lên**, SERVREG báo `result=1 error=45`, restart trả `result=1 error=9`. Khi PD
+không lên, firmware WCN3990 không boot và không publish QMI `0x45`, nên không
+có `wlan0`. Không tạo server/QMI response giả; cần firmware/PD thật từ phía
+modem (ngoài khả năng sửa bằng userspace trên initramfs hiện tại).
