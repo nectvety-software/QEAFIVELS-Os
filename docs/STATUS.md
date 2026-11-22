@@ -3090,3 +3090,18 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   `violet-fw.zip` có 19 member, WLAN image nằm trong `NON-HLOS.bin`.
 - `tests/wifi/test_firmware_manifest.py` PASS (3 tests, fixture gắn nhãn FIXTURE).
 - Chưa flash, chưa ghi phân vùng, chưa đổi firmware vùng.
+
+
+## Wi-Fi Giai đoạn 3 — hardware abstraction (2026-11-22)
+- Thêm parser FDT thật `kernel/drivers/wifi/wcn3990/wifi_device.c`: đọc reg,
+  interrupts, compatible, MSA reserved-memory từ DTB do platform cung cấp;
+  không hardcode địa chỉ/IRQ; fail-closed trên blob hỏng.
+- Thêm `wifi_firmware.c`: load/validate/hash firmware qua callback, buffer caller
+  giữ, không malloc, không ghi storage, không blob giả.
+- Không tạo module trùng: power/clock/regulator/MSA/IRQ/DMA/CE vẫn là phase2;
+  QRTR/QMI để Giai đoạn 4 (không tạo stub rỗng). Xem
+  `docs/wifi/VIOLET_WCN3990_ARCHITECTURE.md`.
+- Test host: `python scripts/wifi/run_hal_tests.py` -> ALL OK;
+  `python -m unittest tests.wifi.test_wifi_hal` -> 3 tests OK (FIXTURE DTB).
+- Build kernel AArch64: OK, ELF 392.488 B (wifi_device.o + wifi_firmware.o).
+- Chưa có bằng chứng phần cứng: WLFW 0x45 chưa publish, wlan0 vẫn absent.

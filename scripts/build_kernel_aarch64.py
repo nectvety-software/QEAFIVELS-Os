@@ -69,6 +69,8 @@ def build():
                ROOT / "kernel" / "drivers" / "virtio_mmio_blk.c",
                ROOT / "kernel" / "drivers" / "wcn3990_snoc.c",
                ROOT / "kernel" / "drivers" / "wcn3990_phase2.c",
+               ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_device.c",
+               ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_firmware.c",
                ROOT / "system" / "core" / "driver.c",
                ROOT / "system" / "core" / "capability.c",
                ROOT / "system" / "core" / "block.c"]
