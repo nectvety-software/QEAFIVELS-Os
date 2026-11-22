@@ -187,6 +187,7 @@ static const char SUMMARY[] =
     "to exist. Read with raw sectors, not the Windows mounted view.\n\n"
     "--- commands (QEAF.CMD, one per line)\n"
     "  help  status  wifi  sync  usb MODE  echo TEXT  ls  df  del NAME\n"
+"  wifi ramtest       RAM-only tmpfs persist + TEST MAC (session only)\n"
     "  rotate 0|90|180|270|auto\n"
     "  lang vi|en|zh       switch the UI language\n"
     "  snap                 write SCREEN.RAW (240x520 RGB565) for the host\n"
@@ -861,6 +862,7 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 else if (eq(subname, "native")) sub = 24;
                 else if (eq(subname, "diag")) sub = 25;
                 else if (eq(subname, "discover") || starts(subname, "discover ")) sub = 26;
+                else if (eq(subname, "ramtest")) sub = 27;
                 else { cat(resp, cap, "wifi: unknown sub (net|dmesg|sdio|mod|fw|up|state|modem|host|log|find NAME|ls DIR|link PATH|cat FILE|on|pd NODE PORT PD|listen NODE PORT PATH|svc|vendor|rproc N)\n"); }
             }
 #ifdef __linux__
@@ -922,6 +924,20 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 put(vol, "WIFIDIAG.TXT", diag);
                 note("[    -    ] N qeaf: wifi diag written to WIFIDIAG.TXT");
                 g_result = 1;
+            }
+            if (sub == 27) {
+                /* RAM-only diagnosis: rw tmpfs over persist, TEST MAC only.
+                 * No physical partition is written and nothing is persisted. */
+                char rep[512];
+                int rc = vio_host_persist_ram_setup(rep, (int)sizeof(rep));
+                cat(resp, cap, rep);
+                if (rc == 0) {
+                    (void)vio_host_vendor_wifi();       /* real cnss-daemon */
+                    vio_host_services_start_wlan();     /* reads session MAC */
+                    cat(resp, cap,
+                        "wifi ramtest: cnss/wlfw launched in RAM-only session\n");
+                }
+                g_result = rc == 0 ? 1 : 1;
             }
             if (sub == 26) {
                 /* Real IO: native QRTR client over AF_QIPCRTR. Read-only with

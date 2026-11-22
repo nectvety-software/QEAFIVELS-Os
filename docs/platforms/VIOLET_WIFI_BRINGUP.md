@@ -1003,3 +1003,59 @@ Trang Wi-Fi (`VQEAF_PAGE_WIFI`) hiện chỉ đọc `vqeaf_state`. Thêm:
 **Không đánh dấu PASS** khi chưa có: `0x45` thật, firmware ready, `wlan0`,
 scan results. Mọi log mẫu trong tài liệu này là evidence đã đo, không phải
 kết quả giả lập.
+
+
+## RAM-only test session — tmpfs persist + TEST MAC (2026-11-22)
+
+### Yêu cầu và rào đã tuân thủ
+- **Không ghi phân vùng vật lý**: tmpfs được **chồng (stacked mount)** lên
+  `/mnt/vendor/persist`; p74 vẫn còn đó bên dưới nhưng bị che, không bị ghi.
+- **Không lưu dữ liệu cố định**: MAC dùng cho phiên test là
+  `02:1A:2B:3C:4D:5E` (locally administered, do operator cung cấp), chỉ tồn tại
+  trong RAM, mất khi reboot. Mọi output đều ghi rõ `RAM-ONLY` / `NOT factory`.
+- Không đăng ký QMI server giả, không trả success giả, không tạo calibration
+  giả. `qwlfgw` (placeholder) **không** được khởi chạy.
+
+### Lệnh và bằng chứng thật trên máy
+```
+wifi ramtest
+  persist-ram: RAM-ONLY tmpfs at /mnt/vendor/persist; test MAC
+  02:1A:2B:3C:4D:5E (session only, NOT factory); file
+  /mnt/vendor/persist/wlan_mac.bin Intf0..Intf3+END; p74 untouched
+  wifi ramtest: cnss/wlfw launched in RAM-only session
+
+wifi cat /mnt/vendor/persist/wlan_mac.bin
+  Intf0MacAddress=021A2B3C4D5E
+  Intf1MacAddress=021A2B3C4D5F
+  Intf2MacAddress=021A2B3C4D60
+  Intf3MacAddress=021A2B3C4D61
+  END
+
+wifi find wlan_mac.bin  -> /mnt/vendor/persist/wlan_mac.bin
+wifi state
+  hostsvc cnss-daemon: running pid=539
+  hostsvc binder: present
+  hostsvc wlan: CNSS daemon spawned by QEAF service manager (-n -l)
+```
+
+### Kết quả đo (BLOCKED, không PASS)
+| Hạng mục | Kết quả thật |
+| --- | --- |
+| tmpfs rw persist + MAC test | **VERIFIED RAM-only** (`wifi find` thấy file, `cat` đúng 5 dòng) |
+| `find_factory_mac()` đọc format Qualcomm | **VERIFIED** (sửa `read_mac()` buffer 64→512 + parser `Intf0MacAddress=`) |
+| cnss-daemon thật chạy + binderfs | **VERIFIED** (`pid=539`, `binder: present`) |
+| `wlfw_cal_*.bin` sinh ra trên tmpfs | **FAILED — không có file nào** (`wifi find wlfw_cal_00/01.bin: not found`) |
+| QMI `WLFW 0x45` server | **BLOCKED** — `wifi discover`: `recv_calls=0`, `NOT_REGISTERED`, `rc=-2 (ENOENT)` |
+| `qrtr-lookup 0x45` | `lookup 0x45/0x1/0x0 sent`, sau đó `recvfrom(): Resource temporarily unavailable` (timeout) |
+| log cnss-daemon | Chỉ có `linker: Warning: failed to find generated linker configuration from "/linkerconfig/ld.config.txt"` — **không có log QMI/cold-boot** |
+| `wlan0` | **absent** (`ip link show wlan0`: không có) |
+
+### Kết luận trung thực
+Việc cấp MAC hợp lệ trong RAM **đủ để `find_factory_mac()` thành công** và để
+CNSS daemon thật khởi động, nhưng **chưa đủ** để daemon đăng ký `0x45` hay để
+firmware chạy Cold Boot Calibration. Không có `wlfw_cal_*`, không có `wlan0`.
+→ Blockers còn lại nằm ở firmware/ROM daemon (thiếu property Android, service
+manager, hoặc WLAN PD chưa lên), **không phải** ở MAC hay ở việc chưa launch
+daemon. Không được dùng kết quả này để tuyên bố Wi-Fi hoạt động.
+
+Dữ liệu RAM-only không là bằng chứng phần cứng vĩnh viễn; reboot là sạch.

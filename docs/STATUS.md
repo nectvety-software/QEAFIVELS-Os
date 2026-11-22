@@ -3276,3 +3276,21 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   `55860eec15901cbd9a8cd6fa8d1d43a6dada65113411c2c2e95e485c3cafa3d3`.
 - Kết luận giữ nguyên: không có MAC/calibration thật trên máy này, không
   tạo giả, WLFW 0x45 vẫn BLOCKED.
+
+
+## RAM-only Wi-Fi test session — tmpfs persist + TEST MAC (2026-11-22)
+- Theo yêu cầu: tmpfs **stacked mount** lên `/mnt/vendor/persist` (không ghi
+  p74), ghi `wlan_mac.bin` 4 dòng + END với MAC **test RAM-only**
+  `02:1A:2B:3C:4D:5E` (locally administered, không phải factory, mất khi reboot).
+- Sửa `read_mac()`: buffer 64 -> 512 và thêm parser `Intf0MacAddress=` — trước đó
+  file Qualcomm ~110 byte bị cắt đúng 64 và bị reject. Sau sửa
+  `find_factory_mac()` thành công: `wlan: CNSS daemon spawned...`.
+- Kết quả đo thật: cnss-daemon chạy (pid 539), binder present, nhưng
+  `wlfw_cal_*.bin` **không sinh**, `qrtr-lookup 0x45` timeout, `wifi discover`
+  `recv_calls=0 / NOT_REGISTERED`, `wlan0` absent. cnss log chỉ có warning linker.
+- Kết luận: MAC RAM-only đủ để daemon chạy nhưng **chưa đủ** để publish 0x45;
+  blocker nằm ở firmware/daemon thật (property/service manager/PD), không phải
+  MAC hay chưa launch daemon. Không báo PASS.
+- Bằng chứng đầy đủ: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.
+- Test `tests.wifi.test_ram_persist` 5 tests OK; ảnh boot sha
+  `150875c5a4e00e6745d400025101a3bca321af0b67715aff6060ec3389609b8c` đã flash.

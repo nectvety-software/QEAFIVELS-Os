@@ -37,6 +37,11 @@ int vio_host_pd_listen(const char *node, const char *port, const char *name);
 /* Try the device's own vendor Wi-Fi daemon (bionic binary). */
 int vio_host_vendor_wifi(void);
 
+/* RAM-only test session: stack rw tmpfs over /mnt/vendor/persist and write a
+ * clearly-labelled TEST wlan_mac.bin. Never touches p74. Returns a report in
+ * `out`. Use only for diagnosis; all changes vanish on reboot. */
+int vio_host_persist_ram_setup(char *out, int cap);
+
 /* Run a real stock Bionic binary through the staged linker64 with the device's
  * real library paths. Output goes to /tmp/hostsvc-<logname>.log for `wifi log`.
  * Returns 0 when the child was spawned, negative on fork failure. This is a

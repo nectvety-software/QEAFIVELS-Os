@@ -876,9 +876,33 @@ static int parse_mac_text(const unsigned char *text, size_t len,
     return 0;
 }
 
+/* Qualcomm wlan_mac.bin is text: `Intf0MacAddress=021A2B3C4D5E` lines plus
+ * END. The vendor wlfwd format is 12 hex digits, not a colon-separated string,
+ * so parse it explicitly instead of inventing a binary blob. */
+static int parse_qcom_mac_file(const uint8_t *text, size_t len,
+                               unsigned char mac[6])
+{
+    const char *key = "Intf0MacAddress=";
+    size_t klen = strlen(key);
+    for(size_t i = 0; i + klen + 12u <= len; i++) {
+        if(memcmp(text + i, key, klen) != 0) continue;
+        for(unsigned b = 0; b < 6; b++) {
+            int hi = mac_hex(text[i + klen + b * 2u]);
+            int lo = mac_hex(text[i + klen + b * 2u + 1u]);
+            if(hi < 0 || lo < 0) return -1;
+            mac[b] = (unsigned char)((hi << 4) | lo);
+        }
+        return mac_is_usable(mac) ? 0 : -1;
+    }
+    return -1;
+}
+
 static int read_mac(const char *path, char *out, size_t cap)
 {
-    unsigned char bytes[64], mac[6];
+    /* A Qualcomm wlan_mac.bin has four 12-hex lines plus END (~110 bytes).
+     * A 64-byte read truncated it and the old `n == sizeof(bytes)` guard
+     * rejected exactly that length. */
+    unsigned char bytes[512], mac[6];
     int fd;
     ssize_t n;
 
@@ -890,7 +914,8 @@ static int read_mac(const char *path, char *out, size_t cap)
     if(n == 6)
         memcpy(mac, bytes, sizeof(mac));
     else if(n <= 0 || (size_t)n == sizeof(bytes) ||
-            parse_mac_text(bytes, (size_t)n, mac) != 0)
+            (parse_mac_text(bytes, (size_t)n, mac) != 0 &&
+             parse_qcom_mac_file(bytes, (size_t)n, mac) != 0))
         return -1;
     if(!mac_is_usable(mac)) return -1;
     snprintf(out, cap, "%02x:%02x:%02x:%02x:%02x:%02x",
@@ -909,12 +934,17 @@ static int persist_partition_mounted(void)
     while(fgets(line, sizeof(line), fp) != NULL) {
         if(sscanf(line, "%255s %255s %63s", source, mountpoint, fstype) != 3)
             continue;
-        if(strcmp(mountpoint, PERSIST_DIR) == 0 &&
-           strcmp(fstype, "ext4") == 0 &&
-           (strstr(source, "persist") != NULL ||
-            strstr(source, "mmcblk0p74") != NULL)) {
-            mounted = 1;
-            break;
+        if(strcmp(mountpoint, PERSIST_DIR) == 0) {
+            /* A RAM-only test session stacks tmpfs here. It is NOT the p74
+             * partition: accept it so wlfwd can read the session MAC, but the
+             * caller must label that state as RAM-only in every report. */
+            if(strcmp(fstype, "tmpfs") == 0 ||
+               (strcmp(fstype, "ext4") == 0 &&
+                (strstr(source, "persist") != NULL ||
+                 strstr(source, "mmcblk0p74") != NULL))) {
+                mounted = 1;
+                break;
+            }
         }
     }
     fclose(fp);
@@ -1000,6 +1030,58 @@ static int write_exact(const char *path, const void *buf, size_t len)
     close(fd);
     if(w < 0) return -err;
     return w == (ssize_t)len ? 0 : -EIO;
+}
+
+/* RAM-only.test session: stack a tmpfs over /mnt/vendor/persist so the
+ * vendor daemon can create cold-boot calibration files without ever writing
+ * the physical p74 partition. The MAC here is a TEST value supplied by the
+ * operator for this session only; it is never stored in the image or on a
+ * partition, and all reports label it RAM-only. */
+int vio_host_persist_ram_setup(char *out, int cap)
+{
+    static const char *mac_lines =
+        "Intf0MacAddress=021A2B3C4D5E\n"
+        "Intf1MacAddress=021A2B3C4D5F\n"
+        "Intf2MacAddress=021A2B3C4D60\n"
+        "Intf3MacAddress=021A2B3C4D61\n"
+        "END\n";
+    char wlan_dir[160], path[160];
+    int fd, n;
+
+    if(out == NULL || cap <= 0) return -EINVAL;
+    out[0] = '\0';
+    /* Stacked mount hides p74 but never writes to it. No partition is touched. */
+    if(mount("tmpfs", PERSIST_DIR, "tmpfs", 0,
+             "size=16m,mode=0777") != 0) {
+        snprintf(out, (size_t)cap,
+                 "persist-ram: mount tmpfs failed: %s", strerror(errno));
+        return -errno;
+    }
+    snprintf(wlan_dir, sizeof(wlan_dir), "%s/wlan", PERSIST_DIR);
+    vio_mkdir_p(wlan_dir, 0700);
+    snprintf(path, sizeof(path), "%s/wlan_mac.bin", PERSIST_DIR);
+    fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if(fd < 0) {
+        snprintf(out, (size_t)cap,
+                 "persist-ram: cannot write %s: %s", path, strerror(errno));
+        return -errno;
+    }
+    n = (int)write(fd, mac_lines, strlen(mac_lines));
+    close(fd);
+    if(n != (int)strlen(mac_lines)) {
+        snprintf(out, (size_t)cap, "persist-ram: short write (%d)", n);
+        return -EIO;
+    }
+    snprintf(out, (size_t)cap,
+             "persist-ram: RAM-ONLY tmpfs at %s; test MAC "
+             "02:1A:2B:3C:4D:5E (session only, NOT factory); "
+             "file %s Intf0..Intf3+END; p74 untouched\n",
+             PERSIST_DIR, path);
+    /* The boot-time attempt already failed and latched wlan_started=1.
+     * Clear it so the caller can re-run start_wlan against this RAM session. */
+    wlan_started = 0;
+    vio_log("hostsvc: %s", out);
+    return 0;
 }
 
 int vio_host_wlan_on(void)
