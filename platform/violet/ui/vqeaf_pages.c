@@ -3366,8 +3366,16 @@ static void build_video(lv_obj_t *content)
 /* ---- gallery / library --------------------------------------------------- */
 static void gallery_open_image(const char *path);
 static int view_decode_jpg(const uint8_t *data, size_t len);
+static int gallery_make_thumb(const char *path, int idx);
 
+#define GALLERY_THUMB_W 160u
+#define GALLERY_THUMB_H 120u
+#define GALLERY_MAX_THUMBS 12u
 static char g_gallery_paths[24][256];
+static uint8_t g_gallery_thumb_px[GALLERY_MAX_THUMBS]
+                                 [GALLERY_THUMB_W * GALLERY_THUMB_H * 4u];
+static lv_image_dsc_t g_gallery_thumb_dsc[GALLERY_MAX_THUMBS];
+static int g_gallery_thumb_ok[GALLERY_MAX_THUMBS];
 
 static void gallery_tile_cb(lv_event_t *event)
 {
@@ -3384,9 +3392,10 @@ static void build_gallery(lv_obj_t *content)
     int shown = 0;
 
     lv_obj_t *card = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(card, 12, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_style_pad_all(card, 10, 0);
     lv_obj_set_style_pad_row(card, 10, 0);
+    lv_obj_set_style_pad_column(card, 8, 0);
 
     if(count <= 0) {
         lv_obj_t *note = vqeaf_label(card,
@@ -3396,20 +3405,29 @@ static void build_gallery(lv_obj_t *content)
         lv_obj_set_width(note, lv_pct(100));
         return;
     }
-    for(int i = 0; i < count && i < 24; i++) {
+    int thumb = 0;
+    for(int i = 0; i < count && i < 24 && thumb < (int)GALLERY_MAX_THUMBS; i++) {
         if(files[i].is_dir) continue;
-        char label[128];
+        char label[160];
         snprintf(g_gallery_paths[i], sizeof(g_gallery_paths[i]),
                  "/Pictures/%s", files[i].name);
-        lv_obj_t *btn = lv_button_create(card);
-        lv_obj_set_width(btn, lv_pct(100));
-        lv_obj_add_event_cb(btn, gallery_tile_cb, LV_EVENT_CLICKED,
+
+        lv_obj_t *tile = vqeaf_card(card, 140, LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
+        lv_obj_add_event_cb(tile, gallery_tile_cb, LV_EVENT_CLICKED,
                             g_gallery_paths[i]);
-        snprintf(label, sizeof(label), "%s  (%u B)", files[i].name,
+        if(gallery_make_thumb(g_gallery_paths[i], thumb) == 0) {
+            lv_obj_t *img = lv_image_create(tile);
+            lv_image_set_src(img, &g_gallery_thumb_dsc[thumb]);
+            lv_obj_set_width(img, lv_pct(100));
+        }
+        snprintf(label, sizeof(label), "%.18s (%u B)", files[i].name,
                  (unsigned)files[i].size);
-        lv_obj_t *lbl = lv_label_create(btn);
+        lv_obj_t *lbl = lv_label_create(tile);
         lv_label_set_text(lbl, label);
-        lv_obj_center(lbl);
+        lv_obj_set_width(lbl, lv_pct(100));
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_MODE_DOTS);
+        thumb++;
         shown++;
     }
     if(shown == 0)
@@ -6112,6 +6130,59 @@ static int view_decode_bmp(const uint8_t *d, size_t n)
 /* Full-size image preview from the RAM LUN: reads the whole file (screenshots
  * are several MB), decodes with the same PNG/BMP/JPEG decoders as the file
  * viewer, and shows the real pixels. No placeholder image is ever drawn. */
+/* Builds a real thumbnail from the decoded pixels of the actual file. Uses the
+ * file viewer's PNG/BMP/JPEG decoders, then nearest-neighbour downsamples into
+ * a fixed per-card buffer. No stock photo or placeholder image is drawn. */
+static int gallery_make_thumb(const char *path, int idx)
+{
+    uint8_t *data;
+    int got, decoded = -1;
+    vqeaf_media_info_t info;
+    vqeaf_file_t files[24];
+    size_t len = 0;
+    const char *name;
+
+    if(path == NULL || idx < 0 || idx >= (int)GALLERY_MAX_THUMBS) return -1;
+    name = strrchr(path, '/');
+    name = name != NULL ? name + 1 : path;
+    int count = vqeaf_files_list("/Pictures", files, 24);
+    for(int i = 0; i < count; i++)
+        if(strcmp(files[i].name, name) == 0) { len = files[i].size; break; }
+    if(len == 0 || len > 24u * 1024u * 1024u) return -1;
+    data = lv_malloc(len);
+    if(data == NULL) return -1;
+    got = vqeaf_files_read(path, data, len);
+    if(got > 0 && vqeaf_media_inspect(data, (size_t)got, &info) == 0) {
+        if(info.type == VQEAF_MEDIA_PNG) decoded = view_decode_png(data, (size_t)got);
+        else if(info.type == VQEAF_MEDIA_BMP) decoded = view_decode_bmp(data, (size_t)got);
+        else if(info.type == VQEAF_MEDIA_JPEG) decoded = view_decode_jpg(data, (size_t)got);
+    }
+    lv_free(data);
+    if(decoded != 0) { view_free_pixels(); return -1; }
+
+    for(uint32_t y = 0; y < GALLERY_THUMB_H; y++) {
+        uint32_t sy = (y * (uint32_t)g_view_h) / GALLERY_THUMB_H;
+        for(uint32_t x = 0; x < GALLERY_THUMB_W; x++) {
+            uint32_t sx = (x * (uint32_t)g_view_w) / GALLERY_THUMB_W;
+            uint32_t src = (sy * (uint32_t)g_view_w + sx) * 4u;
+            uint32_t dst = (y * GALLERY_THUMB_W + x) * 4u;
+            memcpy(g_gallery_thumb_px[idx] + dst, g_view_pixels + src, 4);
+        }
+    }
+    view_free_pixels();
+    memset(&g_gallery_thumb_dsc[idx], 0, sizeof(g_gallery_thumb_dsc[idx]));
+    g_gallery_thumb_dsc[idx].header.magic = LV_IMAGE_HEADER_MAGIC;
+    g_gallery_thumb_dsc[idx].header.cf = LV_COLOR_FORMAT_ARGB8888;
+    g_gallery_thumb_dsc[idx].header.w = GALLERY_THUMB_W;
+    g_gallery_thumb_dsc[idx].header.h = GALLERY_THUMB_H;
+    g_gallery_thumb_dsc[idx].header.stride = GALLERY_THUMB_W * 4u;
+    g_gallery_thumb_dsc[idx].data_size =
+        (size_t)GALLERY_THUMB_W * GALLERY_THUMB_H * 4u;
+    g_gallery_thumb_dsc[idx].data = g_gallery_thumb_px[idx];
+    g_gallery_thumb_ok[idx] = 1;
+    return 0;
+}
+
 static void gallery_close_cb(lv_event_t *event)
 {
     (void)event;

@@ -42,6 +42,10 @@ int vio_host_vendor_wifi(void);
  * `out`. Use only for diagnosis; all changes vanish on reboot. */
 int vio_host_persist_ram_setup(char *out, int cap);
 
+/* Diagnostic: relaunch the real ROM cnss-daemon with LD_DEBUG=all and verbose
+ * Android logging into /tmp/hostsvc-cnss-trace.log. No mock or bypass. */
+int vio_host_cnss_trace(char *out, int cap);
+
 /* Run a real stock Bionic binary through the staged linker64 with the device's
  * real library paths. Output goes to /tmp/hostsvc-<logname>.log for `wifi log`.
  * Returns 0 when the child was spawned, negative on fork failure. This is a

@@ -189,6 +189,8 @@ static const char SUMMARY[] =
     "  help  status  wifi  sync  usb MODE  echo TEXT  ls  df  del NAME\n"
 "  media list         list UserData/Pictures and UserData/Videos on QEAFRESCUE\n"
 "  wifi ramtest       RAM-only tmpfs persist + TEST MAC (session only)\n"
+"  wifi cnss-trace    relaunch real cnss-daemon with LD_DEBUG=all\n"
+"  wifi kmsg-file     filtered kernel log -> KMSGWIFI.TXT\n"
     "  rotate 0|90|180|270|auto\n"
     "  lang vi|en|zh       switch the UI language\n"
     "  snap                 write SCREEN.RAW (240x520 RGB565) for the host\n"
@@ -864,6 +866,8 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 else if (eq(subname, "diag")) sub = 25;
                 else if (eq(subname, "discover") || starts(subname, "discover ")) sub = 26;
                 else if (eq(subname, "ramtest")) sub = 27;
+                else if (eq(subname, "cnss-trace")) sub = 28;
+                else if (eq(subname, "kmsg-file")) sub = 29;
                 else { cat(resp, cap, "wifi: unknown sub (net|dmesg|sdio|mod|fw|up|state|modem|host|log|find NAME|ls DIR|link PATH|cat FILE|on|pd NODE PORT PD|listen NODE PORT PATH|svc|vendor|rproc N)\n"); }
             }
 #ifdef __linux__
@@ -924,6 +928,58 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                  * rewritten every poll; use a dedicated 8.3 diary file. */
                 put(vol, "WIFIDIAG.TXT", diag);
                 note("[    -    ] N qeaf: wifi diag written to WIFIDIAG.TXT");
+                g_result = 1;
+            }
+            if (sub == 28) {
+                char rep[256];
+                int rc = vio_host_cnss_trace(rep, (int)sizeof(rep));
+                cat(resp, cap, rep);
+                if (rc == 0)
+                    cat(resp, cap, "wifi cnss-trace: see /tmp/hostsvc-cnss-trace.log\n");
+                else
+                    cat(resp, cap, "wifi cnss-trace: unavailable\n");
+                g_result = 1;
+            }
+            if (sub == 29) {
+                int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+                char buf[8192], all[32768];
+                int used = 0, lines = 0;
+                all[0] = '\0';
+                if (fd < 0) {
+                    cat(resp, cap, "wifi kmsg-file: /dev/kmsg unavailable\n");
+                } else {
+                    const char *keys[] = {"qrtr", "QRTR", "qmi", "QMI", "icnss",
+                                          "cnss", "wcn3990", "WCN3990", "remoteproc",
+                                          "subsys", "wlan", "WLFW", "firmware"};
+                    for (;;) {
+                        ssize_t r = read(fd, buf, sizeof(buf) - 1);
+                        if (r <= 0) break;
+                        buf[r] = '\0';
+                        char *msg = strchr(buf, ';');
+                        msg = msg ? msg + 1 : buf;
+                        int hit = 0;
+                        for (unsigned k = 0; k < sizeof(keys)/sizeof(keys[0]); k++)
+                            if (strstr(msg, keys[k]) != NULL) { hit = 1; break; }
+                        if (!hit) continue;
+                        int len = slen(msg);
+                        while (len > 0 && (msg[len-1] == '\n' || msg[len-1] == '\r')) len--;
+                        if (len <= 0 || used + len + 2 >= (int)sizeof(all)) continue;
+                        if (used > 0) all[used++] = '\n';
+                        memcpy(all + used, msg, (size_t)len);
+                        used += len;
+                        all[used] = '\0';
+                        lines++;
+                    }
+                    close(fd);
+                    if (lines == 0) {
+                        cat(resp, cap, "wifi kmsg-file: no matching kernel lines\n");
+                    } else {
+                        put(vol, "KMSGWIFI.TXT", (const char *)all);
+                        cat(resp, cap, "wifi kmsg-file: ");
+                        cat_u(resp, cap, (unsigned)lines);
+                        cat(resp, cap, " lines -> KMSGWIFI.TXT\n");
+                    }
+                }
                 g_result = 1;
             }
             if (sub == 27) {

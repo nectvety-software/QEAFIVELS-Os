@@ -31,6 +31,7 @@
 #include <sys/sysmacros.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
 #include <unistd.h>
 
 #include "violet.h"
@@ -1310,6 +1311,77 @@ int vio_host_wlfw_native(void)
     if(svc_qwlfgw == NULL) svc_qwlfgw = find_svc("qwlfgw");
     if(svc_qwlfgw == NULL || !svc_qwlfgw->binary_present) return -1;
     return launch(svc_qwlfgw, args);
+}
+
+/* Diagnostic only: relaunch the REAL ROM cnss-daemon with the Bionic linker's
+ * full debug log and Android logcat at verbose level, into a dedicated file.
+ * Nothing is faked; the binary and libraries are the device's own. */
+int vio_host_cnss_trace(char *out, int cap)
+{
+    char path[160];
+    int log_fd, null_fd, exec_pipe[2], child_errno = 0;
+    ssize_t pipe_result;
+    pid_t pid;
+
+    if(out == NULL || cap <= 0) return -EINVAL;
+    out[0] = '\0';
+    if(svc_cnss == NULL) svc_cnss = find_svc("cnss-daemon");
+    if(svc_cnss == NULL || !svc_cnss->binary_present) return -ENOENT;
+
+    /* Stop only the daemon this service manager started, so the trace run is
+     * not fighting an existing QRTR/binder registration. */
+    if(svc_cnss->pid > 0) {
+        kill(svc_cnss->pid, SIGTERM);
+        for(int i = 0; i < 20; i++) {
+            if(waitpid(svc_cnss->pid, NULL, WNOHANG) != 0) break;
+            vio_sleep_ms(50);
+        }
+        svc_cnss->pid = -1;
+    }
+
+    snprintf(path, sizeof(path), "%s/%s", SERVICE_DIR, svc_cnss->name);
+    if(pipe2(exec_pipe, O_CLOEXEC) < 0) return -errno;
+    pid = fork();
+    if(pid < 0) {
+        int err = errno;
+        close(exec_pipe[0]); close(exec_pipe[1]);
+        return -err;
+    }
+    if(pid == 0) {
+        close(exec_pipe[0]);
+        setsid();
+        null_fd = open("/dev/null", O_RDONLY);
+        log_fd = open("/tmp/hostsvc-cnss-trace.log",
+                      O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if(null_fd >= 0) dup2(null_fd, STDIN_FILENO);
+        if(log_fd >= 0) { dup2(log_fd, STDOUT_FILENO); dup2(log_fd, STDERR_FILENO); }
+        if(null_fd > STDERR_FILENO) close(null_fd);
+        if(log_fd > STDERR_FILENO) close(log_fd);
+        setenv("LD_LIBRARY_PATH", "/system/lib64:/vendor/lib64", 1);
+        setenv("LD_DEBUG", "all", 1);
+        setenv("LIBLINKER_DEBUG", "1", 1);
+        setenv("ANDROID_LOG_TAGS", "*:v", 1);
+        execv(path, kCnssArgs);
+        child_errno = errno;
+        (void)write(exec_pipe[1], &child_errno, sizeof(child_errno));
+        _exit(127);
+    }
+    close(exec_pipe[1]);
+    do { pipe_result = read(exec_pipe[0], &child_errno, sizeof(child_errno)); }
+    while(pipe_result < 0 && errno == EINTR);
+    close(exec_pipe[0]);
+    if(pipe_result > 0) {
+        svc_cnss->pid = -1;
+        snprintf(out, cap, "cnss-trace: exec failed: %s", strerror(child_errno));
+        return -child_errno;
+    }
+    svc_cnss->pid = pid;
+    svc_cnss->reaped = 0;
+    snprintf(out, cap,
+             "cnss-trace: real cnss-daemon pid=%d with LD_DEBUG=all, "
+             "ANDROID_LOG_TAGS=*:v -> /tmp/hostsvc-cnss-trace.log\n", (int)pid);
+    vio_log("hostsvc: %s", out);
+    return 0;
 }
 
 int vio_host_vendor_wifi(void)

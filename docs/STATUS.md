@@ -3331,3 +3331,22 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Wi-Fi vẫn BLOCKED (không đổi); cnss-daemon alive (S sleeping), strace không
   có trong rootfs, qrtr-lookup 0x45 timeout — chưa rõ nguyên nhân ENOENT,
   không tạo server/response giả.
+
+
+## Log cnss chi tiết + Gallery thumbnail (2026-11-22)
+- Thêm `wifi cnss-trace`: khởi động lại **cnss-daemon thật** với
+  `LD_DEBUG=all`, `LIBLINKER_DEBUG=1`, `ANDROID_LOG_TAGS=*:v`, log vào
+  `/tmp/hostsvc-cnss-trace.log`. Kết quả trên máy: `pid=542`, nhưng file
+  **chỉ có 2 dòng warning linkerconfig** — không có lỗi thiếu thư viện động,
+  không có log QMI/WLFW. Nghĩa là daemon load lib OK nhưng im lặng ở tầng QMI.
+- Thêm `wifi kmsg-file`: lọc 35 dòng kernel log vào `KMSGWIFI.TXT`. File ghi
+  ra không đọc lại được qua `wifi cat` (errno 2) — đang để lại làm bằng chứng
+  rằng cơ chế ghi file này chưa đáng tin; **không dùng nó để kết luận**.
+- Kernel log qua `wifi dmesg` cho thấy `wlan_hdd_state wlan major(500)
+  initialized` — driver wlan đã nạp, nhưng vẫn không có `0x45` / `wlan0`.
+- Gallery giờ là **photo gallery lưới thumbnail thật**: mỗi ô decode ảnh thật
+  bằng PNG/BMP/JPEG rồi downsample vào buffer 160x120 riêng; chạm để xem ảnh
+  full size. Không dùng ảnh placeholder.
+- Build/package/flash OK, ảnh sha
+  `78dea6aa235f91805b274443d6448ee262a65244601a04fd1b5ddd50d1baf0e7`.
+- Kết luận Wi-Fi vẫn BLOCKED; không mock/bypass QMI.
