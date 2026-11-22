@@ -3427,3 +3427,14 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Build OK (11.466.848 B); package/flash OK, ảnh
   sha `733ce1ba5cbf09098d7f84440433af0ac75ee9e5163da97ca062f0484b5145b4`;
   `tests.test_qeaf_camera_app` kiểm chứng cấu trúc.
+
+
+## Wi-Fi: phân tích cnss-daemon thật + sửa đường dẫn calibration (2026-11-22)
+- Trích strings binary ROM: `-n` = `--nodaemon` (không tắt WLFW), cnss-daemon là
+  QMI **client** của WLFW/DMS; calibration ghi `/data/vendor/wifi/wlfw_cal_%02d.bin`.
+- Sửa RAM-only setup tạo thêm `/data/vendor/wifi` (initramfs RAM, không ghi
+  partition). Build/package/flash OK, ảnh
+  sha `b6b8e62b77cf6ba01169dfed2e968ccffe2706cc59d9a7f375229ddd352d91c0`.
+- Đo lại: thư mục tồn tại nhưng rỗng; cnss-daemon pid=545, binder present;
+  `wifi discover` vẫn `recv_calls=0 / NOT_REGISTERED`. BLOCKED giữ nguyên,
+  không mock QMI. Chi tiết: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.

@@ -1059,3 +1059,36 @@ manager, hoặc WLAN PD chưa lên), **không phải** ở MAC hay ở việc ch
 daemon. Không được dùng kết quả này để tuyên bố Wi-Fi hoạt động.
 
 Dữ liệu RAM-only không là bằng chứng phần cứng vĩnh viễn; reboot là sạch.
+
+
+## Tiếp tục Wi-Fi: phân tích binary cnss-daemon thật (2026-11-22)
+### Bằng chứng từ binary ROM `build/violet/hosttools/cnss-daemon` (95.024 B)
+Trích chuỗi ASCII trực tiếp (tools `strings` của MinGW không đọc được ELF
+aarch64, dùng Python regex thay):
+- `usage: %s [options]` → `-n, --nodaemon  do not run as a daemon`,
+  `-l  Log output to logcat`. **Cờ `-n` KHÔNG tắt service WLFW** — chạy đúng
+  như init rc của vendor.
+- `Failed to start wlfw service`, `WLFW service connected`,
+  `wlfw_send_ind_register_req`, `qmi_client_get_any_service`,
+  `Sending DMS get mac address` → cnss-daemon là **QMI client** của WLFW/DMS
+  (service do modem firmware cung cấp), không phải server `0x45`.
+- Đường dẫn calibration thật: `/data/vendor/wifi/wlfw_cal_%02d.bin`,
+  `/data/vendor/wifi/qdss_trace_config.bin` — **không phải**
+  `/mnt/vendor/persist/wlan/`. Đây là điểm từng bị bỏ sót.
+- Firmware: `/vendor/firmware/`, `/vendor/firmware_mnt/image/`,
+  `bdwlan.bin`, `bdwlan.b%02x`, `bdwlan.%03x`, `qdss_trace_config.cfg`.
+
+### Thay đổi và đo lại (RAM-only)
+- `vio_host_persist_ram_setup()` giờ tạo thêm `/data/vendor/wifi` trên
+  initramfs (RAM), không ghi p74/userdata vật lý.
+- Sau flash (sha `b6b8e62b77cf6ba01169dfed2e968ccffe2706cc59d9a7f375229ddd352d91c0`):
+  `wifi ramtest` báo `/data/vendor/wifi RAM dir ready`; `wifi ls
+  /data/vendor/wifi` tồn tại nhưng **rỗng** — không có `wlfw_cal_*.bin`.
+  `cnss-daemon: running pid=545`, `binder: present`, nhưng
+  `wifi discover` vẫn `recv_calls=0 / 0x45 NOT_REGISTERED / ENOENT`.
+
+### Kết luận
+Việc tạo đúng thư mục calibration là cần thiết nhưng **chưa đủ**. Không có
+service `0x45` thật từ modem, cnss-daemon ở trạng thái client không tìm thấy
+service → không sinh calibration, không có `wlan0`. Không đăng ký server giả,
+không trả QMI response giả. BLOCKED giữ nguyên.

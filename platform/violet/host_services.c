@@ -1060,6 +1060,11 @@ int vio_host_persist_ram_setup(char *out, int cap)
     }
     snprintf(wlan_dir, sizeof(wlan_dir), "%s/wlan", PERSIST_DIR);
     vio_mkdir_p(wlan_dir, 0700);
+    /* The real ROM cnss-daemon writes cold-boot calibration to
+     * /data/vendor/wifi/wlfw_cal_%02d.bin (confirmed from its binary strings),
+     * NOT under /mnt/vendor/persist. Rootfs is initramfs in RAM, so creating
+     * this path is a RAM-only change and never touches p74/userdata. */
+    vio_mkdir_p("/data/vendor/wifi", 0700);
     snprintf(path, sizeof(path), "%s/wlan_mac.bin", PERSIST_DIR);
     fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
     if(fd < 0) {
@@ -1076,7 +1081,8 @@ int vio_host_persist_ram_setup(char *out, int cap)
     snprintf(out, (size_t)cap,
              "persist-ram: RAM-ONLY tmpfs at %s; test MAC "
              "02:1A:2B:3C:4D:5E (session only, NOT factory); "
-             "file %s Intf0..Intf3+END; p74 untouched\n",
+             "file %s Intf0..Intf3+END; /data/vendor/wifi RAM dir ready; "
+             "p74 untouched\n",
              PERSIST_DIR, path);
     /* The boot-time attempt already failed and latched wlan_started=1.
      * Clear it so the caller can re-run start_wlan against this RAM session. */
