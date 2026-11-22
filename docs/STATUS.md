@@ -3042,3 +3042,51 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Flash ảnh sha256 `718e8e7ef75429175d45563b691b139cec3720bb23c356b4e0685400490ec83a`.
   Ảnh chụp thật trên máy `build/screens/device/midnight_home.png` xác nhận
   nền navy, accent violet/cyan, glass cards — Midnight V2 đã chạy trên thiết bị.
+
+
+## Homologation 5 bước Wi-Fi trên violet (2026-11-22)
+- Thêm `vio_wifi_diag()` trong `platform/violet/wifi_bringup.c` và rescue verb
+  `wifi diag`: in 5 dòng VERIFIED/FAILED kèm bằng chứng thật, ghi vào
+  `WIFIDIAG.TXT`. (`HOMOLOG.TXT` thuộc boot-trace publisher `usb_lun.c`, ghi lại
+  mỗi poll nên không dùng làm nơi lưu diag.)
+- Kết quả baseline (modem chưa start):
+  `STEP1 VERIFIED` (firmware_mnt=/dev/mmcblk0p82, wlanmdsp.mbn present),
+  `STEP2 FAILED state=OFFLINING`, `STEP3 FAILED` (binder absent, cnss missing),
+  `STEP4 FAILED WLFW 0x45 NOT_REGISTERED`, `STEP5 FAILED wlan0 absent`.
+- Sau `wifi up`: `STEP2 VERIFIED state=ONLINE` — modem **có boot thật**. Tuy nhiên
+  `vio_host_services_start_wlan()` vẫn dừng ở `find_factory_mac()` (p74 không có
+  wlan_mac.bin) nên cnss/binder không được khởi động trong luồng đó; WLFW vẫn
+  không publish, wlan0 vẫn absent. Thiết bị reset lại ~40 s sau khi modem ONLINE
+  (quay về stage=loop, uptime mới 49 s) — lỗi modem reset vẫn còn.
+- Build 11.257.064 B, flash sha256
+  `61db9b99743093f929b5d9f4a955abf45d03f9b348ca7961eb57f3314a3bcaa9`.
+
+
+## Chụp nhanh + quay màn hình (2026-11-21/22)
+- Chụp nhanh đã có: verb `shot` + combo Power+Volume → file `SHOTnnnn.PNG/BMP`
+  trên QEAFRESCUE (RGB565 scanout thật).
+- Quay màn hình mới: `vio_rec_start/stop/status()` trong `main_violet.c` chụp
+  framebuffer DRM thật xuống 240x416, encode PNG bằng lodepng, ghi chuỗi
+  `REC0001.PNG...` lên ổ RAM rescue. Chạy đồng bộ trong worker rescue (thread
+  bị kẹt mutex nên đã bỏ) — mỗi frame là pixel thật, không giả lập.
+- Rescue verb `rec start [fps] [secs]`, `rec stop`, `rec status`; Terminal lệnh
+  `rec start|stop|status` cùng API. `violet.h` khai báo API.
+- Host `scripts/rec_frames_to_qvf.py` ghép chuỗi PNG thành QVF1 thật (LZ4 block
+  + RGB565) theo `docs/QEAF_VIDEO_FORMAT.md`; đã test với 3 frame thật →
+  `recording-test.qvf` 3592 bytes, 240x416, 3 frames, 4 fps.
+  `test_vqeaf_video.py` ALL OK. Build violet OK (11.265.144 B).
+- **Chưa validate trên máy**: sau lần flash cuối thiết bị kẹt ở boot stage
+  `splash`, không nhận QEAF.CMD. Cần người dùng reboot bằng tay rồi chạy
+  `rec start 4 2`, `rec status`, đọc `REC*.PNG`, ghép QVF. Không báo PASS khi
+  chưa có frame thật từ thiết bị.
+
+
+## Wi-Fi native audit + firmware inventory (2026-11-22)
+- Giai đoạn 1: `docs/wifi/VIOLET_WIFI_AUDIT.md` — classify module, kernel/driver,
+  QRTR/QMI, firmware, network stack; xác nhận kernel hiện tại là stock 4.14
+  icnss+qcacld (SNOC), không phải ath10k; network stack tự viết chưa có.
+- Giai đoạn 2: `scripts/wifi/inspect_violet_firmware.py` (read-only) +
+  `firmware/violet/manifest.json` + `docs/wifi/VIOLET_FIRMWARE_AUDIT.md`.
+  `violet-fw.zip` có 19 member, WLAN image nằm trong `NON-HLOS.bin`.
+- `tests/wifi/test_firmware_manifest.py` PASS (3 tests, fixture gắn nhãn FIXTURE).
+- Chưa flash, chưa ghi phân vùng, chưa đổi firmware vùng.

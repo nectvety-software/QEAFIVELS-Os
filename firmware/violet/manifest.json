@@ -1,0 +1,173 @@
+{
+  "created_utc": "2026-11-22T01:56:13.023103+00:00",
+  "duplicate_payloads": {},
+  "files": [
+    {
+      "compressed_size": 969132,
+      "format": "elf",
+      "kind": "other",
+      "path": "META-INF/com/google/android/update-binary",
+      "sha256": "95fbffb863efd9fd50cc8472a9f3d526d9cbab0257fd29c97b77869c707b6b2c",
+      "size": 2146800
+    },
+    {
+      "compressed_size": 591,
+      "format": "raw/binary",
+      "kind": "other",
+      "path": "META-INF/com/google/android/updater-script",
+      "sha256": "9d267b3d168472697d1c05b1e021516eff991010ab3c0084323f5c1319497848",
+      "size": 3225
+    },
+    {
+      "compressed_size": 55785555,
+      "format": "raw/binary",
+      "kind": "other",
+      "path": "firmware-update/NON-HLOS.bin",
+      "sha256": "96833a4bcdc10dd3ff1f6700f0f837cdcb4bd54cf17d7f8803e32c65ce45f9ff",
+      "size": 114640384
+    },
+    {
+      "compressed_size": 2315907,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/xbl.elf",
+      "sha256": "0250f38a5a217252610d2d401768a33d5eaeaf6de687e168522b1d80324fb04e",
+      "size": 3162984
+    },
+    {
+      "compressed_size": 107171,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/km4.mbn",
+      "sha256": "28a72c11566dd14d7c9ea3ea4bb6848059e760888d882eeec385dd017ebb6c6a",
+      "size": 237889
+    },
+    {
+      "compressed_size": 54310,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/uefi_sec.mbn",
+      "sha256": "5b4f81b9a5bf2a8997b9a7f6c8641df333fcfec7641ace60ad1a7d63164e8ffc",
+      "size": 126515
+    },
+    {
+      "compressed_size": 80997,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/aop.mbn",
+      "sha256": "d37a62cae7bcdd8d25e4a24f257def8ebb925c882961d5fdb5c100b93139fd2c",
+      "size": 160524
+    },
+    {
+      "compressed_size": 565461,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/tz.mbn",
+      "sha256": "6e76e0413d531f15bc5b4a75db26ebdcf4b07100db8801e0cf89c0330ce1c639",
+      "size": 2039808
+    },
+    {
+      "compressed_size": 468641,
+      "format": "raw/binary",
+      "kind": "bluetooth",
+      "path": "firmware-update/BTFM.bin",
+      "sha256": "8a6d1ab5a8aa4aecffee2021f320daf9a92ba0986af3b4b8a64a8a4af2f2e3e0",
+      "size": 897024
+    },
+    {
+      "compressed_size": 233914,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/cmnlib.mbn",
+      "sha256": "c2fcd314b76b1e53bc26b7414ea89c469b73ed8dc0b63cdaaa71eb73c7020a89",
+      "size": 392898
+    },
+    {
+      "compressed_size": 7888,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/storsec.mbn",
+      "sha256": "3fc6cf297df08a616daf0b9390f1c79582ca43a47166c8d74f8984ca670dd686",
+      "size": 20429
+    },
+    {
+      "compressed_size": 15197,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/xbl_config.elf",
+      "sha256": "b82fe8cdf3f97a30c0ce3454ff937b0dbb7805497ef4e28c68ea6b4caeb2bde3",
+      "size": 73012
+    },
+    {
+      "compressed_size": 133258,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/hyp.mbn",
+      "sha256": "7f366d860ce4eb1671781c377f0083f329e462ad1b836a52aa8e73b4772c9cc9",
+      "size": 373256
+    },
+    {
+      "compressed_size": 260214,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/cmnlib64.mbn",
+      "sha256": "9322a99c88e893460c4938ec3d0e9105442452d17274299c089e52bce1c08391",
+      "size": 511842
+    },
+    {
+      "compressed_size": 16743,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/devcfg.mbn",
+      "sha256": "aada5a6b53013bbf8f74c92776334204aa21133667eb234621615553eca4a34b",
+      "size": 43576
+    },
+    {
+      "compressed_size": 16340,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/qupv3fw.elf",
+      "sha256": "1c4fa9eb8a0ae6452c8e85a386916c925f27f056bbd0d831a58b1a5d72388ccc",
+      "size": 49198
+    },
+    {
+      "compressed_size": 10053,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/imagefv.elf",
+      "sha256": "b02325dcb90d526c601032adb8a71548c902b434d156e3e02286b9e109c99cbc",
+      "size": 20480
+    },
+    {
+      "compressed_size": 136284,
+      "format": "elf",
+      "kind": "other",
+      "path": "firmware-update/abl.elf",
+      "sha256": "12635ba7771db03c8cb683bb34bcecfe866163aa8d93b5dacec37c3aecf67ff8",
+      "size": 151552
+    },
+    {
+      "compressed_size": 8487081,
+      "format": "unknown",
+      "kind": "other",
+      "path": "firmware-update/dspso.bin",
+      "sha256": "d1c00b9d3e0063bf82b92a1f3767ec8e58c25129d516c6bd57a27c536b71a754",
+      "size": 33554432
+    }
+  ],
+  "member_count": 19,
+  "notes": [
+    "Read-only inspection; no file was extracted or written to a device.",
+    "Firmware region/version is NOT inferred from file names; verify SKU separately.",
+    "Calibration/NV and factory MAC must come from this device's persist dump."
+  ],
+  "package": "D:\\QEAFIVELS-Os\\build\\violet-fw.zip",
+  "package_sha256": "32c64413aec171d590cb597c5e293a7a2532555837386e16dae58ab7e7b8f15e",
+  "required_present": {
+    "bdwlan": false,
+    "regdb.bin": false,
+    "wlanmdsp.mbn": false
+  },
+  "tool": "scripts/wifi/inspect_violet_firmware.py",
+  "total_uncompressed_bytes": 158605828
+}
