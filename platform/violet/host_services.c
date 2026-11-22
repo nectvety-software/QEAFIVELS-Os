@@ -790,8 +790,12 @@ static int find_persist(const char *name, char *out, size_t cap)
         "/vendor/bin", "/vendor/etc/init", "/vendor/lib64",
     };
 
+    /* Depth 4: Violet keeps wlan_mac.bin at
+     * /vendor/firmware/wlan/qca_cld/wlan_mac.bin, which is three levels below
+     * /vendor/firmware. A depth-2 scan reported "not found" for a file that
+     * was actually present as a (dangling) vendor symlink. */
     for(unsigned i = 0; i < sizeof(roots) / sizeof(roots[0]); i++)
-        if(scan_tree(roots[i], name, out, cap, 2) == 0) return 0;
+        if(scan_tree(roots[i], name, out, cap, 4) == 0) return 0;
     return -1;
 }
 

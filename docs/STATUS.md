@@ -3242,3 +3242,22 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   uptime=49s; `df` = **266.530.816 bytes (~254 MiB) trống**.
 - Giới hạn còn lại: FAT16 ~255 MiB (muốn lớn hơn phải đổi cluster size/geometry,
   rủi ro tương thích host) và 512 root entry / tên 8.3 (có LFN).
+
+
+## Tiếp tục Wi-Fi firmware/driver — chẩn đoán bằng chứng thật (2026-11-22)
+- Trên máy (ảnh mới, boot phone-ui, seq tăng): `wifi state` cho thấy
+  pd-mapper/pd-listen/tqftpserv/rmtfs chạy, nhưng `wlfwd: not started`,
+  `cnss-daemon: not started`, `binder: absent`. `wifi up` khởi động modem
+  (modem_started=1) nhưng `wifi discover` vẫn `recv_calls=0 NOT_REGISTERED`;
+  khoảng 40 s sau máy reset — đúng current known failure.
+- Tìm MAC thật: `/proc/cmdline` **không có** `androidboot.wifimacaddr=`;
+  `/vendor/firmware/wlan/qca_cld/wlan_mac.bin` tồn tại nhưng là symlink
+  → `/mnt/vendor/persist/wlan_mac.bin` **không tồn tại** (`cat` errno 2,
+  xác nhận bằng `wifi link`). `/mnt/vendor/persist/{misc,rfs,hlos_rfs,bluetooth}`
+  rỗng. `BDWLAN.*` trong firmware package chỉ chứa placeholder `12 34 56`.
+  → Không có MAC/calibration thật của chính máy này; **không sinh giả**.
+- Sửa chẩn đoán: `find_persist()` quét sâu 2→4 để không bỏ sót file nằm sâu
+  (`wlan/qca_cld`); build/package/flash OK, ảnh sha
+  `b3dfba17f8066eb3422f3d4f116cfe2dd1ba244bee62708a6a05bd5e83a2c7de`.
+- Sau flash: `stage=phone-ui`, `wifi find wlan_mac.bin: not found`,
+  `wifi discover` → `BLOCKED(0x45_NOT_REGISTERED)`. Trạng thái vẫn trung thực.
