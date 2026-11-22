@@ -92,6 +92,10 @@ SOURCES = [
     os.path.join(VIOLET, "netd", "core", "netd_core.c"),
     os.path.join(VIOLET, "netd", "link", "netd_link.c"),
     os.path.join(VIOLET, "netd", "bringup", "netd_bringup.c"),
+    os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "qrtr_transport.c"),
+    os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "qmi_service.c"),
+    os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "firmware_boot.c"),
+    os.path.join(VIOLET, "qrtr_probe.c"),
 ]
 
 # Build LVGL 9.4 from the vendored source tree. Hardware-specific display and
@@ -132,6 +136,7 @@ INCLUDES = [
     "-I", os.path.join(ROOT, "system", "core", "include"),
     "-I", os.path.join(ROOT, "platform", "lvgl", "src", "libs", "lz4"),
     "-I", os.path.join(VIOLET, "netd", "core"),
+    "-I", os.path.join(ROOT, "kernel", "include"),
 ]
 
 CFLAGS = ["-O2", "-g", "-Wall", "-Wextra", "-std=c11",

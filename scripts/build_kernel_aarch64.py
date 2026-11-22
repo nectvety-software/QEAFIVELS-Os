@@ -73,6 +73,7 @@ def build():
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_firmware.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "qrtr_transport.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "qmi_service.c",
+               ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "firmware_boot.c",
                ROOT / "system" / "core" / "driver.c",
                ROOT / "system" / "core" / "capability.c",
                ROOT / "system" / "core" / "block.c"]

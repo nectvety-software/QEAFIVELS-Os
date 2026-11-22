@@ -3119,3 +3119,19 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   để tránh kéo ~900 KB debug info vào ELF freestanding.
 - Docs: `docs/wifi/VIOLET_QRTR_QMI.md`.
 - Chưa có bằng chứng phần cứng: WLFW 0x45 vẫn chưa publish, wlan0 absent.
+
+
+## Wi-Fi Giai đoạn 5 + đo IO thật trên máy (2026-11-22)
+- State machine boot firmware: `firmware_boot.c/.h`, mọi bước cần xác nhận thật,
+  poll có timeout, crash restart có giới hạn, thiếu QMI service -> FAILED,
+  không bao giờ WLAN_READY. `test_firmware_boot: ALL OK`.
+- Gắn IO AF_QIPCRTR thật (`qrtr_probe.c`) vào PID1, verb `wifi discover`.
+- **Đo trên máy thật** (ảnh sha `c9e92704...0338c`): `0x45` -> `recv_calls=0`,
+  `NOT_REGISTERED`, `rc=-2 (ENOENT)`, `elapsed_ms=1502`. Đối chứng `0x18`
+  -> `NEW_SERVER` (cmd=4, 20B) `node=0x5 port=0x8 VERIFIED`, chứng minh IO chạy
+  thật và kết quả 0x45 là BLOCKED có ý nghĩa.
+- `wifi svc`: có lookup `0x45` nhưng không có server `0x45` trong 24 server.
+- Báo cáo: `docs/wifi/VIOLET_WIFI_TEST_REPORT.md`.
+- Flash lần 2 (đổi tên file 8.3) build/gate/flash PASS nhưng máy kẹt `splash`,
+  cần power-cycle tay; `QRLIVE.TXT` chưa verify, không báo PASS.
+- wlan0 vẫn absent; scan/DHCP/data chưa có bằng chứng.

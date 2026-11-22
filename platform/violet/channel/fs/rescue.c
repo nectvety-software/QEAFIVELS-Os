@@ -33,7 +33,9 @@
 #include "../../ui/vqeaf_pages.h"
 #include "wifi_bringup.h"
 #include "../../host_services.h"
+#include "../../violet.h"
 #include "../../qrtr_ns.h"
+#include "../../qrtr_probe.h"
 #include "../../vio_caps.h"
 #include "../../vqeaf_camera.h"
 
@@ -128,7 +130,7 @@ static const char HELP[] =
     "check.\n\n"
     "  help                 show this text\n"
     "  status               OS, USB mode, cable, LUN sectors, boot stage\n"
-    "  wifi [net|dmesg|sdio|mod|fw|up|off|state|modem|host|log|find NAME|ls DIR|link PATH|cat FILE|on|pd NODE PORT PD|listen NODE PORT PATH]\n"
+    "  wifi [net|dmesg|sdio|mod|fw|up|off|state|modem|host|log|find NAME|ls DIR|link PATH|cat FILE|on|pd NODE PORT PD|listen NODE PORT PATH|discover [SERVICE]]\n"
     "                       real WCN3990 state: netdevs, mounts, firmware,\n"
     "                       remoteproc; `wifi up` starts the modem (it\n"
     "                       resets the SoC without a service layer),\n"
@@ -851,6 +853,8 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 else if (eq(subname, "gnss")) sub = 22;
                 else if (eq(subname, "qlookup")) sub = 23;
                 else if (eq(subname, "native")) sub = 24;
+                else if (eq(subname, "diag")) sub = 25;
+                else if (eq(subname, "discover") || starts(subname, "discover ")) sub = 26;
                 else { cat(resp, cap, "wifi: unknown sub (net|dmesg|sdio|mod|fw|up|state|modem|host|log|find NAME|ls DIR|link PATH|cat FILE|on|pd NODE PORT PD|listen NODE PORT PATH|svc|vendor|rproc N)\n"); }
             }
 #ifdef __linux__
@@ -901,6 +905,31 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 cat(resp, cap, "wifi gnss: ");
                 cat(resp, cap, rc == 0 ? "started (see wifi log)" : "refused");
                 cat(resp, cap, "\n");
+                g_result = 1;
+            }
+            if (sub == 25) {
+                char diag[4096];
+                vio_wifi_diag(diag, (int)sizeof(diag));
+                cat(resp, cap, diag);
+                /* HOMOLOG.TXT is owned by the boot-trace publisher and is
+                 * rewritten every poll; use a dedicated 8.3 diary file. */
+                put(vol, "WIFIDIAG.TXT", diag);
+                note("[    -    ] N qeaf: wifi diag written to WIFIDIAG.TXT");
+                g_result = 1;
+            }
+            if (sub == 26) {
+                /* Real IO: native QRTR client over AF_QIPCRTR. Read-only with
+                 * respect to partitions; only NEW_LOOKUP is sent. */
+                uint32_t svc = 0x45;
+                char rep[1024];
+                if (starts(line, "wifi discover "))
+                    (void)sscanf(line + 14, "%x", &svc);
+                (void)vio_qrtr_discover_live(svc, 1, 1, 1500,
+                                             rep, (int)sizeof(rep));
+                cat(resp, cap, rep);
+                /* 8.3 name: WIFIDISCOVER is too long for the rescue FAT. */
+                put(vol, "QRLIVE.TXT", (const uint8_t *)rep);
+                note("[    -    ] N qeaf: live QRTR discovery evidence written");
                 g_result = 1;
             }
             if (sub == 23) {
@@ -1385,6 +1414,25 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                     note("[    -    ] E qeaf: snap failed");
                 }
             }
+        } else if (starts(line, "rec ")) {
+            char sub[16];
+            int fps = 8, secs = 10, rc;
+            if(sscanf(line + 4, "%15s %d %d", sub, &fps, &secs) < 1) {
+                cat(resp, cap, "rec: usage: rec start [fps] [secs] | rec stop | rec status\n");
+            } else if(strcmp(sub, "start") == 0) {
+                rc = vio_rec_start(fps, secs);
+                cat(resp, cap, rc == 0 ? "rec: started (see rec status)\n" :
+                                         "rec: start refused\n");
+            } else if(strcmp(sub, "stop") == 0) {
+                rc = vio_rec_stop();
+                cat(resp, cap, rc == 0 ? "rec: stop requested\n" :
+                                         "rec: not recording\n");
+            } else {
+                cat(resp, cap, "rec status: ");
+                cat(resp, cap, vio_rec_status());
+                cat(resp, cap, "\n");
+            }
+            g_result = 1;
         } else if (eq(line, "shot")) {
             if (g_screenshot == NULL) {
                 cat(resp, cap, "shot: unavailable (no screenshot hook)\n");
