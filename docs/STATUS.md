@@ -3226,3 +3226,19 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Build OK (11.422.696 B); package OK sha
   `5ca6e6fba3652fd87ee105115d33e85fcf78e7643611e987870954fd0e015a96`.
 - Chưa flash: thiết bị chưa kết nối; cần fastboot để nạp ảnh này (chỉ p77).
+
+
+## Bỏ giới hạn 32 MB của RAM LUN QEAFRESCUE (2026-11-22)
+- `FAT16_VOLUME_SIZE` 32 MiB -> 255 MiB (giữ nguyên 4 KiB cluster, FAT 256
+  sector — 255 MiB là mức tối đa an toàn của FAT16 với geometry này).
+- `fat16_init` kiểm tra cluster count vừa FAT table, fail-closed nếu vượt.
+- `usb_lun.c` tự theo macro: ftruncate/mmap backing file 255 MiB (máy có
+  5,2 GiB RAM trống). `fat16_free_bytes` đếm đúng cluster trống thật.
+- Test host ALL OK (file 300 KiB, xoá/ghi lại, 12 unittest); build OK
+  (11.423.120 B); package OK sha
+  `d8fab469fa3ab0ce0205bc51c90aa7cbc8ca86c1034ab0b58b66cb6b3f8c8dd9`.
+- **Đã flash trên máy thật** (sha ở trên, "written and verified byte for byte",
+  reboot, rescue answering). Kiểm chứng sau boot: `stage=phone-ui`, `ui=1`,
+  uptime=49s; `df` = **266.530.816 bytes (~254 MiB) trống**.
+- Giới hạn còn lại: FAT16 ~255 MiB (muốn lớn hơn phải đổi cluster size/geometry,
+  rủi ro tương thích host) và 512 root entry / tên 8.3 (có LFN).

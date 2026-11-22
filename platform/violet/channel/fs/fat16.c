@@ -199,7 +199,8 @@ int fat16_init(struct fat16_volume *vol, uint8_t *data, size_t size) {
     vol->data = data;
     vol->size = size;
 
-    /* Geometry: 32 MiB FAT16, 4 KiB clusters, 63 sectors/track, 255 heads */
+    /* Geometry: up to 255 MiB FAT16, 4 KiB clusters, 63 sectors/track,
+     * 255 heads. Validate that the cluster count fits the FAT table. */
     vol->bytes_per_sector = FAT16_SECTOR_SIZE;
     vol->sectors_per_cluster = 8;  /* 4 KiB cluster */
     vol->reserved_sectors = 32;
@@ -211,6 +212,12 @@ int fat16_init(struct fat16_volume *vol, uint8_t *data, size_t size) {
     vol->data_start = vol->root_dir_start + vol->root_dir_sectors;
     vol->total_clusters = (size / vol->bytes_per_sector - vol->data_start) /
                           vol->sectors_per_cluster;
+    if(vol->total_clusters + 2u >
+       (size_t)vol->fat_size * vol->bytes_per_sector / 2u) {
+        umos_logf("fat16: volume too large for FAT geometry (%u clusters)\n",
+                  (unsigned)vol->total_clusters);
+        return -1;
+    }
     vol->next_cluster = 2;                  /* clusters 0 and 1 are the FAT's own */
     vol->root_entries_used = 0;
 

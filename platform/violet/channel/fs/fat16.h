@@ -14,7 +14,11 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define FAT16_VOLUME_SIZE (32 * 1024 * 1024)  /* 32 MiB */
+/* FAT16 with 4 KiB clusters and a 256-sector FAT addresses at most 65.534
+ * clusters (~255 MiB). Use the largest size that fits that geometry; the RAM
+ * LUN is tmpfs-backed and the handset has >5 GiB free, so 32 MiB was an
+ * arbitrary ceiling, not a hardware limit. */
+#define FAT16_VOLUME_SIZE (255 * 1024 * 1024)  /* 255 MiB */
 #define FAT16_SECTOR_SIZE 512
 #define FAT16_LABEL "QEAFRESCUE"
 #define FAT16_ROOT_ENTRIES 512
