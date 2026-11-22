@@ -3412,8 +3412,9 @@ static void build_gallery(lv_obj_t *content)
         snprintf(g_gallery_paths[i], sizeof(g_gallery_paths[i]),
                  "/Pictures/%s", files[i].name);
 
-        lv_obj_t *tile = vqeaf_card(card, 140, LV_SIZE_CONTENT);
+        lv_obj_t *tile = vqeaf_card(card, 140, 170);
         lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
+        lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_event_cb(tile, gallery_tile_cb, LV_EVENT_CLICKED,
                             g_gallery_paths[i]);
         if(gallery_make_thumb(g_gallery_paths[i], thumb) == 0) {
@@ -3427,6 +3428,16 @@ static void build_gallery(lv_obj_t *content)
         lv_label_set_text(lbl, label);
         lv_obj_set_width(lbl, lv_pct(100));
         lv_label_set_long_mode(lbl, LV_LABEL_LONG_MODE_DOTS);
+        /* Transparent hit layer: children of a card can swallow clicks, so a
+         * dedicated button on top owns the gesture for the whole tile. */
+        lv_obj_t *hit = lv_button_create(tile);
+        lv_obj_set_pos(hit, 0, 0);
+        lv_obj_set_size(hit, 140, 130);   /* pct height is 0 in SIZE_CONTENT flex */
+        lv_obj_set_style_bg_opa(hit, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(hit, 0, 0);
+        lv_obj_set_style_shadow_width(hit, 0, 0);
+        lv_obj_add_event_cb(hit, gallery_tile_cb, LV_EVENT_CLICKED,
+                            g_gallery_paths[i]);
         thumb++;
         shown++;
     }
@@ -6203,6 +6214,7 @@ static void gallery_open_image(const char *path)
     const char *name;
 
     if(path == NULL) return;
+    vqeaf_ui_notify("Thư viện", "Đã chạm vào ảnh", VQEAF_SYM_IMAGE, 0x35E0C8);
     name = strrchr(path, '/');
     name = name != NULL ? name + 1 : path;
     int count = vqeaf_files_list("/Pictures", files, 24);
@@ -6219,7 +6231,12 @@ static void gallery_open_image(const char *path)
         else if(info.type == VQEAF_MEDIA_JPEG) decoded = view_decode_jpg(data, (size_t)got);
     }
     lv_free(data);
-    if(decoded != 0) { view_free_pixels(); return; }
+    if(decoded != 0) {
+        vqeaf_ui_notify("Thư viện", "Không giải mã được ảnh này",
+                        VQEAF_SYM_DELETE, 0xFF8A7A);
+        view_free_pixels();
+        return;
+    }
 
     g_gallery_layer = lv_obj_create(lv_layer_top());
     lv_obj_set_size(g_gallery_layer, lv_pct(100), lv_pct(100));

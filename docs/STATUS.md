@@ -3350,3 +3350,21 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Build/package/flash OK, ảnh sha
   `78dea6aa235f91805b274443d6448ee262a65244601a04fd1b5ddd50d1baf0e7`.
 - Kết luận Wi-Fi vẫn BLOCKED; không mock/bypass QMI.
+
+
+## Test preview ảnh / trình phát video trên máy (2026-11-22)
+- Thêm page hook `page gallery` / `page video` để host điều khiển UI khi test.
+- **VERIFIED**: Gallery hiển thị lưới thumbnail thật của `SHOT0001.BMP` (đã so
+  ảnh chụp màn hình `build/screens/device/gallery-*.png`); ảnh chụp lưu
+  `UserData/Pictures`, `media list` xác nhận 7.581.654 byte.
+- **FAILED / chưa xác minh**: chạm vào thumbnail chưa mở được ảnh full size dù
+  đã thử: cờ CLICKABLE trên tile, nút hit trong suốt phủ lên ô (sửa lỗi pct
+  height = 0 trong flex SIZE_CONTENT thành 140x130), notify debug trong
+  `gallery_open_image()`, và các tọa độ `(300,930)`, `(100,310)`, `hold`.
+  Không có notify/callback được ghi nhận -> không khẳng định preview ảnh chạy.
+- Video: `page video` mở đúng trang nhưng báo "Không có tệp video trong
+  /media" vì phiên đó `rec` không lưu được file; **trình phát QVF chưa được
+  kiểm chứng end-to-end** (core decode có sẵn và đã test host).
+- Ảnh cuối đã flash sha `345a407e20afd5bcbfaea6296478d87f750fb1710ce449b00fef78165856f335`;
+  build OK. Tiếp theo cần gắn event LVGL trực tiếp trên image/label thay vì
+  nút hit, và đảm bảo có file QVF trước khi test phát lại.
