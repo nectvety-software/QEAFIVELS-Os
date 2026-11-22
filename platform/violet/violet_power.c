@@ -56,6 +56,7 @@ int vio_power_poll(struct vio_power *pw) {
                          * not also open the power menu on release. */
                         pw->screenshot = 1;
                         pw->combo_active = 1;
+                        pw->combo_since_ms = vio_monotonic_ms();
                     } else {
                         pw->pressed = 1;
                         pw->pressed_ever = 1;
@@ -64,6 +65,12 @@ int vio_power_poll(struct vio_power *pw) {
                     }
                 } else if (ev.value == 0) {
                     if (pw->combo_active) {
+                        /* Short Power+Volume = still capture. Holding the same
+                         * combo for >=1 s toggles the screen recorder instead. */
+                        if (vio_monotonic_ms() - pw->combo_since_ms >= 1000u) {
+                            pw->screenshot = 0;
+                            pw->record_toggle = 1;
+                        }
                         pw->combo_active = 0;
                     } else {
                         if (pw->pressed && !pw->menu_shown)
@@ -77,6 +84,7 @@ int vio_power_poll(struct vio_power *pw) {
                     if (pw->pressed) {
                         pw->screenshot = 1;
                         pw->combo_active = 1;
+                        pw->combo_since_ms = vio_monotonic_ms();
                         pw->pressed = 0;
                     }
                     pw->vol_key_pressed = (ev.code == KEY_VOLUMEUP) ? 1 : -1;

@@ -3294,3 +3294,20 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Bằng chứng đầy đủ: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.
 - Test `tests.wifi.test_ram_persist` 5 tests OK; ảnh boot sha
   `150875c5a4e00e6745d400025101a3bca321af0b67715aff6060ec3389609b8c` đã flash.
+
+
+## Chụp ảnh / quay video trong trung tâm điều khiển + phím tắt (2026-11-22)
+- Trung tâm điều khiển **đã có sẵn** 2 ô `Chụp màn hình` / `Quay màn hình`
+  (group Tiện ích) gọi trực tiếp `vio_screenshot_now()` / `vio_rec_start/stop`,
+  nhãn trạng thái thật (`Lưu vào Pictures`, `Đang quay`, `10 giây, 8 fps`).
+- Thêm phím tắt: **Power + Volume nhấn ngắn** = chụp ảnh (có sẵn);
+  **giữ Power + Volume >= 1 s** = bật/tắt quay video (mới), dùng chung API với
+  ô điều khiển và lệnh `rec`. Long combo không chụp ảnh thêm.
+- Sửa lỗi 0 frame: `rec_tick()` định nghĩa nhưng **không bao giờ được gọi**;
+  đã gọi trong vòng lặp UI sau `display_poll()`.
+- Build/package/flash OK, ảnh sha
+  `2e81ec2456e3920b8e33ac88baee56bcfc567905fbc9eacba28f9405e343af38`.
+- Kiểm chứng trên máy: `rec start 4 2` -> `rec status` =
+  `saved VID0001.QVF (8 frames, 194400 bytes, time limit reached)` — frame thật
+  từ scanout, không phải ảnh tĩnh giả. Test `tests.test_qeaf_capture_shortcuts`
+  4 tests OK.

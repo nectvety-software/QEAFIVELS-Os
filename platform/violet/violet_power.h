@@ -19,7 +19,9 @@ struct vio_power {
     uint64_t vol_pressed_since_ms;
     uint64_t vol_last_repeat_ms;
     int combo_active;         /* power held together with a volume key */
-    int screenshot;           /* power+volume gesture seen by the caller */
+    uint64_t combo_since_ms;  /* when the current combo started */
+    int screenshot;           /* short power+volume: capture a still */
+    int record_toggle;        /* long power+volume (>=1 s): start/stop video */
 };
 
 int vio_power_open(struct vio_power *pw, const char *path);

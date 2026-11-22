@@ -1416,6 +1416,9 @@ int main(void)
                     *probe = 0x5EAFul;
                 }
                 if(!sleeping) display_poll();
+                /* Sample the live scanout for the QVF recorder. Without this
+                 * tick the record verb started but captured zero frames. */
+                rec_tick();
                 /* A rescue `rotate` (or the sensor) changes the seam value;
                  * repaint exactly once per change. */
                 if(ui_ready && ui_display) {
@@ -1550,6 +1553,23 @@ int main(void)
                                     vqeaf_ui_notify("Ảnh màn hình",
                                                     "Chụp không thành công",
                                                     VQEAF_SYM_DELETE, 0xFF8A7A);
+                            }
+                            if(power_btn.record_toggle) {
+                                power_btn.record_toggle = 0;
+                                /* Long Power+Volume (>=1 s): start/stop the
+                                 * real QVF recorder, same path as the Control
+                                 * Center tile and the `rec` terminal verb. */
+                                if(vio_rec_active()) {
+                                    vio_rec_stop();
+                                } else if(vio_rec_start(8, 10) == 0) {
+                                    vqeaf_ui_notify("Quay màn hình",
+                                                    "Đang quay 10 giây, 8 fps",
+                                                    VQEAF_SYM_MOVIE, 0xFF7A7A);
+                                } else {
+                                    vqeaf_ui_notify("Quay màn hình",
+                                                    "Không quay được màn hình",
+                                                    VQEAF_SYM_DELETE, 0xFF8A7A);
+                                }
                             }
                             if(power_btn.volume_delta != 0)
                                 vqeaf_ui_volume_adjust(power_btn.volume_delta);
