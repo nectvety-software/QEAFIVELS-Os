@@ -3450,3 +3450,18 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Blockers chính xác hiện tại: WLAN PD lỗi + restart bị từ chối → firmware
   WCN3990 không boot → không publish QMI 0x45. Không mock/bypass QMI.
   Chi tiết: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.
+
+
+## Wi-Fi: boot order, firmware source, full modem restart (2026-11-22)
+- Daemons rmtfs/tqftpserv/pd-mapper/pd-listen chạy trước `wifi up`; mount p86/p82/
+  p74/p38 đúng readonly. Kernel log có icnss + wlan major(500) nhưng không có
+  request_firmware/wlanmdsp. `/sys/class/remoteproc` absent; modem (subsys1)
+  **OFFLINING**, adsp/cdsp/venus ONLINE.
+- Firmware: violet-fw.zip có NON-HLOS/BTFM/dspso + wlanmdsp/bdwlan/regdb +
+  6 SERVREG .JSN. `out/reference/stock-violet/` absent → không đối chiếu được
+  phiên bản modem/dsp với bản chuẩn.
+- Restart: `pdr-restart` qua SERVREG 10:3 cho cả `msm/modem/wlan_pd` và
+  `msm/modem/root_pd` đều `result 1 error 9`; `pd-listen` vẫn `result=1
+  error=45`. Không có sysfs remoteproc để restart.
+- BLOCKED giữ nguyên ở tầng modem/firmware; không mock/bypass QMI.
+  Chi tiết: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.

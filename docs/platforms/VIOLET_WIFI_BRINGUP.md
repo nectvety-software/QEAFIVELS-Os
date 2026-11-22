@@ -1120,3 +1120,48 @@ lên**, SERVREG báo `result=1 error=45`, restart trả `result=1 error=9`. Khi 
 không lên, firmware WCN3990 không boot và không publish QMI `0x45`, nên không
 có `wlan0`. Không tạo server/QMI response giả; cần firmware/PD thật từ phía
 modem (ngoài khả năng sửa bằng userspace trên initramfs hiện tại).
+
+
+## Boot order / firmware sources / full modem restart (2026-11-22)
+### 1. Boot order và log kernel
+- Trước `wifi up`: `pd-mapper`, `pd-listen`, `tqftpserv`, `rmtfs` đã chạy
+  (`wifi state` pid 484..487). `rmtfs` log: `RMTFS UIO ready ... registering
+  services`; `pd-mapper`: `fallback found 12 PD json files`, `loaded 18
+  domain/service entries`; `tqftpserv` phục vụ `/lib/firmware`.
+- Mount theo `/proc/mounts`: `/vendor` p86 ro, `/vendor/firmware_mnt` p82 ro,
+  `/mnt/vendor/persist` p74 ro, `/vendor/bt_firmware` p38 ro. rmtfs/tqftpserv
+  chạy trước modem boot đúng thứ tự.
+- Kernel log (`wifi dmesg`, 56 dòng lọc) có `subsys-pil-tz` cho adsp/cdsp/venus
+  ONLINE, `icnss` probe, `wlan_hdd_state wlan major(500) initialized`.
+  Không có dòng `request_firmware` / `wlanmdsp` / `q6v5` / `mpss` / `servreg`
+  trong log lọc — firmware WLAN không được yêu cầu nạp trong phiên này.
+- `/sys/class/remoteproc` **không tồn tại**; kernel dùng `msm_subsys`
+  (`subsys0=adsp ONLINE`, `subsys1=modem OFFLINING`, `subsys2=cdsp ONLINE`,
+  `subsys3=venus ONLINE`, `subsys4=ipa_fws OFFLINING`, `subsys5=a612_zap
+  OFFLINING`). Modem ở **OFFLINING**, `restart_level=SYSTEM`, `crash_count=0`.
+
+### 2. Nguồn firmware
+- `violet-fw.zip`: `NON-HLOS.bin` (modem), `BTFM.bin`, `dspso.bin`, các bản vá
+  bootloader/TZ; `build/violet-fw/image/` có `WLANMDSP.MBN` (3.694.736 B),
+  28+ `BDWLAN.*`, `regdb.bin`, và 6 `.JSN` SERVREG descriptors.
+- `out/reference/stock-violet/` **không tồn tại** trong workspace → không có
+  bản chuẩn để đối chiếu phiên bản modem/dsp. Trên máy, `/vendor/firmware_mnt/
+  image/` có đủ `modem.b00..b29`, `modem.mdt`, `adsp.*`, `cdsp.*`, `venus.*`.
+  Không phát hiện file WLAN bị thiếu; không thể khẳng định firmware cũ/khớp
+  khi thiếu bản reference.
+
+### 3. Restart toàn bộ modem
+- Không có `remoteproc` sysfs để ghi state. `msm_subsys` chỉ có `state`,
+  `restart_level`, `firmware_name`, `crash_count`, `uevent` — **không có node
+  `restart`** có thể ghi trực tiếp.
+- QMI/SERVREG `pdr-restart` thật với node/port SERVREG `10:3`:
+  - `msm/modem/wlan_pd` → `result 1 error 9`
+  - `msm/modem/root_pd` → `result 1 error 9`
+  → Cả restart PD riêng lẫn restart toàn bộ modem đều bị từ chối.
+- `pd-listen` trực tiếp vẫn báo `result=1 error=45` cho `msm/modem/wlan_pd`.
+
+### Kết luận
+Các daemon userspace chạy đúng thứ tự, firmware cần thiết có mặt, nhưng modem
+ở trạng thái **OFFLINING** và mọi yêu cầu restart PD/root_pd qua SERVREG đều bị
+từ chối (`error 9`). Đây là blocker tầng modem/firmware, không phải lỗi boot
+order hay thiếu file. Không mock QMI, không server giả, không partition write.

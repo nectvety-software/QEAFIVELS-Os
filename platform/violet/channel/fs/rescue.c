@@ -960,7 +960,10 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 } else {
                     const char *keys[] = {"qrtr", "QRTR", "qmi", "QMI", "icnss",
                                           "cnss", "wcn3990", "WCN3990", "remoteproc",
-                                          "subsys", "wlan", "WLFW", "firmware"};
+                                          "subsys", "wlan", "WLFW", "firmware",
+                                          "pil", "q6v5", "adsp", "cdsp", "mpss",
+                                          "servreg", "rmtfs", "tqftp", "pd-mapper",
+                                          "WCN", "wlanmdsp", "request_firmware"};
                     for (;;) {
                         ssize_t r = read(fd, buf, sizeof(buf) - 1);
                         if (r <= 0) break;
@@ -984,10 +987,10 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                     if (lines == 0) {
                         cat(resp, cap, "wifi kmsg-file: no matching kernel lines\n");
                     } else {
-                        put(vol, "KMSGWIFI.TXT", (const char *)all);
+                        put(vol, "WLOG.TXT", (const char *)all);
                         cat(resp, cap, "wifi kmsg-file: ");
                         cat_u(resp, cap, (unsigned)lines);
-                        cat(resp, cap, " lines -> KMSGWIFI.TXT\n");
+                        cat(resp, cap, " lines -> WLOG.TXT\n");
                     }
                 }
                 g_result = 1;
@@ -1366,7 +1369,12 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                         msg = msg ? msg + 1 : buf;
                         char *low = msg;
                         int hit = 0;
-                        const char *keys[] = {"wlan", "WCN", "cfg80211", "mac80211", "wifi", "WIFI", "icnss", "remoteproc", "subsys", "modem", "pd-mapper", "tqftp", "hostsvc", "WLFW", "qmi", "QMI", "firmware", "rmtfs", "RMTFS", "storage", "IPA", "ipa"};
+                        const char *keys[] = {"wlan", "WCN", "cfg80211", "mac80211",
+                            "wifi", "WIFI", "icnss", "remoteproc", "subsys", "modem",
+                            "pd-mapper", "tqftp", "hostsvc", "WLFW", "qmi", "QMI",
+                            "firmware", "rmtfs", "RMTFS", "storage", "IPA", "ipa",
+                            "pil", "q6v5", "adsp", "cdsp", "mpss", "servreg", "qrtr",
+                            "cnss", "wlanmdsp", "request_firmware"};
                         for (unsigned k = 0; k < sizeof(keys)/sizeof(keys[0]); k++)
                             if (strstr(msg, keys[k]) != NULL) hit = 1;
                         (void)low;
