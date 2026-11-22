@@ -985,7 +985,10 @@ static unsigned stage_persist_calibration(void)
  * driver accepts (verified on violet: "ON\n" and 2-byte "ON" both EINVAL). */
 static int write_exact(const char *path, const void *buf, size_t len)
 {
-    int fd = open(path, O_WRONLY | O_CLOEXEC);
+    /* Never block the rescue worker on a driver node. A wlan state write can
+     * stall while icnss is still probing; O_NONBLOCK turns that into EAGAIN,
+     * which the caller reports honestly instead of wedging QEAF.CMD. */
+    int fd = open(path, O_WRONLY | O_CLOEXEC | O_NONBLOCK);
     ssize_t w;
     int err;
 

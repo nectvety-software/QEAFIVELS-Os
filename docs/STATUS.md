@@ -3261,3 +3261,18 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   `b3dfba17f8066eb3422f3d4f116cfe2dd1ba244bee62708a6a05bd5e83a2c7de`.
 - Sau flash: `stage=phone-ui`, `wifi find wlan_mac.bin: not found`,
   `wifi discover` → `BLOCKED(0x45_NOT_REGISTERED)`. Trạng thái vẫn trung thực.
+
+
+## Thử đường cnss-daemon thật + binderfs (2026-11-22)
+- Chạy `wifi vendor` trên máy: `hostsvc binder: present`,
+  `cnss-daemon: running pid=560` — daemon **thật từ ROM**, không phải mock.
+  `wifi log` chỉ có warning linkerconfig, không có log QMI debug.
+- Dù CNSS chạy, `wifi discover` vẫn `recv_calls=0 / 0x45 NOT_REGISTERED`.
+  → Chứng minh blocker không phải chỗ "chưa launch daemon", mà là firmware/
+  factory data: modem không publish WLFW service thật.
+- `wifi on` ghi /dev/wlan từ worker có thể treo; đổi `write_exact()` sang
+  `O_NONBLOCK` để EAGAIN được báo thật thay vì kẹt QEAF.CMD.
+- Build/package/flash OK, ảnh sha
+  `55860eec15901cbd9a8cd6fa8d1d43a6dada65113411c2c2e95e485c3cafa3d3`.
+- Kết luận giữ nguyên: không có MAC/calibration thật trên máy này, không
+  tạo giả, WLFW 0x45 vẫn BLOCKED.
