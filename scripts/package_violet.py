@@ -384,6 +384,15 @@ def main(argv=None):
     run([sys.executable, VALIDATE, IMAGE], "validate_bootimg")
     run([sys.executable, AUDIT, IMAGE], "audit_rescue_channel")
 
+    # qeaf-netd gate: the /init ELF must carry the honest net: log markers.
+    # This is additive; the two gates above are unchanged.
+    netd_elf = os.path.join(BUILD, "violet", "vqeaf-init")
+    netd_bin = open(netd_elf, "rb").read()
+    for marker in (b"net: ", b"verified", b"blocked"):
+        if marker not in netd_bin:
+            print("package_violet: netd gate FAILED (missing %r)" % marker)
+            return 1
+
     final_size = os.path.getsize(IMAGE)
     print()
     print("package_violet: %s" % IMAGE)

@@ -88,6 +88,8 @@ SOURCES = [
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_icon_40.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_emoji_28.c"),
     os.path.join(VIOLET, "ui", "wallpaper.c"),
+    os.path.join(ROOT, "platform", "lvgl", "src", "libs", "lz4", "lz4.c"),
+    os.path.join(VIOLET, "netd", "core", "netd_core.c"),
 ]
 
 # Build LVGL 9.4 from the vendored source tree. Hardware-specific display and
@@ -126,6 +128,8 @@ INCLUDES = [
     "-I", os.path.join(ROOT, "framework", "application_api"),
     "-I", os.path.join(ROOT, "framework", "security"),
     "-I", os.path.join(ROOT, "system", "core", "include"),
+    "-I", os.path.join(ROOT, "platform", "lvgl", "src", "libs", "lz4"),
+    "-I", os.path.join(VIOLET, "netd", "core"),
 ]
 
 CFLAGS = ["-O2", "-g", "-Wall", "-Wextra", "-std=c11",
