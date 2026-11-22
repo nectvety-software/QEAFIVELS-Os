@@ -59,6 +59,8 @@ typedef enum {
     VQEAF_PAGE_NTFS_SEARCH,
     VQEAF_PAGE_TASK_MANAGER,
     VQEAF_PAGE_DISK_CLEANUP,
+    /* Native V4L2 camera page (no vendor camera HAL). */
+    VQEAF_PAGE_CAMERA,
     VQEAF_PAGE_COUNT
 } vqeaf_page_t;
 

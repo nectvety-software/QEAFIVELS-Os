@@ -3412,3 +3412,18 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   (`build/screens/device/shot-thumb*.png`) chưa thấy ô thumbnail; cần kiểm tra
   lại LVGL refresh/layer trước khi báo PASS. Ảnh thật vẫn được lưu
   (`SHOT0002.BMP` trong UserData/Pictures).
+
+
+## Triển khải ứng dụng Máy ảnh native (2026-11-22)
+- App "Máy ảnh" trước đây là stub (`VQEAF_PAGE_COUNT`); giờ là trang
+  `VQEAF_PAGE_CAMERA` gọi driver V4L2 thật `vqeaf_camera_probe()`,
+  `vqeaf_camera_create_session()`, `vqeaf_camera_query_caps()`.
+- Kiểm chứng trên máy (ảnh `build/screens/device/camera-app.png`):
+  `cam: v4l2 nodes=5 capture=0 control=2 rotator=1 codec=2`,
+  session cam-req-mgr `0x00170200`, CAM_QUERY_CAP trả số byte thật.
+- Không có node capture: `CAM_ACQUIRE_DEV` sensor/ICP vẫn trả errno 22
+  (đã ghi từ 2026-11-21), ISP/acquire OK. Trang ghi rõ **không có preview,
+  không ảnh giả** — không tuyên bố driver camera hoàn tất.
+- Build OK (11.466.848 B); package/flash OK, ảnh
+  sha `733ce1ba5cbf09098d7f84440433af0ac75ee9e5163da97ca062f0484b5145b4`;
+  `tests.test_qeaf_camera_app` kiểm chứng cấu trúc.

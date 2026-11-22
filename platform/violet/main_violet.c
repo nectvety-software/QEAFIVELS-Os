@@ -981,6 +981,7 @@ static int ui_page_hook(const char *name)
     else if(strcmp(name, "wifi") == 0) page = VQEAF_PAGE_WIFI;
     else if(strcmp(name, "gallery") == 0) page = VQEAF_PAGE_GALLERY;
     else if(strcmp(name, "video") == 0) page = VQEAF_PAGE_VIDEO;
+    else if(strcmp(name, "camera") == 0) page = VQEAF_PAGE_CAMERA;
     else return -1;
     ui_page_request = (int)page;
     return 1;

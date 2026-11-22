@@ -30,6 +30,7 @@
 #include "vqeaf_tools_ui.h"
 #include "vqeaf_media.h"
 #include "vqeaf_video.h"
+#include "vqeaf_camera.h"
 #include "vqeaf_qeapp.h"
 #include "vqeaf_qeapp_device.h"
 #include <vqeaf/settings.h>
@@ -1013,7 +1014,7 @@ static const app_def_t home_apps[] = {
     { VQEAF_SYM_MESSAGE,      "Tin nhắn",   0x123A44, 0x49C8E8, VQEAF_PAGE_COUNT, VQEAF_APP_ICON_MESSAGES },
     { VQEAF_SYM_CONTACTS,     "Danh bạ",    0x3A2A16, 0xF5B34A, VQEAF_PAGE_COUNT, VQEAF_APP_ICON_CONTACTS },
     { VQEAF_SYM_LANGUAGE,     "Trình duyệt",0x1A2A46, 0x6FA8FF, VQEAF_PAGE_BROWSER, VQEAF_APP_ICON_BROWSER },
-    { VQEAF_SYM_CAMERA_ALT,   "Máy ảnh",    0x2C1B3E, 0xC79BFF, VQEAF_PAGE_COUNT, VQEAF_APP_ICON_CAMERA },
+    { VQEAF_SYM_CAMERA_ALT,   "Máy ảnh",    0x2C1B3E, 0xC79BFF, VQEAF_PAGE_CAMERA, VQEAF_APP_ICON_CAMERA },
     { VQEAF_SYM_PHOTO_LIBRARY,"Thư viện",   0x3A1A2A, 0xFF8FB4, VQEAF_PAGE_GALLERY, VQEAF_APP_ICON_GALLERY },
     { VQEAF_SYM_MUSIC_NOTE,   "Nhạc",       0x103A26, 0x4BE08A, VQEAF_PAGE_MUSIC, VQEAF_APP_ICON_MUSIC },
     { VQEAF_SYM_MOVIE,        "Video",      0x3A1A1A, 0xFF7A7A, VQEAF_PAGE_VIDEO, VQEAF_APP_ICON_VIDEO },
@@ -1024,7 +1025,7 @@ static const app_def_t all_apps[] = {
     { VQEAF_SYM_MESSAGE,      "Tin nhắn",   0x123A44, 0x49C8E8, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_MESSAGES },
     { VQEAF_SYM_CONTACTS,     "Danh bạ",    0x3A2A16, 0xF5B34A, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_CONTACTS },
     { VQEAF_SYM_LANGUAGE,     "Trình duyệt",0x1A2A46, 0x6FA8FF, VQEAF_PAGE_BROWSER, VQEAF_APP_ICON_BROWSER },
-    { VQEAF_SYM_CAMERA_ALT,   "Máy ảnh",    0x2C1B3E, 0xC79BFF, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_CAMERA },
+    { VQEAF_SYM_CAMERA_ALT,   "Máy ảnh",    0x2C1B3E, 0xC79BFF, VQEAF_PAGE_CAMERA,    VQEAF_APP_ICON_CAMERA },
     { VQEAF_SYM_PHOTO_LIBRARY,"Thư viện",   0x3A1A2A, 0xFF8FB4, VQEAF_PAGE_GALLERY,    VQEAF_APP_ICON_GALLERY },
     { VQEAF_SYM_MUSIC_NOTE,   "Nhạc",       0x103A26, 0x4BE08A, VQEAF_PAGE_MUSIC,    VQEAF_APP_ICON_MUSIC },
     { VQEAF_SYM_MOVIE,        "Video",      0x3A1A1A, 0xFF7A7A, VQEAF_PAGE_VIDEO,    VQEAF_APP_ICON_VIDEO },
@@ -3363,6 +3364,59 @@ static void build_video(lv_obj_t *content)
     vqeaf_label(card, line, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
 }
 
+/* ---- native camera page --------------------------------------------------- */
+static void build_camera(lv_obj_t *content)
+{
+    lv_obj_t *root = page_root(content);
+    char buf[3072], err[160];
+    int32_t session = 0;
+    int n;
+
+    detail_header(root, "Máy ảnh");
+    lv_obj_t *card = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(card, 14, 0);
+    lv_obj_set_style_pad_row(card, 12, 0);
+
+    n = vqeaf_camera_probe(buf, (int)sizeof(buf));
+    lv_obj_t *title = vqeaf_label(card, "Thiết bị V4L2 thật", VQEAF_FONT_TITLE,
+                                  VQEAF_C_TEXT);
+    lv_obj_set_width(title, lv_pct(100));
+    if(n > 0) {
+        lv_obj_t *list = vqeaf_label(card, buf, VQEAF_FONT_CAPTION,
+                                     VQEAF_C_TEXT_DIM);
+        lv_obj_set_width(list, lv_pct(100));
+        lv_label_set_long_mode(list, LV_LABEL_LONG_MODE_WRAP);
+    } else {
+        vqeaf_label(card, "Không đọc được node V4L2.", VQEAF_FONT_BODY,
+                    VQEAF_C_TEXT_DIM);
+    }
+
+    if(vqeaf_camera_create_session(&session, err, (int)sizeof(err)) == 0) {
+        char line[160];
+        snprintf(line, sizeof(line), "Phiên cam-req-mgr: 0x%08x",
+                 (unsigned)session);
+        vqeaf_label(card, line, VQEAF_FONT_BODY, VQEAF_C_TEXT);
+    } else {
+        char line[192];
+        snprintf(line, sizeof(line), "Phiên cam-req-mgr: từ chối (%s)", err);
+        vqeaf_label(card, line, VQEAF_FONT_BODY, VQEAF_C_TEXT_DIM);
+    }
+
+    {
+        int caps = vqeaf_camera_query_caps(buf, (int)sizeof(buf));
+        char line[192];
+        if(caps > 0) {
+            snprintf(line, sizeof(line), "CAM_QUERY_CAP: %d byte trả về", caps);
+            vqeaf_label(card, line, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+        }
+    }
+    vqeaf_label(card,
+        "Chưa có node capture (capture=0): CAM_ACQUIRE_DEV sensor/ICP bị kernel "
+        "từ chối. Không có preview hay ảnh chụp giả.",
+        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+}
+
 /* ---- gallery / library --------------------------------------------------- */
 static void gallery_open_image(const char *path);
 static int view_decode_jpg(const uint8_t *data, size_t len);
@@ -3473,6 +3527,7 @@ static const char *page_name(vqeaf_page_t page)
     case VQEAF_PAGE_NOTES: return "Ghi chú";
     case VQEAF_PAGE_MUSIC: return "Nhạc";
     case VQEAF_PAGE_VIDEO: return "Video";
+    case VQEAF_PAGE_CAMERA: return "Máy ảnh";
     case VQEAF_PAGE_WIFI: return "Wi-Fi";
     case VQEAF_PAGE_M3: return "Thiết kế QEAF";
     case VQEAF_PAGE_APPS_EDIT: return "Sửa màn hình chính";
@@ -8445,6 +8500,7 @@ void vqeaf_pages_build(vqeaf_page_t page, lv_obj_t *content)
     case VQEAF_PAGE_NOTES:    build_notes(content); break;
     case VQEAF_PAGE_MUSIC:    build_music(content); break;
     case VQEAF_PAGE_VIDEO:    build_video(content); break;
+    case VQEAF_PAGE_CAMERA:   build_camera(content); break;
     case VQEAF_PAGE_GALLERY:  build_gallery(content); break;
     case VQEAF_PAGE_INSTALLER: build_installer(content); break;
     case VQEAF_PAGE_RECENTS:  build_recents(content); break;
