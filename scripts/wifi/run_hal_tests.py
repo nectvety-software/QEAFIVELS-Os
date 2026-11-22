@@ -37,21 +37,27 @@ def compiler():
     raise SystemExit("no C compiler found (set ZIG or install gcc)")
 
 
-def main():
-    run([sys.executable, str(TESTS / "gen_dtb_fixture.py")], "generate FIXTURE")
-    OUT.mkdir(parents=True, exist_ok=True)
-    exe = OUT / ("test_wifi_hal.exe" if os.name == "nt" else "test_wifi_hal")
-    cc = compiler()
-    srcs = [
-        ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_device.c",
-        ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_firmware.c",
-        TESTS / "test_wifi_hal.c",
-    ]
-    run(cc + ["-std=c11", "-Wall", "-Wextra", "-O1",
-              "-I", str(ROOT / "kernel" / "include")] +
-        [str(s) for s in srcs] + ["-o", str(exe)], "compile HAL tests")
-    p = run([str(exe), str(FIXTURE)], "run HAL tests")
+def build_and_run(name, srcs, args):
+    exe = OUT / (name + (".exe" if os.name == "nt" else ""))
+    run(compiler() + ["-std=c11", "-Wall", "-Wextra", "-O1",
+                      "-I", str(ROOT / "kernel" / "include")] +
+        [str(s) for s in srcs] + ["-o", str(exe)], "compile " + name)
+    p = run([str(exe)] + args, "run " + name)
     sys.stdout.write(p.stdout)
+
+
+def main():
+    run([sys.executable, str(TESTS / "gen_dtb_fixture.py")], "generate DTB FIXTURE")
+    run([sys.executable, str(TESTS / "gen_qrtr_qmi_fixtures.py")],
+        "generate QRTR/QMI FIXTUREs")
+    OUT.mkdir(parents=True, exist_ok=True)
+    drv = ROOT / "kernel" / "drivers" / "wifi" / "wcn3990"
+    build_and_run("test_wifi_hal", [
+        drv / "wifi_device.c", drv / "wifi_firmware.c",
+        TESTS / "test_wifi_hal.c"], [str(FIXTURE)])
+    build_and_run("test_qrtr_qmi", [
+        drv / "qrtr_transport.c", drv / "qmi_service.c",
+        TESTS / "test_qrtr_qmi.c"], [str(TESTS / "fixtures")])
     return 0
 
 

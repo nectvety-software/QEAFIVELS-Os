@@ -71,6 +71,8 @@ def build():
                ROOT / "kernel" / "drivers" / "wcn3990_phase2.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_device.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_firmware.c",
+               ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "qrtr_transport.c",
+               ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "qmi_service.c",
                ROOT / "system" / "core" / "driver.c",
                ROOT / "system" / "core" / "capability.c",
                ROOT / "system" / "core" / "block.c"]

@@ -3105,3 +3105,17 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   `python -m unittest tests.wifi.test_wifi_hal` -> 3 tests OK (FIXTURE DTB).
 - Build kernel AArch64: OK, ELF 392.488 B (wifi_device.o + wifi_firmware.o).
 - Chưa có bằng chứng phần cứng: WLFW 0x45 chưa publish, wlan0 vẫn absent.
+
+
+## Wi-Fi Giai đoạn 4 — QRTR/QMI native (2026-11-22)
+- Thêm client QRTR/QMI native, độc lập với codec BSD trong hosttools:
+  `qrtr_transport.c` (control 20-byte LE, server table, discovery qua
+  NEW_LOOKUP/NEW_SERVER thật) + `qmi_service.c` (header 7B, TLV, txn id,
+  matching, timeout/retry, reset). Không giả service/response.
+- Test C host với fixture gắn nhãn FIXTURE: `test_qrtr_qmi: ALL OK`
+  (service not found, timeout + retry, sai txn, sai độ dài, disconnect,
+  CNSS reset, indication). `tests.wifi.test_qrtr_qmi` -> 4 tests OK.
+- Build kernel AArch64: OK, ELF 421.056 B. Đã thay musl memmove bằng vòng lặp
+  để tránh kéo ~900 KB debug info vào ELF freestanding.
+- Docs: `docs/wifi/VIOLET_QRTR_QMI.md`.
+- Chưa có bằng chứng phần cứng: WLFW 0x45 vẫn chưa publish, wlan0 absent.
