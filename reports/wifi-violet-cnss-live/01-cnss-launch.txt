@@ -1,0 +1,187 @@
+# 2026-11-22T06:59:38
+
+===== wifi vendor =====
+seq=97
+### wifi vendor
+wifi vendor: started (see wifi log)
+wifi: /sys/class/net: ip_vti0, bonding_masters, lo, bond0, dummy0, ip6_vti0, sit0, ip6tnl0
+wifi: wlan0 present: no
+wifi: dmesg (63 lines): essfully subsys-pil-tz aae0000.qcom,venus: for venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz aae0000.qcom,venus: for md_venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus minidump-id not found for ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for md_ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,kgsl-hyp: for a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp subsys-pil-tz soc:qcom,kgsl-hyp: for md_a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp msm_sharedmem: msm_sharedmem_probe: Device created for client 'rmtfs' usbcore: registered new interface driver usb-storage wlan_hdd_state wlan major(500) initialized iommu: Adding device soc:usb_audio_qmi_dev to group 27 ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource rmnet_ipa3 started initialization RNDIS_IPA module is loaded. subsys-pil-tz 62400000.qcom,lpass: adsp: loading from 0x0000000095300000 to 0x0000000097100000
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 8300000.qcom,turing: cdsp: loading from 0x0000000093500000 to 0x0000000095300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 8300000.qcom,turing: cdsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 8300000.qcom,turing: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-restart: __subsystem_get(): Changing subsys fw_name to venus subsys-pil-tz aae0000.qcom,venus: venus: loading from 0x0000000092e00000 to 0x0000000093300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz 8300000.qcom,turing: cdsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing sysmon-qmi: ssctl_new_server: Connection established between QMI handle and cdsp's SSCTL service subsys-pil-tz 62400000.qcom,lpass: adsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 62400000.qcom,lpass: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 62400000.qcom,lpass: adsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz aae0000.qcom,venus: venus: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus sysmon-qmi: ssctl_new_server: Connection established between QMI handle and adsp's SSCTL service firmware tas2563_uCDSP.bin: _request_firmware_load: firmware state wait timeout: rc = -110
+ SUBSYSTEM=firmware
+ DEVICE=+firmware:tas2563_uCDSP.bin tas2563 3-004c: tas2563_uCDSP.bin firmware is not loaded.
+ SUBSYSTEM=i2c
+ DEVICE=+i2c:3-004c wlan: Loading driver v5.2.022.5U ipa ipa3_uc_reg_rdyCB:3134 bad parm. inout=00000000ef644505 
+wifi bring: stage=1 vendor=1 modem=1 mounted=1 copied=0 files=0 persist=1 links=240 wlan=0 modem_started=0 retries=0
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: running pid=547
+hostsvc qwlfgw: not started
+hostsvc binder: present
+hostsvc wlan: wlan ON refused: Invalid argument (on=0 errno=22)
+wifi note: modem not started (opt-in; `wifi up` boots it)
+wifi modem: fd=-1 rc=0 thread_done=0
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: running pid=547
+hostsvc qwlfgw: not started
+hostsvc binder: present
+hostsvc wlan: wlan ON refused: Invalid argument (on=0 errno=22)
+qrtr-ns: nid=0x1 bound=1 lookups=26 servers=24 nodes=3 fwd=82 rebinds=0 short=0
+qrtr-ns pkts: hello=2 lookup=29 server=43 del_server=0 bye=0 del_client=15
+qrtr-ns last: lookup 0x45 from port 0x4004
+qrtr-ns lookups: 0x40/0x1->0x4025 0x45/0x0->0x4026 0x2b/0x14->0x4027 0x2b/0x12->0x4028 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x2b/0x17->0x402a 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x18/0x0->0x403b 0x18/0x43->0x403c 0x301/0x0->0x403d 0x18/0x1->0x403f 0x42/0x0->0x4042 0x0/0x0->0x4000 0x39/0x0->0x4001
+qrtr-ns servers: 0wifi p82: not FAT: unknown bps=512 spc=32 fats=2 root=512 fat=49 total=0
+wifi firmware_class.path: /vendor/firmware_mnt/image
+wifi wlan fwpath: /vendor/firmware
+wifi wlan params: country_code=(null) con_mode=0 qdf_log_dump_at_kernel_enable=Y enable_11d=-1 enable_dfs_chan_scan=-1 fwpath=/vendor/firmware qdf_log_flush_timer_period=0 timer_multiplier=1 con_mode_epping=0 con_mode_ftm=0
+wifi boot:
+wifi rproc: absent
+wifi image: adspr.jsn, adsps.jsn, adspua.jsn, cdspr.jsn, qdsp6m.qdb, modemr.jsn (273 entries)
+wifi pil files: modem.b00 modem.b01 modem.b02 modem.b03 modem.b04 modem.b05 modem.b06 modem.b07 modem.b08 modem.b09 modem.b10 modem.b11 modem.b12 modem.b14 modem.b15 modem.b16 modem.b17 modem.b18 modem.b20 modem.b21 modem.b22 modem.b23 modem.b24 modem.b25 modem.b26 modem.b27 modem.b28 modem.b29 modem.mdt wlanmdsp.mbn
+wifi wlan0 mac: absent
+### echo devcheck1795305537346
+devcheck1795305537346
+
+
+===== wifi svc =====
+seq=98
+### wifi svc
+wifi bring: stage=1 vendor=1 modem=1 mounted=1 copied=0 files=0 persist=1 links=240 wlan=0 modem_started=0 retries=0
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: running pid=547
+hostsvc qwlfgw: not started
+hostsvc binder: present
+hostsvc wlan: wlan ON refused: Invalid argument (on=0 errno=22)
+wifi note: modem not started (opt-in; `wifi up` boots it)
+wifi modem: fd=-1 rc=0 thread_done=0
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: running pid=547
+hostsvc qwlfgw: not started
+hostsvc binder: present
+hostsvc wlan: wlan ON refused: Invalid argument (on=0 errno=22)
+qrtr-ns: nid=0x1 bound=1 lookups=26 servers=24 nodes=3 fwd=82 rebinds=0 short=0
+qrtr-ns pkts: hello=2 lookup=29 server=43 del_server=0 bye=0 del_client=15
+qrtr-ns last: lookup 0x45 from port 0x4004
+qrtr-ns lookups: 0x40/0x1->0x4025 0x45/0x0->0x4026 0x2b/0x14->0x4027 0x2b/0x12->0x4028 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x2b/0x17->0x402a 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x18/0x0->0x403b 0x18/0x43->0x403c 0x301/0x0->0x403d 0x18/0x1->0x403f 0x42/0x0->0x4042 0x0/0x0->0x4000 0x39/0x0->0x4001
+qrtr-ns servers: 0wifi p82: not FAT: unknown bps=512 spc=32 fats=2 root=512 fat=49 total=0
+wifi firmware_class.path: /vendor/firmware_mnt/image
+wifi wlan fwpath: /vendor/firmware
+wifi wlan params: country_code=(null) con_mode=0 qdf_log_dump_at_kernel_enable=Y enable_11d=-1 enable_dfs_chan_scan=-1 fwpath=/vendor/firmware qdf_log_flush_timer_period=0 timer_multiplier=1 con_mode_epping=0 con_mode_ftm=0
+wifi boot:
+wifi rproc: absent
+wifi image: adspr.jsn, adsps.jsn, adspua.jsn, cdspr.jsn, qdsp6m.qdb, modemr.jsn (273 entries)
+wifi pil files: modem.b00 modem.b01 modem.b02 modem.b03 modem.b04 modem.b05 modem.b06 modem.b07 modem.b08 modem.b09 modem.b10 modem.b11 modem.b12 modem.b14 modem.b15 modem.b16 modem.b17 modem.b18 modem.b20 modem.b21 modem.b22 modem.b23 modem.b24 modem.b25 modem.b26 modem.b27 modem.b28 modem.b29 modem.mdt wlanmdsp.mbn
+wifi wlan0 mac: absent
+qrtr-ns: nid=0x1 bound=1 lookups=26 servers=24 nodes=3 fwd=82 rebinds=0 short=0
+qrtr-ns pkts: hello=2 lookup=29 server=43 del_server=0 bye=0 del_client=15
+qrtr-ns last: lookup 0x45 from port 0x4004
+qrtr-ns lookups: 0x40/0x1->0x4025 0x45/0x0->0x4026 0x2b/0x14->0x4027 0x2b/0x12->0x4028 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x2b/0x17->0x402a 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x1->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x1001/0x0->0x4029 0x18/0x0->0x403b 0x18/0x43->0x403c 0x301/0x0->0x403d 0x18/0x1->0x403f 0x42/0x0->0x4042 0x0/0x0->0x4000 0x39/0x0->0x4001
+qrtr-ns servers: 0x1001/0x1@0x1:0x0 0x1001/0x0@0x1:0x0 0x34/0x1@0x1:0x0 0x41d/0x0@0x1:0x0 0x1000/0x0@0x0:0x0 0x40/0x1@0x0:0x0 0xe/0x0@0x0:0x0 0x42/0x4c@0xa:0x3 0x2b/0x17@0xa:0x2 0xf/0x40@0xa:0x1 0x33/0xd@0xa:0x6 0x1001/0x1@0xa:0xa 0x18/0x43@0xa:0xd 0x2b/0x14@0x5:0x2 0xf/0x20@0x5:0x1 0x42/0x4a@0x5:0x3 0x33/0x5@0x5:0x6 0x18/0x1@0x5:0x8 0xf/0x21@0x5:0xa 0xf/0x22@0x5:0xb 0x33/0xc@0x5:0xe 0x190/0x0@0x5:0xf 0x1002/0x0@0x5:0x10 0x301/0x0@0x5:0x11
+qrtr-ns nodes: 0x0 0xa 0x5
+wifi: /sys/class/net: ip_vti0, bonding_masters, lo, bond0, dummy0, ip6_vti0, sit0, ip6tnl0
+wifi: wlan0 present: no
+wifi: dmesg (63 lines): essfully subsys-pil-tz aae0000.qcom,venus: for venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz aae0000.qcom,venus: for md_venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus minidump-id not found for ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for md_ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,kgsl-hyp: for a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp subsys-pil-tz soc:qcom,kgsl-hyp: for md_a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp msm_sharedmem: msm_sharedmem_probe: Device created for client 'rmtfs' usbcore: registered new interface driver usb-storage wlan_hdd_state wlan major(500) initialized iommu: Adding device soc:usb_audio_qmi_dev to group 27 ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource rmnet_ipa3 started initialization RNDIS_IPA module is loaded. subsys-pil-tz 62400000.qcom,lpass: adsp: loading from 0x0000000095300000 to 0x0000000097100000
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 8300000.qcom,turing: cdsp: loading from 0x0000000093500000 to 0x0000000095300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 8300000.qcom,turing: cdsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 8300000.qcom,turing: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-restart: __subsystem_get(): Changing subsys fw_name to venus subsys-pil-tz aae0000.qcom,venus: venus: loading from 0x0000000092e00000 to 0x0000000093300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz 8300000.qcom,turing: cdsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing sysmon-qmi: ssctl_new_server: Connection established between QMI handle and cdsp's SSCTL service subsys-pil-tz 62400000.qcom,lpass: adsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 62400000.qcom,lpass: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 62400000.qcom,lpass: adsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz aae0000.qcom,venus: venus: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus sysmon-qmi: ssctl_new_server: Connection established between QMI handle and adsp's SSCTL service firmware tas2563_uCDSP.bin: _request_firmware_load: firmware state wait timeout: rc = -110
+ SUBSYSTEM=firmware
+ DEVICE=+firmware:tas2563_uCDSP.bin tas2563 3-004c: tas2563_uCDSP.bin firmware is not loaded.
+ SUBSYSTEM=i2c
+ DEVICE=+i2c:3-004c wlan: Loading driver v5.2.022.5U ipa ipa3_uc_reg_rdyCB:3134 bad parm. inout=00000000ef644505 
+wifi bring: stage=1 vendor=1 modem=1 mounted=1 copied=0 files=0 persist=1 links=240 wlan=0 modem_started=0 retries=0
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: running pid=547
+hostsvc qwlfgw: not started
+hostsvc binder: present
+hostsvc wlan: wlan ON refused: Invalid argument (on=0 errno=22)
+wifi note: modem not started (opt-in; `wifi up` boots it)
+wifi modem: fd=-1 rc=0 thread_done=0
+hostsvc pd-mapper: running pid=484
+hostsvc pd-listen: running pid=485
+hostsvc tqftpserv: running pid=487
+hostsvc rmtfs: running pid=488
+hostsvc wlfwd: not started
+hostsvc cnss-daemon: running pid=547
+hostsvc qwlfgw: not started
+hostsvc binder: present
+hostsvc wlan: wlan ON refused: Invalid argument (on=0 errno=22)
+qrtr-ns: nid=0x1 bound=1 loo

@@ -674,6 +674,10 @@ static int ui_page_hook(const char *name)
     else if(strcmp(name, "defaultapps") == 0)
         page = VQEAF_PAGE_DEFAULT_APPS;
     else if(strcmp(name, "terminal") == 0) page = VQEAF_PAGE_TERMINAL;
+    else if(strcmp(name, "ntfs") == 0) page = VQEAF_PAGE_NTFS_SEARCH;
+    else if(strcmp(name, "tasks") == 0) page = VQEAF_PAGE_TASK_MANAGER;
+    else if(strcmp(name, "cleanup") == 0) page = VQEAF_PAGE_DISK_CLEANUP;
+    else if(strcmp(name, "wifi") == 0) page = VQEAF_PAGE_WIFI;
     else return -1;
     ui_page_request = (int)page;
     return 1;

@@ -2930,3 +2930,115 @@ Pham vi nguoi dung chon: `out/` logs, docs + README, `.agents` policy, vendored 
 - Gates: `test_violet_caps.py` ALL OK (11 groups), `build_violet.py` OK,
   `verify_native_wifi_package.py` PASS (136 entries), unit tests 85/85 OK,
   `scripts/test.py` ALL OK including 12/12 ctest and QEMU captures.
+
+
+## Wi-Fi UI: scan/connect + mã hóa + Gateway (2026-11-21)
+- `vqeaf_wifi_net_t` thêm `enc` (OPEN/WEP/WPA/WPA2_PSK/WPA_WPA2), parse từ
+  `IWEVGENIE` (RSN IE 0x30, WPA vendor 00:50:F2 type 01/02) và WEXT alg hint.
+- Settings > Wi-Fi: mỗi mạng hiển thị **Tên SSID**, **loại mã hóa**
+  (`WPA2-PSK`, `WPA-PSK`, `Mở...`) và RSSI. Mạng bảo mật → modal nhập mật khẩu
+  bằng IME; mạng mở → gọi `vqeaf_wifi_connect(ssid, "")` trực tiếp.
+- Thêm dòng **Chế độ Gateway** (tap để đổi `dhcp`/`static`, lưu trong
+  Settings Service key `wifi.gateway`). Hiện text `DHCP (chờ udhcpc)` — không
+  giả đã có DHCP client.
+- Terminal: `scan` (liệt kê SSID/mã hóa/RSSI), `gateway [dhcp|static]`,
+  `connect <ssid>` (mạng mở; mạng bảo mật bắt buộc dùng Settings để nhập PSK
+  qua bàn phím, không lưu PSK vào lịch sử lệnh).
+- Rescue hook `page wifi` để kiểm chứng nhanh.
+- Trên máy: `page wifi` hiển thị đúng `Không có giao diện mạng (chưa tạo
+  netdev/firmware)` và `Chế độ Gateway: DHCP (chờ udhcpc)` — **không có danh
+  sách mạng giả** vì wlan0 chưa tồn tại. Build 11.151.008 B, flash sha256
+  `72d3b71d5e49154f8a0320c4a0839d86c9cf4d2de073dc78adb4047771431884`.
+  `test_m3.py`/`test_ime.py` ALL OK.
+
+
+## Chẩn đoán BSP Wi-Fi violet theo chuỗi Qualcomm (2026-11-21)
+Raw log: `reports/wifi-bsp-diag/*.txt`.
+
+### Xác minh phần cứng — giả thuyết ath10k/ath11k SAI
+- SoC: **SM6150** (Snapdragon 675), kernel `4.14.215-azure-Pixel+`.
+- WiFi: **WCN3990 với driver vendor `icnss` + `qcacld-3.0`**, KHÔNG phải
+  `ath10k_snoc` / `ath11k`:
+  - `/sys/module/icnss` tồn tại; `/sys/bus/platform/drivers/icnss/18800000.qcom,icnss` tồn tại.
+  - `/sys/bus/platform/drivers/ath10k_snoc` absent.
+  - dmesg: `icnss: Platform driver probed successfully`,
+    `wlan_hdd_state wlan major(500) initialized`.
+- Vì vậy không áp dụng các bước "ath10k firmware-5.bin/board-2.bin" cho máy này.
+  WLFW `0x45` vẫn đúng trong stack vendor (cnss-daemon là server).
+
+### Bảng chuỗi bị đứt
+| Bước | Trạng thái | Bằng chứng |
+|---|---|---|
+| 1 Modem/remoteproc | **Không có sysfs remoteproc** (stock dùng `subsys-pil-tz`, không phải remoteproc); modem chỉ boot khi `wifi up`: `modem: Brought out of reset`, `Power/Clock ready`, `qrtr: Modem QMI Readiness RX cmd:0x2` | `01-remoteproc.txt`, `03-dmesg.txt` |
+| 2 QRTR | OK: `qrtr-ns` chạy, có servers `0x42`, `0x2b`, ...; `qrtr-lookup 0x45` gửi được | `02-qrtr-lookup.txt` |
+| 3 userspace services | pd-mapper/pd-listen/tqftpserv/rmtfs **đều running**; binder present; cnss-daemon running sau `wifi vendor`. NHƯNG bring-up thường bị chặn bởi `p74 not mounted or factory WLAN MAC absent/invalid` | `04-services.txt` |
+| 4 WLFW 0x45 publish | **FAIL**: `lookup 0x45/0x1/0x0 sent` → `recvfrom(): Resource temporarily unavailable` lặp; không có NEW_SERVER 0x45 | `02-qrtr-lookup.txt` |
+| 5 driver tạo wlan0 | **FAIL**: `wifi net` không có `wlan0`; driver là icnss/qcacld chờ firmware-ready | `04-services.txt`, `05-firmware.txt` |
+
+### Nguyên nhân sớm nhất
+1. **persist (p74) không có factory WLAN MAC / calibration** (`wlan_mac.bin`, `wlfw_cal_*` không tìm thấy) → `find_factory_mac()` fail → CNSS/WLFW không start trong luồng bring-up. Đây là blocker cần dữ liệu thật từ máy, KHÔNG phải lỗi code có thể bypass.
+2. **SERVREG listener chưa chứng minh đăng ký**: log pd-listen chỉ có `watching real QRTR service 0x42`, không có dòng `result=0 error=0`.
+3. **Modem reset** ~15–20 s sau `wifi up` (lỗi độc lập, đã đo ở bản trước).
+
+### Repo: cái có / cái thiếu
+- Có: `kernel/arch/x86_64/pci.c`, `kernel/drivers/virtio_blk.c`, `virtio_net.c` (M1), `wcn3990_snoc.c`/`wcn3990_phase2.c` (stub, fail-closed), `platform/violet/wifi_bringup.c`, host tools (qrtr/rmtfs/pd-mapper/tqftpserv/wlfwd/qwlfgw).
+- **Không có**: violet DTS/defconfig trong repo (chỉ có MT689x), init script dùng bởi PID1 (init tự viết, không chạy `.rc`), `udhcpc`/hostap source, thư mục `/lib/firmware/ath10k/WCN3990/...`, firmware board data per-unit.
+- Firmware WCN3990 thật (`wlanmdsp.mbn`, `BDWLAN.*`, `regdb.bin`) đã staged ở `/lib/firmware`; modem firmware ở `/vendor/firmware_mnt/image`.
+
+### Hướng sửa tiếp theo (mỗi lần một cái)
+1. **Cần user cung cấp bản dump p74 thật** từ chính máy: trong recovery đáng tin, `dd if=/dev/block/mmcblk0p74 of=/sdcard/persist.img`, mount ext4 ở host, lấy `wlan/wlan_mac.bin` và `wlfw_cal_*.bin`, hash rồi restore có backup. Không tự tạo MAC/calibration.
+2. Sau khi có MAC thật: sửa `pd-listen` để xử lý cả endpoint 0x42 đã tồn tại trước khi watch (hiện chỉ nghe NEW_SERVER), kiểm tra log phải có `result=0 error=0`.
+3. Chỉ sau đó mới đánh giá lại WLFW 0x45; không fake QMI server.
+
+
+## Chạy cnss-daemon thật + thu log trực tiếp (2026-11-22)
+Raw: `reports/wifi-violet-cnss-live/*.txt`.
+- QEAF boot: `stage=loop`, `ui=1`, `drm=1`.
+- Binder: `/proc/filesystems` có `nodev binder`; `/proc/misc` không có binder;
+  `/dev/binder -> /dev/binderfs/binder`; `hostsvc binder: present`;
+  `cnss-daemon: running pid=547`, `/proc/547/fd/12 -> /dev/binderfs/vndbinder`.
+- stdout/stderr (`/tmp/hostsvc-cnss-daemon.log`) chỉ có 2 dòng warning
+  linkerconfig, **không có debug WLFW** (kernel không có Android logger).
+- `qrtr-lookup 0x45`: `lookup 0x45/0x1/0x0 sent` → `recvfrom(): Resource
+  temporarily unavailable` lặp; **không có server 0x45**.
+- MSA/DMA dmesg: `wlan_msa_region@93900000` reserved-dma-pool,
+  `iommu: Adding device soc:ipa_smmu_wlan to group 3`,
+  `icnss 18800000.qcom,icnss: for wcss_msa0 segments only will be dumped`,
+  `icnss: Platform driver probed successfully`,
+  `wlan_hdd_state wlan major(500) initialized`. Không có firmware-ready.
+- `wlan0`: vẫn absent; `wifi net` chỉ có lo/dummy/bond/tunnel. Không scan
+  được mạng thật, không connect, không DHCP/ping.
+- Kết luận: binder và cnss-daemon đã chạy thật, nhưng WLFW `0x45` vẫn không
+  publish → driver không tạo netdev. Không sửa code trong đợt này; giữ nguyên
+  blocker persist/MAC/calibration + SERVREG + modem reset như đã báo cáo.
+
+
+## QEAFRESCUE v3 (2026-11-22)
+- Đã thêm `scripts/qeafrescue_v3.py`: service layer thật trên nền v2 —
+  PermissionManager, StorageManager, RecoveryLogService, TransactionJournal,
+  ArchiveVerifier, BackupService, RestoreService, text Recovery UI.
+- `tests/test_qeafrescue_v3.py`: **27 tests OK**. CLI smoke test backup →
+  verify → restore dry-run → logs → export TXT → storage → interrupted đều chạy
+  với dữ liệu thật trong temp dir.
+- Partition Installer vẫn LOCKED; test `test_no_partition_write_api` chặn mọi
+  API ghi phân vùng/fastboot flash/dd/erase/format.
+- Recovery UI đồ họa trên thiết bị: **NOT IMPLEMENTED** (UEFI C recovery hiện
+  tại không có file I/O; service v3 chạy host-side). RAM-BOOT: **NOT TESTED** vì
+  `qeafrescue.py detect` không thấy Fastboot device. Không flash/reboot máy.
+- Chi tiết: `docs/QEAFRESCUE_V3_ARCHITECTURE.md`.
+
+
+## VQEAF Midnight V2 — áp dụng vào mã nguồn thật (2026-11-22)
+- `platform/violet/ui/vqeaf_theme.c`: default theme = **DARK**; dark palette
+  sang Midnight Navy `#070B20`, Deep Blue `#101A3A`, Neon Violet `#8157FF`,
+  Electric Blue `#287BFF`, Cyan Glow `#25D9F2`, text `#F4F5FF` / `#AAB2D0`.
+- `vqeaf_glass_surface()` chuyển từ tím cũ sang gradient Deep Blue → Violet,
+  viền Cyan, bóng navy; `vqeaf_wallpaper_text_color()` dùng đúng Primary Text.
+- Giữ nguyên pages/widgets/IME; không thêm UI framework thứ hai. Design spec:
+  `docs/design/VQEAF_MIDNIGHT_V2.md`.
+- Build violet OK (11.249.320 B). `test_m3.py` / `test_ime.py` ALL OK;
+  `test_violet_shell.py` còn 13 FAIL cũ (search placeholder + IME icon), không
+  phải do palette.
+- Flash ảnh sha256 `718e8e7ef75429175d45563b691b139cec3720bb23c356b4e0685400490ec83a`.
+  Ảnh chụp thật trên máy `build/screens/device/midnight_home.png` xác nhận
+  nền navy, accent violet/cyan, glass cards — Midnight V2 đã chạy trên thiết bị.

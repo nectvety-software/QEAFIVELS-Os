@@ -46,6 +46,9 @@ required = [
     "vendor/etc/wifi/WCNSS_qcom_cfg.ini",
     "lib/firmware/bdwlan.bin", "lib/firmware/regdb.bin",
     "lib/firmware/wlanmdsp.mbn",
+    "lib/firmware/wlan/qca_cld/bdwlan.bin",
+    "lib/firmware/wlan/qca_cld/regdb.bin",
+    "lib/firmware/wlan/qca_cld/WCNSS_qcom_cfg.ini",
     "etc/qeaf/radio-firmware-status.txt",
 ]
 missing = [name for name in required if name not in entries]

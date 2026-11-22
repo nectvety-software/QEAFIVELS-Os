@@ -3,8 +3,22 @@
 ## Framework modules
 Application lifecycle, event loop, graphics, input, touch gestures, windows, compositor, widgets, layout, typography, animation, accessibility, notifications, audio, storage, network and theme APIs.
 
-## Design system
-Original VQEAF identity: graphite surfaces, restrained teal/cyan accent, readable typography, rounded geometry, consistent spacing, adaptive layouts, accessible contrast and low-power transitions. Do not clone vendor mobile-platform or iOS screens.
+## Design system — VQEAF Midnight V2
+Canonical spec: `docs/design/VQEAF_MIDNIGHT_V2.md`. Independent identity:
+Midnight Navy `#070B20`, Deep Blue `#101A3A`, Neon Violet `#8157FF`,
+Electric Blue `#287BFF`, Cyan Glow `#25D9F2`, text `#F4F5FF` / `#AAB2D0`.
+Ubuntu font with full Vietnamese diacritics; slogan "Your Freedom, Our OS".
+Glassmorphism with frosted layers, soft rounded corners, restrained glow.
+
+**No Google / no third-party branding**: never add Play Store, GMS, Firebase,
+Google Search/Assistant, Gmail, Maps, Photos or fake app-store icons. Use only
+QEAF-branded services (QEAF App Store, QEAF Search, QEAF Assistant, QEAF File
+Manager, QEAF Update, QEAF Account, QEAF Notification). Do not clone vendor
+mobile-platform or iOS screens.
+
+Implement the theme through `platform/violet/ui/vqeaf_theme.c` palette and
+component styles; keep existing pages/widgets. Never invent hardware state for
+visual effect.
 
 ## UI rules
 - Render service state; do not invent device state.

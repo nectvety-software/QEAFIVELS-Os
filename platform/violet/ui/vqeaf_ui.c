@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "vqeaf_pages.h"
+#include "vqeaf_tools_ui.h"
 #include "vqeaf_ime.h"
 #include "vqeaf_qeapp_device.h"
 #include "vqeaf_state.h"
@@ -1016,6 +1017,10 @@ void vqeaf_ui_create(lv_display_t *display)
     lv_obj_set_scrollbar_mode(g_content, LV_SCROLLBAR_MODE_OFF);
 
     build_status_bar(screen);
+    /* Taskbar is a sibling placed under the status bar. Creating it before
+     * navigation keeps its tap targets above page content but below the
+     * full-screen sheets on the top layer. */
+    vqeaf_tools_taskbar_create(screen);
     build_navigation(screen);
     build_sysnav(screen);
     g_virtual_keys = vqeaf_settings_get_bool("nav.virtual_keys", 0);
@@ -1048,6 +1053,7 @@ void vqeaf_ui_set_theme(vqeaf_theme_mode_t mode)
 void vqeaf_ui_show(vqeaf_page_t page)
 {
     int i;
+    int content_top;
     if(g_content == NULL || page < 0 || page >= VQEAF_PAGE_COUNT) return;
 
     /* Track recently opened app/detail pages for the task switcher. System
@@ -1078,6 +1084,11 @@ void vqeaf_ui_show(vqeaf_page_t page)
         g_built_seed = vqeaf_theme_seed();
         g_built_glass = vqeaf_theme_liquid_glass();
     }
+    /* The taskbar owns its own strip under the status bar; page content
+     * starts below it whenever the strip is visible. */
+    vqeaf_tools_taskbar_refresh(page);
+    content_top = VQEAF_STATUS_H +
+                  (vqeaf_tools_taskbar_visible(page) ? VQEAF_TASKBAR_H : 0);
     lv_obj_clean(g_content);
     lv_obj_set_style_bg_color(g_content, VQEAF_C_BG, 0);
     lv_obj_set_style_bg_opa(g_content, LV_OPA_COVER, 0);
@@ -1129,13 +1140,13 @@ void vqeaf_ui_show(vqeaf_page_t page)
         }
     }
     else {
-        lv_obj_set_pos(g_content, 0, VQEAF_STATUS_H);
+        lv_obj_set_pos(g_content, 0, content_top);
         if(home)
-            lv_obj_set_height(g_content, nav_top() - VQEAF_STATUS_H);
+            lv_obj_set_height(g_content, nav_top() - content_top);
         else
             lv_obj_set_height(g_content,
                               lv_display_get_vertical_resolution(g_display) -
-                              VQEAF_STATUS_H);
+                              content_top);
         lv_obj_add_flag(g_content, LV_OBJ_FLAG_SCROLLABLE);
         /* Home keeps the floating dock; every other page (system apps, detail
          * pages) takes the full content area and hides the dock like a phone

@@ -45,6 +45,11 @@ int vqeaf_state_set_brightness(int percent)
     return 0;
 }
 
+/* The desktop harness has no vibrator; the IME asks through these and must
+ * see an honest "unavailable" instead of a fabricated pulse. */
+int vio_haptics_available(void) { return 0; }
+int vio_haptic_pulse(unsigned duration_ms) { (void)duration_ms; return 0; }
+
 /* ---- vqeaf_qeapp_device.c stubs (Linux-only device runtime) ----------------
  *
  * The real runtime forks a child and maps native modules; that cannot exist
@@ -264,6 +269,9 @@ int main(int argc, char **argv)
         { VQEAF_PAGE_QEAPP_NATIVE, "qeapp-native" },
         { VQEAF_PAGE_VIDEO, "video" },
         { VQEAF_PAGE_MUSIC, "music" },
+        { VQEAF_PAGE_NTFS_SEARCH, "ntfs-search" },
+        { VQEAF_PAGE_TASK_MANAGER, "task-manager" },
+        { VQEAF_PAGE_DISK_CLEANUP, "disk-cleanup" },
     };
     const char *out_dir = argc > 1 ? argv[1] : "build/screens/phone-ui";
     const char *profile = "unknown";

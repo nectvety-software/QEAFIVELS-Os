@@ -144,6 +144,19 @@ capabilities are userspace/service/firmware, not kernel drivers:
 - No mock/bypass QMI, no fake `wlan0`, no fake firmware. See
   `docs/platforms/VIOLET_WIFI_BRINGUP.md` for full evidence and blockers.
 
+### 7c. Design language — VQEAF Midnight V2 (2026-11-22)
+- The shell uses the independent **VQEAF Midnight V2** design system; canonical
+  spec is `docs/design/VQEAF_MIDNIGHT_V2.md`. Dark UI: Midnight Navy `#070B20`,
+  Deep Blue `#101A3A`, Neon Violet `#8157FF`, Electric Blue `#287BFF`,
+  Cyan Glow `#25D9F2`, text `#F4F5FF` / `#AAB2D0`. Ubuntu font with full
+  Vietnamese diacritics. Slogan: "Your Freedom, Our OS".
+- **No Google anywhere**: no Play Store/GMS/Firebase/Google Search/Assistant/
+  Gmail/Maps/Photos or third-party fake logos. Use QEAF App Store, QEAF Search,
+  QEAF Assistant, QEAF File Manager, QEAF Update, QEAF Account, QEAF Notification.
+- Implement design by updating `platform/violet/ui/vqeaf_theme.c` palette and
+  component styles; never create a second UI framework. Hardware state always
+  comes from real providers, never invented for the look.
+
 ### 8. Final Objective
 
 Deliver a genuinely independent mobile operating system for Xiaomi Redmi

@@ -8,7 +8,7 @@
 /* Zero-initialised, filled by vqeaf_theme_set() before anything is drawn. */
 vqeaf_palette_t vqeaf_palette;
 /* The installed shell starts in Light; Settings can still switch to Dark. */
-static vqeaf_theme_mode_t g_theme_mode = VQEAF_THEME_LIGHT;
+static vqeaf_theme_mode_t g_theme_mode = VQEAF_THEME_DARK;
 static int g_liquid_glass;
 
 /* ---- dynamic colour (Material You style) --------------------------------- */
@@ -286,19 +286,19 @@ void vqeaf_theme_set(vqeaf_theme_mode_t mode)
         vqeaf_palette.warn      = lv_color_hex(0xFF9500);
     }
     else {
-        vqeaf_palette.bg        = lv_color_hex(0x06100F);
-        vqeaf_palette.bg_deep   = lv_color_hex(0x030809);
-        vqeaf_palette.surface   = lv_color_hex(0x0C191B);
-        vqeaf_palette.surface_2 = lv_color_hex(0x112629);
-        vqeaf_palette.surface_3 = lv_color_hex(0x173236);
-        vqeaf_palette.line      = lv_color_hex(0x1D3A3D);
-        vqeaf_palette.accent    = lv_color_hex(0x1EE0C8);
-        vqeaf_palette.accent_dk = lv_color_hex(0x0FA88F);
-        vqeaf_palette.cyan      = lv_color_hex(0x38C8E8);
+        vqeaf_palette.bg        = lv_color_hex(0x070B20); /* Midnight Navy */
+        vqeaf_palette.bg_deep   = lv_color_hex(0x030511);
+        vqeaf_palette.surface   = lv_color_hex(0x101A3A); /* Deep Blue */
+        vqeaf_palette.surface_2 = lv_color_hex(0x152049);
+        vqeaf_palette.surface_3 = lv_color_hex(0x1C2A55);
+        vqeaf_palette.line      = lv_color_hex(0x2A3A63);
+        vqeaf_palette.accent    = lv_color_hex(0x8157FF); /* Neon Violet */
+        vqeaf_palette.accent_dk = lv_color_hex(0x287BFF); /* Electric Blue */
+        vqeaf_palette.cyan      = lv_color_hex(0x25D9F2); /* Cyan Glow */
         vqeaf_palette.green     = lv_color_hex(0x34C97A);
-        vqeaf_palette.text      = lv_color_hex(0xEAF7F5);
-        vqeaf_palette.text_dim  = lv_color_hex(0x8FA7A6);
-        vqeaf_palette.text_mute = lv_color_hex(0x5C7271);
+        vqeaf_palette.text      = lv_color_hex(0xF4F5FF); /* Primary Text */
+        vqeaf_palette.text_dim  = lv_color_hex(0xAAB2D0); /* Secondary Text */
+        vqeaf_palette.text_mute = lv_color_hex(0x6E7BA5);
         vqeaf_palette.danger    = lv_color_hex(0xFF6B6B);
         vqeaf_palette.warn      = lv_color_hex(0xFFB020);
     }
@@ -325,24 +325,24 @@ int vqeaf_theme_liquid_glass(void)
 }
 
 /* LVGL has no backdrop blur in this renderer. Simulate the reference's glass
- * with a plum-tinted translucent gradient, a bright rim and a soft shadow. */
+ * with a deep-blue translucent gradient, cyan/violet rim and soft navy shadow. */
 void vqeaf_glass_surface(lv_obj_t *obj, int32_t radius, lv_opa_t opacity)
 {
     if(obj == NULL) return;
-    lv_obj_set_style_bg_color(obj, lv_color_hex(0x684080), 0);
-    lv_obj_set_style_bg_grad_color(obj, lv_color_hex(0xC77ADD), 0);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0x101A3A), 0);
+    lv_obj_set_style_bg_grad_color(obj, lv_color_hex(0x8157FF), 0);
     lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_bg_main_stop(obj, 0, 0);
     lv_obj_set_style_bg_grad_stop(obj, 255, 0);
     lv_obj_set_style_bg_opa(obj, opacity, 0);
     lv_obj_set_style_radius(obj, radius, 0);
     lv_obj_set_style_border_width(obj, 2, 0);
-    lv_obj_set_style_border_color(obj, lv_color_hex(0xF2D8FF), 0);
+    lv_obj_set_style_border_color(obj, lv_color_hex(0x25D9F2), 0);
     lv_obj_set_style_border_opa(obj, LV_OPA_80, 0);
     lv_obj_set_style_shadow_width(obj, 18, 0);
     lv_obj_set_style_shadow_ofs_y(obj, 7, 0);
     lv_obj_set_style_shadow_spread(obj, 0, 0);
-    lv_obj_set_style_shadow_color(obj, lv_color_hex(0x351346), 0);
+    lv_obj_set_style_shadow_color(obj, lv_color_hex(0x030511), 0);
     lv_obj_set_style_shadow_opa(obj, LV_OPA_60, 0);
 }
 
@@ -1290,7 +1290,7 @@ int vqeaf_wallpaper_active(void)
 lv_color_t vqeaf_wallpaper_text_color(void)
 {
     if(qeaf_wallpaper.data != NULL && qeaf_wallpaper.header.w > 0)
-        return lv_color_hex(0xF2FAFF); /* light ink over the dark photo */
+        return lv_color_hex(0xF4F5FF); /* Midnight V2 primary text over the photo */
     return vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFF7FF) :
                                         VQEAF_C_TEXT;
 }

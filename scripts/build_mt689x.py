@@ -58,6 +58,8 @@ SHARED = [
     os.path.join(VIOLET, "ui", "vqeaf_state.c"),
     os.path.join(VIOLET, "ui", "vqeaf_wifi.c"),
     os.path.join(VIOLET, "ui", "vqeaf_files.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_sys_tools.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_tools_ui.c"),
     os.path.join(VIOLET, "ui", "vqeaf_media.c"),
     os.path.join(VIOLET, "ui", "vqeaf_video.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp.c"),

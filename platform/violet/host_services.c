@@ -58,9 +58,10 @@ static struct host_service services[] = {
     { "rmtfs", -1, 0, 0, 0 },
     { "wlfwd", -1, 0, 0, 0 },   /* QMI protocol fallback */
     { "cnss-daemon", -1, 0, 0, 0 }, /* Violet Qualcomm service */
+    { "qwlfgw", -1, 0, 0, 0 },      /* pure-Linux WLFW 0x45 server */
 };
 static struct host_service *svc_pd, *svc_pd_listen, *svc_tftp, *svc_rmtfs,
-                           *svc_wlfw, *svc_cnss;
+                           *svc_wlfw, *svc_cnss, *svc_qwlfgw;
 
 static int services_started;
 static int wlan_started;
@@ -724,6 +725,7 @@ int vio_host_services_start(void)
     svc_rmtfs = find_svc("rmtfs");
     svc_wlfw = find_svc("wlfwd");
     svc_cnss = find_svc("cnss-daemon");
+    svc_qwlfgw = find_svc("qwlfgw");
 
     vio_mkdir_p(SERVICE_DIR, 0755);
     prepare_mainline_firmware();
@@ -1212,6 +1214,14 @@ int vio_host_run_bionic(const char *binary, const char *logname,
 }
 
 void vio_host_qrtr_lookup(void) { launch_qrtr_lookup(); }
+
+int vio_host_wlfw_native(void)
+{
+    static char *const args[] = { "qwlfgw", NULL };
+    if(svc_qwlfgw == NULL) svc_qwlfgw = find_svc("qwlfgw");
+    if(svc_qwlfgw == NULL || !svc_qwlfgw->binary_present) return -1;
+    return launch(svc_qwlfgw, args);
+}
 
 int vio_host_vendor_wifi(void)
 {

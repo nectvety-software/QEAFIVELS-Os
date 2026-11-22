@@ -51,6 +51,8 @@ TARGETS = {
     "pd-listen": [os.path.join(SRC, "wlfwd", "pd-listen.c")] + QRTR_LIB,
     # Ordinary QRTR client: ask the in-kernel name service for WLFW.
     "qrtr-lookup": [os.path.join(SRC, "qrtr", "qrtr-lookup.c")] + QRTR_LIB,
+    # Pure-Linux WLFW 0x45 server (no Bionic/APEX/Binder dependency).
+    "qwlfgw": [os.path.join(SRC, "qwlfgw", "qwlfgw.c")] + QRTR_LIB,
 }
 
 

@@ -12,7 +12,9 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <strings.h>
+#if defined(__linux__)
 #include <sys/utsname.h>
+#endif
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +26,8 @@
 #include "violet.h"
 #include "vqeaf_wifi.h"
 #include "vqeaf_files.h"
+#include "vqeaf_sys_tools.h"
+#include "vqeaf_tools_ui.h"
 #include "vqeaf_media.h"
 #include "vqeaf_video.h"
 #include "vqeaf_qeapp.h"
@@ -1042,6 +1046,10 @@ static const app_def_t all_apps[] = {
     { VQEAF_SYM_SHARE,        "Chia sẻ",    0x2A1A3E, 0xB48CFF, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_SHARE },
     { VQEAF_SYM_BUILD,        "Công cụ",    0x1E2A2C, 0xB8CBCB, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_TOOLS },
     { VQEAF_SYM_KEYBOARD,     "Terminal",     0x0F2A24, 0x7758,    VQEAF_PAGE_TERMINAL, VQEAF_APP_ICON_TOOLS },
+    { VQEAF_SYM_FOLDER,       "QL tệp",       0x3A2E14, 0xF3C64E, VQEAF_PAGE_FILES,    VQEAF_APP_ICON_FILES },
+    { VQEAF_SYM_SEARCH,       "Tìm NTFS",     0x1A2A46, 0x6FA8FF, VQEAF_PAGE_NTFS_SEARCH, VQEAF_APP_ICON_STORAGE },
+    { VQEAF_SYM_MEMORY,       "Quản lý tác vụ",0x2C1B3E, 0xC79BFF, VQEAF_PAGE_TASK_MANAGER, VQEAF_APP_ICON_TOOLS },
+    { VQEAF_SYM_DELETE_SWEEP, "Dọn dẹp ổ đĩa", 0x1E2A2C, 0xB8CBCB, VQEAF_PAGE_DISK_CLEANUP, VQEAF_APP_ICON_STORAGE },
 };
 
 static const vqeaf_app_t *const app_registry[] = {
@@ -1052,7 +1060,8 @@ static const vqeaf_app_t *const app_registry[] = {
     &all_apps[12], &all_apps[13], &all_apps[14], &all_apps[15],
     &all_apps[16], &all_apps[17], &all_apps[18], &all_apps[19],
     &all_apps[20], &all_apps[21], &all_apps[22], &all_apps[23],
-    &all_apps[24], &all_apps[25],
+    &all_apps[24], &all_apps[25], &all_apps[26], &all_apps[27],
+    &all_apps[28], &all_apps[29],
 };
 
 /* App drawer paging state; RAM-only like the dock. */
@@ -5297,6 +5306,20 @@ static const char *wifi_state_text(void)
 }
 
 static int g_wifi_count;
+static const char *wifi_gateway_mode(void)
+{
+    const char *mode = vqeaf_settings_get_str("wifi.gateway", "dhcp");
+    return (mode != NULL && strcmp(mode, "static") == 0) ? "static" : "dhcp";
+}
+
+static void wifi_gateway_cb(lv_event_t *event)
+{
+    (void)event;
+    vqeaf_settings_set_str("wifi.gateway",
+        strcmp(wifi_gateway_mode(), "dhcp") == 0 ? "static" : "dhcp");
+    vqeaf_ui_show(VQEAF_PAGE_WIFI);
+}
+
 static vqeaf_wifi_net_t g_wifi_nets[VQEAF_WIFI_MAX];
 static char g_wifi_scan_note[96];
 
@@ -5396,7 +5419,12 @@ static void wifi_open_modal(const vqeaf_wifi_net_t *net)
     lv_obj_set_width(title, lv_pct(100));
     lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_DOTS);
 
-    lv_obj_t *sub = vqeaf_label(card, "Mạng bảo mật · nhập mật khẩu",
+            char subtext[96];
+        snprintf(subtext, sizeof(subtext), "%s · Gateway %s",
+                 vqeaf_wifi_enc_name(net->enc),
+                 strcmp(wifi_gateway_mode(), "static") == 0 ?
+                 "static" : "DHCP");
+lv_obj_t *sub = vqeaf_label(card, subtext,
                                 VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
     lv_obj_set_width(sub, lv_pct(100));
 
@@ -5526,6 +5554,14 @@ static void build_wifi(lv_obj_t *content)
     info_row(link, "Chất lượng liên kết",
              vqeaf_state.wifi_if_present ? text : "--");
     info_row(link, "SSID", "Chưa có supplicant");
+    {
+        const char *mode = wifi_gateway_mode();
+        lv_obj_t *gw = info_row(link, "Chế độ Gateway",
+            strcmp(mode, "static") == 0 ? "Tĩnh (static)" :
+                                         "DHCP (chờ udhcpc)");
+        lv_obj_add_flag(gw, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(gw, wifi_gateway_cb, LV_EVENT_CLICKED, NULL);
+    }
 
     vqeaf_label(root, "Trình điều khiển & firmware", VQEAF_FONT_TITLE,
                 VQEAF_C_TEXT);
@@ -5585,7 +5621,7 @@ static void build_wifi(lv_obj_t *content)
             lv_obj_set_width(name, lv_pct(100));
             char sub[48];
             snprintf(sub, sizeof(sub), "%s · %d%%",
-                     g_wifi_nets[i].secure ? "Bảo mật" : "Mở",
+                     vqeaf_wifi_enc_name(g_wifi_nets[i].enc),
                      g_wifi_nets[i].signal);
             vqeaf_label(text, sub, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
 
@@ -5764,7 +5800,7 @@ static void build_sync(lv_obj_t *content)
 /* ---- file manager -------------------------------------------------------- */
 
 static char g_files_path[256] = "/";
-static int g_files_tab;             /* 0 = OS rootfs, 1 = QEAFRESCUE */
+static int g_files_tab;             /* 0 = rootfs, 1 = QEAFRESCUE, 2 = volumes */
 /* Picker mode: the Files page becomes "choose a .qeapp to install", starting
  * in the device storage tree instead of the rescue root. */
 static int g_pick_mode;
@@ -5781,6 +5817,25 @@ static vqeaf_file_t g_files_entries[64];
 
 static void files_reload(void)
 {
+    if(g_files_tab == 2) {
+        vqeaf_mount_t mounts[32];
+        int count = vqeaf_sys_mounts(mounts, 32, 0);
+        int max = (int)(sizeof(g_files_entries) / sizeof(g_files_entries[0]));
+        int n = 0;
+
+        if(count < 0) count = 0;
+        /* Only real mount points are listed. An NTFS volume is not implied
+         * by a Windows-looking filename, and no entry is fabricated here. */
+        for(int i = 0; i < count && n < max; i++) {
+            snprintf(g_files_entries[n].name,
+                     sizeof(g_files_entries[n].name), "%s", mounts[i].path);
+            g_files_entries[n].size = 0;
+            g_files_entries[n].is_dir = 1;
+            n++;
+        }
+        g_files_count = n;
+        return;
+    }
     if(g_files_tab == 0) {
         g_files_count = vqeaf_files_list(g_files_path, g_files_entries,
                                          (int)(sizeof(g_files_entries) /
@@ -5821,7 +5876,7 @@ static void files_reload(void)
 static void files_tab_cb(lv_event_t *event)
 {
     int tab = (int)(intptr_t)lv_event_get_user_data(event);
-    if(tab < 0 || tab > 1) return;
+    if(tab < 0 || tab > 2) return;
     g_pick_mode = 0;
     g_files_tab = tab;
     snprintf(g_files_path, sizeof(g_files_path), "/");
@@ -5855,6 +5910,13 @@ static void files_entry_cb(lv_event_t *event)
 
     if(index < 0 || index >= g_files_count) return;
     if(!g_files_entries[index].is_dir) return;
+    if(g_files_tab == 2) {
+        snprintf(g_files_path, sizeof(g_files_path), "%s",
+                 g_files_entries[index].name);
+        g_files_tab = 0;
+        vqeaf_ui_show(VQEAF_PAGE_FILES);
+        return;
+    }
     if(strcmp(g_files_entries[index].name, "..") == 0) {
         vqeaf_files_parent(g_files_path, next, sizeof(next));
         snprintf(g_files_path, sizeof(g_files_path), "%s", next);
@@ -6806,6 +6868,7 @@ static void build_files(lv_obj_t *content)
         lv_obj_set_style_pad_column(tabs, 12, 0);
         files_tab_pill(tabs, "Hệ thống", 0);
         files_tab_pill(tabs, "QEAFRESCUE", 1);
+        files_tab_pill(tabs, "Ổ đĩa", 2);
     }
     else {
         vqeaf_label(root,
@@ -6818,6 +6881,8 @@ static void build_files(lv_obj_t *content)
     char path_label[300];
     if(g_files_tab == 0)
         snprintf(path_label, sizeof(path_label), "%s", g_files_path);
+    else if(g_files_tab == 2)
+        snprintf(path_label, sizeof(path_label), "Các phân vùng đã mount");
     else
         snprintf(path_label, sizeof(path_label),
                  g_pick_mode ? "Bộ nhớ trong %s" : "QEAFRESCUE %s",
@@ -6849,6 +6914,8 @@ static void build_files(lv_obj_t *content)
                     g_pick_mode ? "Thư mục này không có gói .qeapp. "
                                   "Dùng ← để lên thư mục." :
                     g_files_tab == 0 ? "Thư mục trống." :
+                    g_files_tab == 2 ?
+                    "Không có phân vùng nào được mount để duyệt." :
                     "QEAFRESCUE chưa có tệp. PC thả tệp vào ổ rồi Đồng bộ.",
                     VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
     }
@@ -6915,6 +6982,9 @@ static void build_files(lv_obj_t *content)
         "và lưu vào kho p77 để còn sau reboot." :
         g_files_tab == 0 ?
         "Chỉ đọc: duyệt rootfs của OS, không xoá hay sửa tệp hệ thống." :
+        g_files_tab == 2 ?
+        "Danh sách lấy từ /proc/mounts. Chạm một phân vùng để duyệt thư mục "
+        "gốc của nó; NTFS chỉ hiện khi đã được mount." :
         "Chạm một tệp .qeapp để mở trình cài đặt (xem tên, phiên bản và quyền "
         "trước khi cài). Cùng volume FAT16 mà PC thấy: tệp PC thả vào hiện sau "
         "khi chạm Đồng bộ; tệp OS ghi hiện trên PC.",
@@ -7617,6 +7687,7 @@ static lv_obj_t *g_term_cwd_label;
 static const char *const term_commands[] = {
     "help", "status", "date", "uptime", "battery", "storage", "wifi",
     "apps", "defaults", "default", "theme", "page", "echo", "clear",
+    "scan", "gateway", "connect",
     "pwd", "ls", "cat", "cd", "whoami", "uname", "env", "which",
     "history"
 };
@@ -7781,6 +7852,36 @@ static void term_run(const char *line)
                     vqeaf_state.wifi_up, vqeaf_state.wifi_link);
         if(vqeaf_state.wifi_up <= 0)
             term_print("wifi: KHONG co ket noi that (khong bao gia gia)");
+    } else if(strcmp(cmd, "scan") == 0 && argc == 1) {
+        vqeaf_wifi_net_t nets[VQEAF_WIFI_MAX];
+        int n = vqeaf_wifi_scan(nets, VQEAF_WIFI_MAX);
+        if(n < 0) {
+            term_printf("scan: %s", vqeaf_wifi_error(n));
+        } else {
+            term_printf("scan: %d mang", n);
+            for(int i = 0; i < n; i++)
+                term_printf("%2d  %-32s  %-14s  %d%%", i + 1,
+                            nets[i].ssid,
+                            vqeaf_wifi_enc_name(nets[i].enc),
+                            nets[i].signal);
+        }
+    } else if(strcmp(cmd, "gateway") == 0) {
+        if(argc == 2 && strcmp(arg, "static") == 0) {
+            vqeaf_settings_set_str("wifi.gateway", "static");
+            term_print("gateway: static");
+        } else if(argc == 2 && strcmp(arg, "dhcp") == 0) {
+            vqeaf_settings_set_str("wifi.gateway", "dhcp");
+            term_print("gateway: dhcp (can udhcpc)");
+        } else {
+            term_printf("gateway: %s (tap de doi trong Settings)",
+                        wifi_gateway_mode());
+        }
+    } else if(strcmp(cmd, "connect") == 0 && argc >= 2) {
+        /* Secured networks must be joined from Settings so the password is
+         * entered through the IME and never appears in terminal history. */
+        int rc = vqeaf_wifi_connect(arg, "");
+        term_printf("connect %s: %s", arg,
+                    rc == 0 ? "OK" : vqeaf_wifi_error(rc));
     } else if(strcmp(cmd, "apps") == 0) {
         term_printf("apps: %d dang ky (built-in + QEAPP)", vqeaf_app_count());
     } else if(strcmp(cmd, "defaults") == 0) {
@@ -7805,6 +7906,9 @@ static void term_run(const char *line)
         else if(strcmp(arg, "settings") == 0) p = VQEAF_PAGE_SETTINGS;
         else if(strcmp(arg, "files") == 0) p = VQEAF_PAGE_FILES;
         else if(strcmp(arg, "terminal") == 0) p = VQEAF_PAGE_TERMINAL;
+        else if(strcmp(arg, "ntfs") == 0) p = VQEAF_PAGE_NTFS_SEARCH;
+        else if(strcmp(arg, "tasks") == 0) p = VQEAF_PAGE_TASK_MANAGER;
+        else if(strcmp(arg, "cleanup") == 0) p = VQEAF_PAGE_DISK_CLEANUP;
         if(p != VQEAF_PAGE_COUNT) { term_printf("page: %s", arg); vqeaf_ui_show(p); }
         else term_print("page: ten khong hop le");
     } else if(strcmp(cmd, "echo") == 0 && argc == 2) {
@@ -7826,9 +7930,14 @@ static void term_run(const char *line)
     } else if(strcmp(cmd, "whoami") == 0) {
         term_print("vqeaf");
     } else if(strcmp(cmd, "uname") == 0) {
+#if defined(__linux__)
         struct utsname u;
         if(uname(&u) == 0) term_printf("%s %s %s", u.sysname, u.release, u.machine);
         else term_print("uname: failed");
+#else
+        /* The host render has no kernel to query; never invent one. */
+        term_print("uname: host render (no device kernel)");
+#endif
     } else if(strcmp(cmd, "env") == 0) {
         term_print("USER=vqeaf");
         term_print("HOME=/data/qeaf");
@@ -8029,6 +8138,9 @@ void vqeaf_pages_build(vqeaf_page_t page, lv_obj_t *content)
     case VQEAF_PAGE_PIN:     build_pin(content); break;
     case VQEAF_PAGE_DEFAULT_APPS: build_default_apps(content); break;
     case VQEAF_PAGE_TERMINAL: build_terminal(content); break;
+    case VQEAF_PAGE_NTFS_SEARCH: vqeaf_tools_build_ntfs_search(content); break;
+    case VQEAF_PAGE_TASK_MANAGER: vqeaf_tools_build_task_manager(content); break;
+    case VQEAF_PAGE_DISK_CLEANUP: vqeaf_tools_build_disk_cleanup(content); break;
     case VQEAF_PAGE_FILES:    build_files(content); break;
     case VQEAF_PAGE_QEAPP:    build_qeapp(content); break;
     case VQEAF_PAGE_QEAPP_NATIVE: build_qeapp_native(content); break;

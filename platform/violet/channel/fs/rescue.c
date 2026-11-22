@@ -850,6 +850,7 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 else if (eq(subname, "sup")) sub = 21;
                 else if (eq(subname, "gnss")) sub = 22;
                 else if (eq(subname, "qlookup")) sub = 23;
+                else if (eq(subname, "native")) sub = 24;
                 else { cat(resp, cap, "wifi: unknown sub (net|dmesg|sdio|mod|fw|up|state|modem|host|log|find NAME|ls DIR|link PATH|cat FILE|on|pd NODE PORT PD|listen NODE PORT PATH|svc|vendor|rproc N)\n"); }
             }
 #ifdef __linux__
@@ -905,6 +906,13 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
             if (sub == 23) {
                 vio_host_qrtr_lookup();
                 cat(resp, cap, "wifi qlookup: launched (see wifi log)\n");
+                g_result = 1;
+            }
+            if (sub == 24) {
+                int rc = vio_host_wlfw_native();
+                cat(resp, cap, "wifi native: ");
+                cat(resp, cap, rc == 0 ? "qwlfgw launched" : "unavailable");
+                cat(resp, cap, "\n");
                 g_result = 1;
             }
             if (sub == 18) {

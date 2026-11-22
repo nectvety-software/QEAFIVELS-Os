@@ -40,7 +40,8 @@ EXE = os.path.join(ROOT, "build", "ui-host", "vqeaf-ui-host.exe")
 
 PAGES = ["lock", "home", "apps", "apps-edit", "control", "settings", "storage", "about",
          "keyboard", "keyboard-themes", "wifi", "drivers", "sync", "lock-theme", "files",
-         "installer", "qeapp", "qeapp-native", "video", "music"]
+         "installer", "qeapp", "qeapp-native", "video", "music",
+         "ntfs-search", "task-manager", "disk-cleanup"]
 # The .qeapp installer overlay states, rendered over the FILES page.
 INSTALL_STATES = ["install-confirm", "install-busy", "install-done", "install-error"]
 # Bold-text accessibility mode renders of real pages (weight system).
@@ -61,6 +62,8 @@ SOURCES = [
     os.path.join(UI, "vqeaf_ime.c"),
     os.path.join(UI, "vqeaf_wifi.c"),
     os.path.join(UI, "vqeaf_files.c"),
+    os.path.join(UI, "vqeaf_sys_tools.c"),
+    os.path.join(UI, "vqeaf_tools_ui.c"),
     os.path.join(UI, "vqeaf_media.c"),
     os.path.join(UI, "vqeaf_video.c"),
     os.path.join(UI, "vqeaf_qeapp.c"),

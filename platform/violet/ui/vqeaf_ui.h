@@ -54,6 +54,11 @@ typedef enum {
     VQEAF_PAGE_KEYBOARD_FEEDBACK,
     VQEAF_PAGE_DEFAULT_APPS,
     VQEAF_PAGE_TERMINAL,
+    /* Desktop-style utilities. Appended so every existing page number and
+     * rescue/app-registry contract keeps its value. */
+    VQEAF_PAGE_NTFS_SEARCH,
+    VQEAF_PAGE_TASK_MANAGER,
+    VQEAF_PAGE_DISK_CLEANUP,
     VQEAF_PAGE_COUNT
 } vqeaf_page_t;
 

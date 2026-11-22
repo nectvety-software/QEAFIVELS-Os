@@ -47,7 +47,7 @@ static int open_ioctl(const char *ifname, int *fd)
 
 static void add_network(vqeaf_wifi_net_t *out, int max, int *count,
                         const char *ssid, const char *bssid,
-                        int signal, int secure)
+                        int signal, int secure, int enc)
 {
     if(ssid == NULL || ssid[0] == '\0') return;
     for(int i = 0; i < *count; i++) {
@@ -57,6 +57,7 @@ static void add_network(vqeaf_wifi_net_t *out, int max, int *count,
                 snprintf(out[i].bssid, sizeof(out[i].bssid), "%s", bssid);
             }
             out[i].secure |= secure;
+            if(enc > out[i].enc) out[i].enc = enc;
             return;
         }
     }
@@ -65,6 +66,7 @@ static void add_network(vqeaf_wifi_net_t *out, int max, int *count,
     snprintf(out[*count].bssid, sizeof(out[*count].bssid), "%s", bssid);
     out[*count].signal = signal;
     out[*count].secure = secure;
+    out[*count].enc = secure ? enc : VQEAF_WIFI_ENC_OPEN;
     (*count)++;
 }
 
@@ -119,6 +121,7 @@ int vqeaf_wifi_scan(vqeaf_wifi_net_t *out, int max)
         char bssid[18] = "";
         int signal = 0;
         int secure = 0;
+        int enc = VQEAF_WIFI_ENC_OPEN;
         char *cursor = buffer;
         char *end = buffer + wrq.u.data.length;
 
@@ -130,10 +133,11 @@ int vqeaf_wifi_scan(vqeaf_wifi_net_t *out, int max)
 
             switch(event->cmd) {
             case SIOCGIWAP:
-                add_network(out, max, &count, ssid, bssid, signal, secure);
+                add_network(out, max, &count, ssid, bssid, signal, secure, enc);
                 memset(ssid, 0, sizeof(ssid));
                 signal = 0;
                 secure = 0;
+                enc = VQEAF_WIFI_ENC_OPEN;
                 snprintf(bssid, sizeof(bssid),
                          "%02X:%02X:%02X:%02X:%02X:%02X",
                          event->u.ap_addr.sa_data[0] & 0xff,
@@ -156,7 +160,34 @@ int vqeaf_wifi_scan(vqeaf_wifi_net_t *out, int max)
             }
             case SIOCGIWENCODE:
                 secure = (event->u.encoding.flags & IW_ENCODE_DISABLED) ? 0 : 1;
+                if(secure) {
+                    /* WEXT legacy alg hint; RSN IE below is authoritative. */
+                    unsigned alg = event->u.encoding.flags & 0x0Fu;
+                    if(alg == 3) enc = VQEAF_WIFI_ENC_WPA2_PSK;
+                    else if(alg == 2) enc = VQEAF_WIFI_ENC_WPA;
+                    else if(alg == 1) enc = VQEAF_WIFI_ENC_WEP;
+                }
                 break;
+            case IWEVGENIE: {
+                /* Parse WPA/RSN information elements from the scan result.
+                 * 0x30 = RSN (WPA2), vendor 00:50:F2 type 01 = WPA, type 02 = RSN. */
+                const uint8_t *ie = (const uint8_t *)event->u.data.pointer;
+                size_t remain = event->u.data.length;
+                while(ie != NULL && remain >= 2) {
+                    size_t len = ie[1] + 2;
+                    if(len > remain) break;
+                    if(ie[0] == 0x30 && len >= 2) {
+                        enc = VQEAF_WIFI_ENC_WPA2_PSK;
+                        secure = 1;
+                    } else if(ie[0] == 0xDD && len >= 7 &&
+                              ie[2] == 0x00 && ie[3] == 0x50 && ie[4] == 0xF2) {
+                        if(ie[5] == 0x01) { enc = VQEAF_WIFI_ENC_WPA; secure = 1; }
+                        if(ie[5] == 0x02) { enc = VQEAF_WIFI_ENC_WPA2_PSK; secure = 1; }
+                    }
+                    ie += len; remain -= len;
+                }
+                break;
+            }
             case IWEVQUAL:
                 signal = event->u.qual.qual;
                 if(signal > 100) signal = 100;
@@ -167,7 +198,7 @@ int vqeaf_wifi_scan(vqeaf_wifi_net_t *out, int max)
             }
             cursor += event->len;
         }
-        add_network(out, max, &count, ssid, bssid, signal, secure);
+        add_network(out, max, &count, ssid, bssid, signal, secure, enc);
 
         /* Strongest first; insertion sort over a 16-entry list. */
         for(int i = 1; i < count; i++) {
@@ -225,9 +256,9 @@ int vqeaf_wifi_connect(const char *ssid, const char *password)
 int vqeaf_wifi_scan(vqeaf_wifi_net_t *out, int max)
 {
     static const vqeaf_wifi_net_t sample[] = {
-        { "TOTOLINK_A720R", "A4:2B:B0:11:22:33", 78, 1 },
-        { "TOTOLINK_A720R_5G", "A4:2B:B0:11:22:34", 61, 1 },
-        { "QEAF-GUEST", "A4:2B:B0:11:22:35", 34, 0 },
+        { "TOTOLINK_A720R", "A4:2B:B0:11:22:33", 78, 1, VQEAF_WIFI_ENC_WPA2_PSK },
+        { "TOTOLINK_A720R_5G", "A4:2B:B0:11:22:34", 61, 1, VQEAF_WIFI_ENC_WPA2_PSK },
+        { "QEAF-GUEST", "A4:2B:B0:11:22:35", 34, 0, VQEAF_WIFI_ENC_WPA2_PSK },
     };
 
     if(out == NULL || max <= 0) return -EINVAL;
@@ -257,5 +288,17 @@ const char *vqeaf_wifi_error(int rc)
     case -EINVAL:     return "Tên mạng không hợp lệ.";
     case -EPERM:      return "Không đủ quyền điều khiển Wi-Fi.";
     default:          return "Không kết nối được (lỗi driver).";
+    }
+}
+
+
+const char *vqeaf_wifi_enc_name(int enc)
+{
+    switch(enc) {
+    case VQEAF_WIFI_ENC_WEP:       return "WEP";
+    case VQEAF_WIFI_ENC_WPA:       return "WPA-PSK";
+    case VQEAF_WIFI_ENC_WPA2_PSK:  return "WPA2-PSK";
+    case VQEAF_WIFI_ENC_WPA_WPA2:  return "WPA/WPA2-PSK";
+    default:                       return "Mo (khong ma hoa)";
     }
 }

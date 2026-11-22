@@ -1,0 +1,24 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 5,
+  "runtime": "native",
+  "id": "org.vqeaf.furryguardian",
+  "name": "Furry Guardian",
+  "version": "4.6.4",
+  "description": "Port native cua game 3D Furry Guardian: Siege Camp (Three.js) sang QEAPP arm64: doanh trai, ba cong, doi quan, kinh te vang/thit, tru, Hero va bon ky nang",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/arm64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.3.0",
+  "architecture": [
+    "arm64"
+  ],
+  "permissions": [
+    "ui.display",
+    "input.receive"
+  ],
+  "dependencies": [],
+  "signature": null
+}

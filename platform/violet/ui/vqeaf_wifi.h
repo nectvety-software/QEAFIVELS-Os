@@ -17,11 +17,20 @@ extern "C" {
 
 #define VQEAF_WIFI_MAX 16
 
+typedef enum {
+    VQEAF_WIFI_ENC_OPEN = 0,
+    VQEAF_WIFI_ENC_WEP,
+    VQEAF_WIFI_ENC_WPA,
+    VQEAF_WIFI_ENC_WPA2_PSK,
+    VQEAF_WIFI_ENC_WPA_WPA2
+} vqeaf_wifi_enc_t;
+
 typedef struct {
     char ssid[33];
     char bssid[18];
     int signal;   /* 0..100 */
     int secure;   /* 1 when privacy/RSN is advertised */
+    int enc;      /* vqeaf_wifi_enc_t, parsed from RSN/WPA IE when present */
 } vqeaf_wifi_net_t;
 
 /* Triggers a scan on the first wlan* netdev and returns the network count,
@@ -34,6 +43,8 @@ int vqeaf_wifi_connect(const char *ssid, const char *password);
 
 /* Stable human-readable text for a scan/connect return code. */
 const char *vqeaf_wifi_error(int rc);
+/* Short label for a parsed encryption type, e.g. "WPA2-PSK". */
+const char *vqeaf_wifi_enc_name(int enc);
 
 #ifdef __cplusplus
 }

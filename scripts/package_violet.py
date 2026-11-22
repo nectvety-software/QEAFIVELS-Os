@@ -123,7 +123,9 @@ def stage_root():
     NEWFW = os.path.join(ROOT, "build", "violet-fw", "image")
     if os.path.isdir(NEWFW):
         fwdir = os.path.join(STAGE, "lib", "firmware")
+        qca_cld_dir = os.path.join(fwdir, "wlan", "qca_cld")
         os.makedirs(fwdir, exist_ok=True)
+        os.makedirs(qca_cld_dir, exist_ok=True)
         for name in os.listdir(NEWFW):
             src = os.path.join(NEWFW, name)
             if not os.path.isfile(src):
@@ -136,10 +138,12 @@ def stage_root():
                     os.path.join(fwdir, "qcom", "qcs615")) else None
             elif low.startswith("bdwlan."):
                 shutil.copy2(src, os.path.join(fwdir, low))
+                shutil.copy2(src, os.path.join(qca_cld_dir, low))
             elif low == "regdb.bin":
                 # Qualcomm regulatory database is a real firmware input;
-                # keep the canonical lowercase name used by the vendor stack.
+                # keep it in both the root firmware lookup path and qca_cld.
                 shutil.copy2(src, os.path.join(fwdir, "regdb.bin"))
+                shutil.copy2(src, os.path.join(qca_cld_dir, "regdb.bin"))
 
         # Make the upgrade auditable from the phone itself: `wifi fw` prints
         # this file verbatim. Hash the exact WLAN pieces we stage so the
@@ -278,15 +282,16 @@ def stage_root():
     if os.path.isdir(HOSTTOOLS):
         os.makedirs(os.path.join(STAGE, "sbin", "qeaf"), exist_ok=True)
         for name in ("pd-mapper", "tqftpserv", "rmtfs", "wlfwd",
-                     "pdr-restart", "pd-listen", "qrtr-lookup", "cnss-daemon"):
+                     "pdr-restart", "pd-listen", "qrtr-lookup", "qwlfgw",
+                     "cnss-daemon"):
             src = os.path.join(HOSTTOOLS, name)
             if os.path.isfile(src):
                 dst = os.path.join(STAGE, "sbin", "qeaf", name)
                 shutil.copy2(src, dst)
                 os.chmod(dst, 0o755)
                 staged_host += 1
-    if staged_host != 8:
-        print("package_violet: warning: only %d/8 host daemons staged; "
+    if staged_host != 9:
+        print("package_violet: warning: only %d/9 host daemons staged; "
               "Wi-Fi services will report missing" % staged_host)
     # No symlinks: an empty list is still written so mk_initramfs is quiet.
     with open(os.path.join(BUILD, "stage-symlinks.txt"), "w",

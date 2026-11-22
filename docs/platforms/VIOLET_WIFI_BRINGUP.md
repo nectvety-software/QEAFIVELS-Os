@@ -791,3 +791,215 @@ above:
 - SHA-256: `494fd87257659d4ae0a197c88301ccd10d4f2a113bc472e644c1d947c8280a79`.
 - `adb devices -l` and `fastboot devices` returned no attached device; no flash
   or phone-side validation was performed.
+---
+
+## Đối chiếu nguồn violet + sửa Binder/CNSS + firmware audit (2026-11-21)
+
+### 1. Nguồn tham chiếu đã kiểm tra
+
+- **crdroidandroid/android_device_xiaomi_violet**, branch **14.0**:
+  - BoardConfig.mk xác nhận BOARD_WLAN_DEVICE := qcwcn và WIFI_DRIVER_DEFAULT := qca_cld3.
+  - wifi/WCNSS_qcom_cfg.ini là file cấu hình đúng của Violet, 14.458 bytes; SHA-256:
+    de1961faac00fc6c004aea21c82f731bd2905c8db3e6026a8d1638d080acb3c9
+  - rootdir/etc/init.qcom.rc định nghĩa chính xác service: /vendor/bin/cnss-daemon -n -l. Đã sửa đối số QEAF từ -n -dd thành -n -l để khớp cấu hình thiết bị.
+- **crdroidandroid/android_kernel_xiaomi_violet**, branch **14.0**:
+  arch/arm64/configs/vendor/sdmsteppe-perf_defconfig bật CONFIG_ANDROID_BINDER_IPC=y, CONFIG_ANDROID_BINDERFS=y, CONFIG_QRTR=y, CONFIG_QRTR_SMD=y, CONFIG_ICNSS=y, CONFIG_ICNSS_QMI=y và CONFIG_QCOM_QMI_HELPERS=y. Đây là cấu hình tham chiếu của nhánh kernel nguồn, không phải bằng chứng config của kernel đang chạy trên máy.
+- **TheMuppets**: GitHub API trả HTTP 451 (DMCA block) với repo proprietary_vendor_xiaomi. GitLab mirror có branch lineage-18.1, nhưng cây branch đã clone không có thư mục violet/ hay sm6150-common/; lineage-20 không xuất hiện trong danh sách branch từ remote. Vì vậy vòng này **không lấy proprietary binary từ TheMuppets** và không thể xác nhận đó là blob mới nhất. Không thay bằng blob của thiết bị Qualcomm khác.
+
+### 2. Firmware đã đối chiếu và đưa vào package
+
+Nguồn hiện có trên máy vẫn là NON-HLOS **VIOLET_20.10.30** (weekly 31-10-2020), không phải ROM fastboot mới nhất. Thư mục build/violet-fw/image chứa 30 file BDWLAN* (base + biến thể), REGDB.BIN và WLANMDSP.MBN. Không có tên file OTP* hoặc QWLAN* trong nguồn này. Chưa có bằng chứng từ đúng firmware Violet rằng hai nhóm file đó là thành phần bắt buộc; không tự tạo hoặc lấy từ chip/điện thoại khác.
+
+Đã phát hiện lỗi packaging: REGDB.BIN có trong nguồn nhưng package_violet.py trước đây chỉ copy BDWLAN* và WLANMDSP.MBN. Đã sửa để stage regdb.bin vào cả /lib/firmware/regdb.bin và /lib/firmware/wlan/qca_cld/regdb.bin; các file BDWLAN* cũng được stage ở cả hai đường dẫn. Manifest package kiểm tra đủ hai bản cùng WCNSS_qcom_cfg.ini trong qca_cld.
+
+SHA-256 các file hiện được stage:
+
+| File | Kích thước | SHA-256 |
+|---|---:|---|
+| bdwlan.bin | 26.328 B | 38ecb9a2d5ad40c210d5cd1edadb18a0b374fe6cb194c3c8130c3cfe212e9df7 |
+| regdb.bin | 19.348 B | 6267f3e7bd62e1c4c676ee3ea2d7b6be9a9cd6ea7a794097a443e47467e0f59a |
+| wlanmdsp.mbn | 3.694.736 B | 4c3d277812fe0496ee7f486be80b4dc530ebc2655eb18e1302b642857008d4b8 |
+| WCNSS_qcom_cfg.ini | 14.458 B | de1961faac00fc6c004aea21c82f731bd2905c8db3e6026a8d1638d080acb3c9 |
+
+WCNSS_qcom_cfg.ini vẫn được stage ở cả /vendor/etc/wifi/ và /lib/firmware/wlan/qca_cld/. cnss-daemon (95.024 B) và Bionic/QMI libraries tiếp tục được lấy từ stock dump đã trích xuất trước đó.
+
+### 3. Sửa Binder đúng giao thức binderfs
+
+Lỗi trong implementation cũ: mount binderfs xong lập tức tìm /dev/binderfs/binder. Kernel chỉ tạo binder-control khi mount; các device binder, hwbinder, vndbinder phải được cấp phát bằng ioctl BINDER_CTL_ADD.
+
+Đã sửa platform/violet/host_services.c:
+1. Đọc /proc/filesystems để xác nhận binderfs.
+2. Mount binderfs tại /dev/binderfs và mở /dev/binderfs/binder-control.
+3. Gọi BINDER_CTL_ADD (_IOWR('b', 1, struct binderfs_device)) cho từng device, sau đó xác nhận node char-device thực sự được tạo.
+4. Publish /dev/binder, /dev/hwbinder và /dev/vndbinder bằng symlink tới các node binderfs; kiểm tra mở /dev/binder thành công.
+5. Nếu kernel không hỗ trợ binderfs, chỉ fallback sang /sys/class/misc/binder/dev để lấy đúng major:minor từ sysfs. Đã bỏ hoàn toàn vòng dò minor 0..7; không còn đoán device number.
+6. Nếu Binder chưa usable, CNSS không được exec; log trạng thái và dừng nhánh CNSS thay vì cố chạy rồi abort.
+
+Kernel binderfs UAPI của nhánh tham chiếu xác nhận cấu trúc binderfs_device gồm name[256], major, minor và ioctl BINDER_CTL_ADD. Runtime hiện tại chạy trực tiếp trong initramfs root namespace, không tạo một chroot riêng; vì vậy binderfs được mount ngay trong /dev của rootfs mà daemon sử dụng. Nếu kiến trúc sau này chuyển CNSS vào chroot riêng thì mới cần bind-mount /dev hoặc các node Binder vào namespace đó.
+
+### 4. Điều kiện chạy CNSS và giới hạn kiểm chứng
+
+- CNSS dùng đúng tham số thiết bị -n -l; launcher hiện có chuyển stdout/stderr vào log host service.
+- CNSS vẫn bị gate bởi MAC factory hợp lệ đọc từ persist p74. Không sinh MAC, không thay bằng địa chỉ từ serial và không bỏ gate calibration/NV.
+- Không mock QRTR/QMI, không tạo service WLFW giả, không tự công bố 0x45. qrtr-lookup được khởi chạy để quan sát service thực sau khi daemon được exec.
+- Tại thời điểm build này, máy phát triển không có COM serial, ADB device hoặc Fastboot device được kết nối. Do đó chưa thể chạy bản initramfs mới trên điện thoại, chưa thu log CNSS mới, chưa kiểm tra qrtr-lookup WLFW 0x45, dmesg hay trạng thái wlan0 mới. Báo cáo thiết bị gần nhất vẫn ghi wlan0 absent và factory MAC absent; không được diễn giải build thành bring-up thành công.
+
+### 5. Build/package verification
+
+- python scripts/build_violet.py — PASS; linked build/violet/vqeaf-init, 11.145.040 bytes, 269 objects.
+- python scripts/package_violet.py --skip-build — PASS.
+- Initramfs: 136 entries, gzip 14.601.501 bytes; boot image dist/boot-vqeaf-violet.img = 32.112.640 bytes.
+- validate_bootimg.py — PASS.
+- audit_rescue_channel.py — PASS.
+- python scripts/verify_native_wifi_package.py — PASS; kiểm tra CNSS, Bionic linker/libs, bdwlan.bin, regdb.bin, wlanmdsp.mbn và WCNSS_qcom_cfg.ini trong CPIO.
+- py_compile cho script package/verify và git diff --check — PASS.
+- Không flash hoặc ghi bất kỳ partition nào.
+
+**Trạng thái sau vòng này:** package đã có regdb.bin và Binder binderfs allocation đã được sửa đúng ioctl; CNSS chưa được xác nhận chạy trên thiết bị. Blocker còn lại để có log thực là boot bản image này trên Violet có UART/ADB/Fastboot kết nối, xác minh Binder node mở được, kiểm tra persist có factory MAC/calibration thật, rồi mới quan sát CNSS/QMI 0x45 và wlan0.
+
+
+### Cập nhật package sau khi bổ sung đường dẫn qca_cld (2026-11-21, supersedes metrics above)
+
+Đã cập nhật stage để copy từng file BDWLAN* và regdb.bin vào cả /lib/firmware/ và /lib/firmware/wlan/qca_cld/. WCNSS_qcom_cfg.ini đã có ở qca_cld từ bước trước. verify_native_wifi_package.py hiện kiểm tra đủ:
+- lib/firmware/bdwlan.bin và lib/firmware/regdb.bin
+- lib/firmware/wlan/qca_cld/bdwlan.bin và regdb.bin
+- lib/firmware/wlan/qca_cld/WCNSS_qcom_cfg.ini
+- vendor/etc/wifi/WCNSS_qcom_cfg.ini và wlanmdsp.mbn.
+
+Kết quả package cuối cùng sau thay đổi này:
+- Initramfs: 167 payload entries; gzip 14.644.279 bytes.
+- dist/boot-vqeaf-violet.img: 32.157.696 bytes.
+- SHA-256: 64c47c87e34703eca526946284f154111892c0b57e56937e726a147614a365bf.
+- validate_bootimg.py: PASS; audit_rescue_channel.py: PASS.
+- verify_native_wifi_package.py: PASS (168 CPIO entries, gồm trailer).
+- Không flash hoặc ghi partition. Thiết bị chưa kết nối nên không có log CNSS/QRTR/WLFW mới; wlan0 chưa được xác nhận.
+
+
+
+---
+
+# Định hướng lại kiến trúc Wi-Fi — Linux thuần, không Bionic/APEX/Binder (2026-11-21)
+
+## 1. Kiểm tra kernel config — kết quả đo được
+
+### 1.1 Kernel đang chạy trên violet
+- `/proc/version`: `4.14.215-azure-Pixel+`, built by Android clang 14.0.6 —
+  **downstream stock kernel**, không phải mainline.
+- `/sys/module` chứa `icnss`, `wlan` (qcacld-3.0), `cfg80211`, `bluetooth`,
+  `binder`, `binder_alloc`, `service_locator`; **không có `ath10k` / `ath10k_snoc`**.
+- dmesg: `icnss: Platform driver probed successfully`,
+  `wlan_hdd_state wlan major(500) initialized` → chắc chắn **icnss + qcacld-3.0**.
+- `/proc/config.gz` không đọc được; ROM dump chỉ có boot.img (đã compile),
+  không có source/config 4.14 trong repo.
+
+=> Chọn nhánh **stock downstream + daemon C thuần**, KHÔNG chuyển sang
+ath10k_snoc trên thiết bị này.
+
+### 1.2 Config liên quan có trong repo
+| File | Nội dung liên quan |
+| --- | --- |
+| `platform/mt689x/kernel/qeaf_mt689x.fragment` | chỉ storage/BT/audio/touch/USB/fbdev; **không có QRTR/ATH10K/WLAN** |
+| `temp/mt689x/chopin_defconfig` | `CONFIG_QRTR_SMD=m`, `CONFIG_QRTR_TUN=m`, `CONFIG_ATH10K=m`, `CONFIG_ATH10K_PCI=m`, `CONFIG_ATH10K_SDIO=m`, `CONFIG_ATH10K_SNOC=m`, `CONFIG_QCOM_WCNSS_PIL=m`, `CONFIG_QCOM_WCNSS_CTRL=m`, `CONFIG_SND_USB_AUDIO_QMI=m` |
+| `temp/net_qrtr_Kconfig` | `config QRTR`, `QRTR_SMD`, `QRTR_MHI`, `QRTR_USB`, `QRTR_FIFO`, `QRTR_MHI_DEV`, `QRTR_USB_DEV`, `QRTR_ETHERNET` |
+
+**Không có file config/defconfig nào cho violet 4.14 trong repo** — chỉ có
+MT689x (khác SoC). Các symbol `ICNSS`, `CNSS`, `QCACLD` không xuất hiện trong
+bất kỳ file config nào của repo (vì kernel stock là binary-only).
+
+### 1.3 Về hướng mainline
+Nguồn `linux-7.2.9`/`linux-7.3.4` có trong WSL (`/root/kbuild`) và đã từng
+thử `fastboot boot` (xem mục trước): kernel boot được nhưng mất QRTR/DRM,
+ath10k không probe đúng, không có `wlan0`. Việc switch kernel lên mainline
+là dự án riêng, **không nằm trong phạm vi đính chính Wi-Fi lần này**.
+
+## 2. Tầng bringup Wi-Fi thuần Linux (đã bắt đầu triển khai)
+
+### 2.1 Nguyên tắc
+- Không dùng `cnss-daemon`, Bionic linker64, APEX, binder, chroot.
+- Mọi daemon đều là **aarch64-linux-musl static**, link trực tiếp với
+  `platform/violet/hosttools/src/qrtr/lib` (libqrtr vendored).
+- Không tạo QRTR server giả trong host test; server thật phát bằng
+  `qrtr_new_server()` vào kernel QRTR name service.
+- Không tạo MAC, BDF, calibration giả; đọc từ `/lib/firmware` hoặc persist thật.
+
+### 2.2 Daemon `qwlfgw` — WLFW 0x45 server
+- File: `platform/violet/hosttools/src/qwlfgw/qwlfgw.c`.
+- Build: `scripts/build_violet_hosttools.py` target `qwlfgw`
+  (đã build OK: `build/violet/hosttools/qwlfgw`, 1.051.160 B).
+- Stage: `scripts/package_violet.py` đưa vào `/sbin/qeaf/qwlfgw` (tổng 9 daemon).
+- Gọi thử: rescue verb `wifi native` → `vio_host_wlfw_native()` → `launch(qwlfgw)`.
+- Hành vi hiện tại (foundation, chưa đạt `wlan0`):
+  - `qrtr_open(0)` + `qrtr_new_server(sock, 0x45, 0, 0)` → phát service thật.
+  - Nhận QMI request, parse header 7 byte, TLV walker tối thiểu.
+  - `WLFW_IND_REGISTER 0x20`: nhớ client, trả QMI result 0/error 0.
+  - `WLFW_CAP 0x24`: trả result 0 (chưa có capability TLV đầy đủ).
+  - `WLFW_BDF_DOWNLOAD 0x25`: log file_id/seg, đánh dấu BDF đã nhận.
+  - `WLFW_CAL_*`: placeholder có log rõ "not implemented".
+  - `WLFW_MAC_ADDR 0x33`: **từ chối (result=1)** vì không có MAC factory thật —
+    không bao giờ bịa MAC.
+  - Sau CAP+BDF+IND_REGISTER: gửi `FW_READY_IND 0x21` tới các client đã đăng ký.
+- Message ID lấy trực tiếp từ `hosttools/src/wlfwd/wlfwd.c:35-47` (không đoán).
+
+### 2.3 Các bước còn thiếu để qwlfgw thành công năng thực
+1. Đối chiếu TLV response của `WLFW_CAP` và `FW_READY_IND` với log của
+   cnss-daemon thật / header `wlfw_service_v01.h` từ ROM MIUI dump. Hiện tại
+   response chỉ có standard result TLV.
+2. Implement CAL_DOWNLOAD/CAL_REPORT theo file_id thật, đọc
+   `/lib/firmware/bdwlan.bin`, `regdb.bin`, và (nếu có) persist calibration.
+3. Xử lý `WLFW_FW_MEM_READY_IND 0x37` / `FW_INIT_DONE_IND 0x38` theo thứ tự
+   mà icnss mong đợi; thêm state machine + retry theo PD restart.
+4. Tích hợp SERVREG listener (`pd-listen`) — hiện chưa có dòng `result=0 error=0`
+   trên máy; phải sửa logic watch để xử lý cả server đã tồn tại trước khi
+   pd-listen chạy (chỉ nghe NEW_SERVER là bỏ sót endpoint cũ).
+5. Chạy `wifi native` trên máy, bắt `qrtr-lookup 0x45`, `/sys/class/net`,
+   dmesg; chỉ khi `0x45` xuất hiện + firmware ready + `wlan0` thì coi là PASS.
+
+## 3. Tầng quản lý kết nối (thiết kế)
+
+### 3.1 Thành phần
+| Thành phần | Nguồn | Vai trò |
+| --- | --- | --- |
+| `wpa_supplicant` | cần vendor source `hostap` (chưa có trong repo/WSL) | scan/connect WPA2, control socket `/run/wpa_supplicant/wlan0` |
+| `udhcpc` | cần vendor `busybox` (chưa có trong repo/WSL) | DHCP client lấy IP sau khi associat |
+| `qeaf-wifi` | mới, C thuần musl | daemon quản lý: mở wpa_ctrl, gọi scan/connect/status, giữ state, expose Unix socket `/run/qeaf/wifi.sock` |
+
+### 3.2 Giao thức control socket `/run/qeaf/wifi.sock`
+Yêu cầu dạng text, một dòng/ response (dễ debug từ Terminal):
+- `SCAN` → `OK <bss_count>`
+- `SCAN_RESULTS` → mỗi dòng `bssid\tssid\trssi\tsecurity`
+- `CONNECT <ssid> <psk>` → `OK` / `FAIL <reason>` (PSK không được log)
+- `DISCONNECT` → `OK`
+- `STATUS` → `state=... ip=... rssi=... ssid=...`
+- `POWER <on|off>` → `OK|FAIL`
+
+`qeaf-wifi` dùng `wpa_ctrl_open()`/`wpa_ctrl_request()` từ hostap, không
+chạy shell, không lưu password vào log.
+
+### 3.3 Tích hợp Terminal
+Mở rộng `build_terminal()` trong `platform/violet/ui/vqeaf_pages.c`:
+- Lệnh `wifi scan` → gửi `SCAN`, `SCAN_RESULTS` qua socket.
+- `wifi connect <ssid> <psk>` → gửi `CONNECT` (ẩn PSK khỏi output).
+- `wifi status`, `wifi disconnect`, `wifi power`.
+Dùng chung `vqeaf_terminal_run()`; KHÔNG gọi trực tiếp wpa_supplicant từ UI.
+
+### 3.4 Tích hợp Settings LVGL
+Trang Wi-Fi (`VQEAF_PAGE_WIFI`) hiện chỉ đọc `vqeaf_state`. Thêm:
+- Nút "Quét" → gửi `SCAN`, sau 2-3 s gọi `SCAN_RESULTS`, render danh sách BSS.
+- Mỗi BSS: SSID, RSSI, biểu tượng khoá; tap → màn hình nhập PSK (dùng IME có sẵn).
+- "Kết nối" → `CONNECT`; "Ngắt" → `DISCONNECT`.
+- Trạng thái IP/RSSI/SSID lấy từ `STATUS`, cập nhật通过 timer 5 s.
+- Mọi thao đều qua `qeaf-wifi` control socket; UI không chạy process.
+
+## 4. Trình tự triển khai & tiêu chí nghiệm thu
+1. **P0** (đã làm): build + stage `qwlfgw`,rescue `wifi native`.
+2. **P1**: chạy `wifi native` trên máy → `qrtr-lookup 0x45` phải thấy server;
+   cnss-daemon/Bionic KHÔNG được khởi động.
+3. **P2**: hoàn thiện state machine WLFW theo header ROM, đạt `wlan0`.
+4. **P3**: vendor hostap + busybox, build static musl, stage vào ramdisk.
+5. **P4**: viết `qeaf-wifi` + control socket; host test với wpa_supplicant giả lập.
+6. **P5**: Terminal + Settings gọi socket; kiểm chứng scan thật trên máy.
+7. **P6**: ổn định modem (reset 40-60 s) — vấn đề độc lập phải giải quyết riêng.
+
+**Không đánh dấu PASS** khi chưa có: `0x45` thật, firmware ready, `wlan0`,
+scan results. Mọi log mẫu trong tài liệu này là evidence đã đo, không phải
+kết quả giả lập.

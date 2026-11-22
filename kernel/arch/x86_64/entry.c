@@ -19,6 +19,7 @@
 #include "../../../system/ui/include/vqeaf/ui.h"
 #include "../../../system/ui/include/vqeaf/recovery_screen.h"
 #include "../../../kernel/include/vqeaf/virtio_blk.h"
+#include "../../../kernel/include/vqeaf/virtio_net.h"
 #include "../../../kernel/include/vqeaf/ahci.h"
 #include "../../../kernel/include/vqeaf/vfs.h"
 #include "../../../system/core/include/vqeaf/partition.h"
@@ -594,6 +595,8 @@ EFI_STATUS EFIAPI efi_main(EFI_HANDLE image,EFI_SYSTEM_TABLE *st){
  {int vr=vqeaf_virtio_blk_init();
   if(vr==0)vqeaf_serial_write("VIRTIO: controller online\r\n");
   else{vqeaf_serial_write("VIRTIO: controller unavailable; storage stack stays unbound r=");serial_u64((uint64_t)(-vr));vqeaf_serial_write("\r\n");}}
+ {int nr=vqeaf_virtio_net_init();
+ if(nr!=0)vqeaf_serial_write("NET: virtio-net unavailable; networking stays unbound\r\n");}
  {int ar=vqeaf_ahci_init();
   if(ar==0)vqeaf_serial_write("AHCI: controller online\r\n");
   else{vqeaf_serial_write("AHCI: controller unavailable; SATA phase will skip r=");serial_u64((uint64_t)(-ar));vqeaf_serial_write("\r\n");}}

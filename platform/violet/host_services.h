@@ -50,6 +50,10 @@ int vio_host_run_bionic(const char *binary, const char *logname,
  * /tmp/hostsvc-qlookup.log for `wifi log`. */
 void vio_host_qrtr_lookup(void);
 
+/* Start the pure-Linux WLFW 0x45 server (build/violet/hosttools/qwlfgw).
+ * No Bionic, APEX, binder or chroot is involved. */
+int vio_host_wlfw_native(void);
+
 void vio_host_services_logs(char *out, int cap);
 
 /* Search the per-unit storage roots for a named board file. */

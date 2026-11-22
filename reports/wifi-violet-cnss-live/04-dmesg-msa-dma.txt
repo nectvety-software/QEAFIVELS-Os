@@ -1,0 +1,52 @@
+# 2026-11-22T07:00:14
+
+===== wifi dmesg =====
+seq=103
+### wifi dmesg
+wifi dmesg: 68 lines: OF: reserved mem: initialized node wlan_msa_region@93900000, compatible id removed-dma-pool OF: reserved mem: initialized node ipa_gsi_region@0x97710000, compatible id removed-dma-pool psci: PSCIv1.1 detected in firmware. Kernel command line: rcupdate.rcu_expedited=1 rcupdate.rcu_normal_after_boot=1 nosoftlockup mce=ignore_ce noirqdebug rcu_nocbs=0-7 kpti=off androidboot.hardware=qcom androidboot.console=ttyMSM0 service_locator.enable=1 swiotlb=1 earlycon=msm_geni_serial,0x880000 loop.max_part=7 kpti=off androidboot.vbmeta.avb_version=1.0 buildvariant=userdebug force_initramfs prefer_initramfs androidboot.verifiedbootstate=orange androidboot.keymaster=1 root=PARTUUID=c1f0ccaf-b3ed-e568-3bc7-b1911709a3f7 androidboot.bootdevice=7c4000.sdhci androidboot.serialno=ca1af25d androidboot.cpuid=0x38acdbc6 androidboot.hwc=CN androidboot.hwlevel=MP androidboot.hwversion=1.9.0 androidboot.secureboot=1 androidboot.dp=0x0 androidboot.baseband=msm msm_drm.dsi_display0=dsi_nt36672a_shenchao_vid_display: androidboot.fpsensor=fpc rootwait ro init=/init androidboot.dtb_idx=-1347440721 ASID allocator initialised with 65536 entries pinctrl core: initialized pinctrl subsystem platform soc:qcom,ipa_fws: assigned reserved memory node ips_fw_region@0x97700000
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws SCSI subsystem initialized register_client_adhoc:Client handle 8 ipa ipa ipa3_smp2p_probe:8693 fail to get smp2p clk resp bit -517 iommu: Adding device soc:ipa_smmu_ap to group 2 iommu: Adding device soc:ipa_smmu_wlan to group 3 iommu: Adding device soc:ipa_smmu_uc to group 4 ipa ipa3_smp2p_probe:8693 fail to get smp2p clk resp bit -517 ipa ipa3_smp2p_probe:8693 fail to get smp2p clk resp bit -517 ipa ipa3_smp2p_probe:8693 fail to get smp2p clk resp bit -517 icnss: Unable to create log context icnss: Unable to create log long context iommu: Adding device 18800000.qcom,icnss to group 7 icnss: Recursive recovery allowed for WLAN icnss 18800000.qcom,icnss: for wcss_msa0 segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:18800000.qcom,icnss icnss: Unable to create debugfs -19 icnss: Platform driver probed successfully subsys-pil-tz aae0000.qcom,venus: for venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz aae0000.qcom,venus: for md_venus segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus minidump-id not found for ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,ipa_fws: for md_ipa_fws segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,ipa_fws subsys-pil-tz soc:qcom,kgsl-hyp: for a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp subsys-pil-tz soc:qcom,kgsl-hyp: for md_a612_zap segments only will be dumped.
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,kgsl-hyp wlan_hdd_state wlan major(500) initialized iommu: Adding device soc:usb_audio_qmi_dev to group 27 ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_PROD resource ipa_rm ipa_rm_delete_resource:146 IPA RM was not initialized usb_bam_ipa_delete_resources: Failed to delete USB_CONS resource rmnet_ipa3 started initialization subsys-pil-tz 62400000.qcom,lpass: adsp: loading from 0x0000000095300000 to 0x0000000097100000
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 8300000.qcom,turing: cdsp: loading from 0x0000000093500000 to 0x0000000095300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 8300000.qcom,turing: cdsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-pil-tz 8300000.qcom,turing: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing subsys-restart: __subsystem_get(): Changing subsys fw_name to venus subsys-pil-tz aae0000.qcom,venus: venus: loading from 0x0000000092e00000 to 0x0000000093300000
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus subsys-pil-tz 8300000.qcom,turing: cdsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:8300000.qcom,turing sysmon-qmi: ssctl_new_server: Connection established between QMI handle and cdsp's SSCTL service msm_cdsp_rm soc:qcom,glink:cdsp:qcom,msm_cdsprm_rpmsg:qcom,msm_cdsp_rm: CDSP request manager driver probe called
+ SUBSYSTEM=platform
+ DEVICE=+platform:soc:qcom,glink:cdsp:qcom,msm_cdsprm_rpmsg:qcom,msm_cdsp_rm subsys-pil-tz 62400000.qcom,lpass: adsp: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 62400000.qcom,lpass: Subsystem error monitoring/handling services are up
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz 62400000.qcom,lpass: adsp: Power/Clock ready interrupt received
+ SUBSYSTEM=platform
+ DEVICE=+platform:62400000.qcom,lpass subsys-pil-tz aae0000.qcom,venus: venus: Brought out of reset
+ SUBSYSTEM=platform
+ DEVICE=+platform:aae0000.qcom,venus sysmon-qmi: ssctl_new_server: Connection established between QMI handle and adsp's SSCTL service apr_tal_rpmsg qcom,glink:adsp.apr_audio_svc.-1.-1: apr_tal_rpmsg_probe: Channel[apr_audio_svc] state[Up]
+ SUBSYSTEM=rpmsg
+ DEVICE=+rpmsg:qcom,glink:adsp.apr_audio_svc.-1.-1 firmware tas2563_uCDSP.bin: _request_firmware_load: firmware state wait timeout: rc = -110
+ SUBSYSTEM=firmware
+ DEVICE=+firmware:tas2563_uCDSP.bin tas2563 3-004c: tas2563_uCDSP.bin firmware is not loaded.
+ SUBSYSTEM=i2c
+ DEVICE=+i2c:3-004c servloc: init_service_locator: init_service_locator: wait for locator service timed out servloc: pd_locator_work: Unable to connect to service locator!, rc = -62 servloc: pd_locator_work: Unable to connect to service locator!, rc = -62 servloc: pd_locator_work: Unable to connect to service locator!, rc = -62 ADSPRPC: Audio PD restart notifier locator down servloc: pd_locator_work: Unable to connect to service locator!, rc = -62 ADSPRPC: Audio PD restart notifier locator down servloc: pd_locator_work: Unable to connect to service locator!, rc = -62 wlan: Loading driver v5.2.022.5U ipa ipa3_uc_reg_rdyCB:3134 bad parm. inout=00000000ef644505 
+### echo devcheck1795305537352
+devcheck1795305537352

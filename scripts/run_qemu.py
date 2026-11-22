@@ -32,6 +32,9 @@ def boot(image, log, expected, settle=()):
         "-device", "virtio-blk-pci,drive=vqblk,disable-modern=on,disable-legacy=off",
         "-drive", f"file={(BUILD/'ahci-test.img').as_posix()},format=raw,if=none,id=ahcidisk",
         "-device", "ide-hd,drive=ahcidisk,bus=ide.1",
+        # M1 network milestone: one legacy virtio-net NIC (1af4:1000).
+        "-netdev", "user,id=net0",
+        "-device", "virtio-net-pci,netdev=net0,disable-modern=on,disable-legacy=off",
         "-boot", "order=c", "-display", "none",
         "-serial", f"file:{log.as_posix()}",
         "-monitor", f"tcp:127.0.0.1:{port},server,nowait",
