@@ -41,6 +41,10 @@ typedef int (*rescue_screenshot_fn)(struct fat16_volume *vol, char *name,
                                     size_t cap);
 void rescue_set_screenshot_hook(rescue_screenshot_fn fn);
 
+/* Opens a captured photo in the shell's full-screen preview. */
+typedef void (*rescue_open_image_fn)(const char *name);
+void rescue_set_open_image_hook(rescue_open_image_fn fn);
+
 /* Optional UI language switch. The platform registers a function that applies
  * a language value to the running UI and persists it. Returns 0 when the
  * language was applied, 1 when it was queued for the next desktop frame

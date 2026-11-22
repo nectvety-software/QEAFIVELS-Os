@@ -133,6 +133,9 @@ typedef struct {
     uint64_t uptime_s;
 } vqeaf_notification_t;
 
+/* Opens a real image from UserData/Pictures in the full-screen preview. */
+void vqeaf_ui_open_picture(const char *name);
+
 void vqeaf_ui_notify(const char *title, const char *body, const char *symbol,
                      uint32_t color);
 int vqeaf_ui_notification_count(void);

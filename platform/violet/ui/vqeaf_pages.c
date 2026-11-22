@@ -3368,6 +3368,14 @@ static void gallery_open_image(const char *path);
 static int view_decode_jpg(const uint8_t *data, size_t len);
 static int gallery_make_thumb(const char *path, int idx);
 
+void vqeaf_ui_open_picture(const char *name)
+{
+    char path[288];
+    if(name == NULL || name[0] == '\0' || strchr(name, '/') != NULL) return;
+    snprintf(path, sizeof(path), "/Pictures/%s", name);
+    gallery_open_image(path);
+}
+
 #define GALLERY_THUMB_W 160u
 #define GALLERY_THUMB_H 120u
 #define GALLERY_MAX_THUMBS 12u
@@ -3444,6 +3452,11 @@ static void build_gallery(lv_obj_t *content)
     if(shown == 0)
         vqeaf_label(card, "Không có tệp ảnh hợp lệ.", VQEAF_FONT_BODY,
                     VQEAF_C_TEXT_DIM);
+    /* Fallback: the whole card opens the first image. Tile-level widgets on
+     * this LVGL build do not reliably deliver CLICKED to a parent. */
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(card, gallery_tile_cb, LV_EVENT_CLICKED,
+                        g_gallery_paths[0]);
 }
 
 /* ---- recents / multitasking --------------------------------------------- */

@@ -1333,6 +1333,7 @@ int main(void)
     vio_log("boot: " QEAF_OS_STRING " init on violet (PID %d)", (int)getpid());
     rescue_set_snapshot_hook(snapshot_scanout);
     rescue_set_screenshot_hook(screenshot_png);
+    rescue_set_open_image_hook(vqeaf_ui_open_picture);
     rescue_set_status_hook(status_fields);
     rescue_set_tap_hook(ui_tap_hook);
     rescue_set_hold_hook(ui_hold_hook);

@@ -210,6 +210,10 @@ void rescue_set_snapshot_hook(rescue_snapshot_fn fn) {
     g_snapshot = fn;
 }
 
+static rescue_open_image_fn g_open_image;
+
+void rescue_set_open_image_hook(rescue_open_image_fn fn) { g_open_image = fn; }
+
 void rescue_set_screenshot_hook(rescue_screenshot_fn fn) {
     g_screenshot = fn;
 }
@@ -1415,6 +1419,17 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 cat(resp, cap, "usb: mode set\n");
             else
                 cat(resp, cap, "usb: refused (gadget not started?)\n");
+        } else if (starts(line, "media open ")) {
+            const char *name = line + 11;
+            if(g_open_image == NULL)
+                cat(resp, cap, "media open: unavailable (no UI hook)\n");
+            else {
+                g_open_image(name);
+                cat(resp, cap, "media open: requested ");
+                cat(resp, cap, name);
+                cat(resp, cap, "\n");
+            }
+            g_result = 1;
         } else if (eq(line, "media list")) {
             static const char *const dirs[] = { "UserData/Pictures",
                                                 "UserData/Videos" };

@@ -3368,3 +3368,17 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Ảnh cuối đã flash sha `345a407e20afd5bcbfaea6296478d87f750fb1710ce449b00fef78165856f335`;
   build OK. Tiếp theo cần gắn event LVGL trực tiếp trên image/label thay vì
   nút hit, và đảm bảo có file QVF trước khi test phát lại.
+
+
+## Nỗ lực sửa lỗi preview photo (2026-11-22)
+- Thêm `media open NAME` gọi trực tiếp `vqeaf_ui_open_picture()` ->
+  `gallery_open_image()` (cùng đường decode với lưới thumbnail), để tách lỗi
+  event chạm LVGL ra khỏi lỗi decode.
+- Thử lần lượt: cờ CLICKABLE, nút hit trong suốt (sửa pct-height=0), callback
+  trên toàn card, `tap`/`hold` nhiều tọa độ, notify debug trong hàm mở ảnh.
+- **Kết quả vẫn FAILED**: `media open SHOT0001.BMP` trả "requested", nhưng ảnh
+  chụp màn hình ngay sau đó (`build/screens/device/photo-preview*.png`) không
+  thấy overlay preview lẫn notify. Không có bằng chứng decode/preview chạy.
+- Không khẳng định tính năng preview ảnh hoạt động. Cần debug thêm trên UI
+  thread (LVGL layer_top / lifecycle) trước khi báo PASS.
+- Ảnh cuối đã flash sha `b0c2f79543626d1e7fd2740b05471da12a1584b577d9eeae5465de4ac6a6aaf2`.
