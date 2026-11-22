@@ -84,6 +84,7 @@ SHARED = [
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_icon_40.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_emoji_28.c"),
     os.path.join(VIOLET, "ui", "wallpaper.c"),
+    os.path.join(ROOT, "platform", "lvgl", "src", "libs", "lz4", "lz4.c"),
     # Shared rescue verbs expose QRTR/host-service diagnostics; link providers
     # on the MTK board too (inert unless a rescue verb invokes them).
     os.path.join(VIOLET, "qrtr_ns.c"),
@@ -134,6 +135,7 @@ INCLUDES = [
     "-I", os.path.join(ROOT, "framework", "application_api"),
     "-I", os.path.join(ROOT, "framework", "security"),
     "-I", os.path.join(ROOT, "system", "core", "include"),
+    "-I", os.path.join(ROOT, "platform", "lvgl", "src", "libs", "lz4"),
 ]
 
 CFLAGS = ["-O2", "-g", "-Wall", "-Wextra", "-std=c11",

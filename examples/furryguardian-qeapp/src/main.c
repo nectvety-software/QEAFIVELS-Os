@@ -44,6 +44,27 @@
 #include "qeaf_native_abi.h"
 #include "font8x8.h"
 
+/* ---- freestanding support ------------------------------------------------ */
+
+/* With -mstrict-align LLVM lowers aggregate copies to memcpy/memset. A QEN
+ * module links no libc, so provide the two routines it may call. */
+void *memcpy(void *dst, const void *src, size_t n)
+{
+    unsigned char *d = (unsigned char *)dst;
+    const unsigned char *s = (const unsigned char *)src;
+
+    while(n--) *d++ = *s++;
+    return dst;
+}
+
+void *memset(void *dst, int value, size_t n)
+{
+    unsigned char *d = (unsigned char *)dst;
+
+    while(n--) *d++ = (unsigned char)value;
+    return dst;
+}
+
 /* ---- canvas -------------------------------------------------------------- */
 
 #define LW 240
@@ -58,8 +79,8 @@
 #define SCENE_MID ((SCENE_TOP + SCENE_BOT) / 2)
 
 #define PX 11
-#define PY 6
-#define PZ 9
+#define PY 8
+#define PZ 11
 
 #define DT_MS 33
 #define U 256              /* fixed point: 256 units per world unit (Q8) */
@@ -83,12 +104,12 @@
 #define COL_GRASS2   C(38, 82, 56)
 #define COL_DIRT     C(104, 84, 58)
 #define COL_DIRT2    C(92, 74, 50)
-#define COL_CAMP     C(118, 96, 66)
-#define COL_WALL     C(122, 92, 56)
+#define COL_CAMP     C(96, 80, 54)
+#define COL_WALL     C(150, 116, 70)
 #define COL_WALL_X   C(96, 72, 44)
 #define COL_WALL_Z   C(108, 82, 50)
-#define COL_GATE     C(140, 104, 62)
-#define COL_GATE_TOP C(96, 70, 42)
+#define COL_GATE     C(178, 138, 82)
+#define COL_GATE_TOP C(206, 170, 108)
 #define COL_CORE     C(168, 132, 92)
 #define COL_CORE_TOP C(196, 160, 112)
 #define COL_ROOF     C(146, 66, 50)
@@ -138,8 +159,10 @@ static void present(void);
 
 static void fb_set(int x, int y, uint16_t c)
 {
+    volatile uint16_t *fb = g_fb;
+
     if(x < 0 || y < 0 || x >= LW || y >= LH) return;
-    g_fb[y * LW + x] = c;
+    fb[y * LW + x] = c;
 }
 
 static void fb_rect(int x, int y, int w, int h, uint16_t c)
@@ -152,7 +175,7 @@ static void fb_rect(int x, int y, int w, int h, uint16_t c)
     if(y + h > LH) h = LH - y;
     if(w <= 0 || h <= 0) return;
     for(j = 0; j < h; j++) {
-        uint16_t *row = g_fb + (y + j) * LW + x;
+        volatile uint16_t *row = g_fb + (y + j) * LW + x;
         for(i = 0; i < w; i++) row[i] = c;
     }
 }
@@ -164,7 +187,10 @@ static void hspan(int y, int x0, int x1, uint16_t c)
     if(y < 0 || y >= LH) return;
     if(x0 < 0) x0 = 0;
     if(x1 >= LW) x1 = LW - 1;
-    for(i = x0; i <= x1; i++) g_fb[y * LW + i] = c;
+    {
+        volatile uint16_t *row = g_fb + y * LW;
+        for(i = x0; i <= x1; i++) row[i] = c;
+    }
 }
 
 typedef struct { int x, err, adx, dy, sx; } edge_t;
@@ -442,10 +468,14 @@ static void move_toward(int32_t *x, int32_t *z, int32_t tx, int32_t tz, int32_t 
 /* ---- world layout -------------------------------------------------------- */
 
 /* Gates sit on three sides of the camp; enemies walk in from further out. */
-static const int32_t g_gate_x[3] = { -4 * U - 128, 4 * U + 128, 128 };
-static const int32_t g_gate_z[3] = { 2 * U, -2 * U, 4 * U + 128 };
-static const int32_t g_spawn_x[3] = { -9 * U, 9 * U, 2 * U };
-static const int32_t g_spawn_z[3] = { 4 * U + 128, -4 * U - 128, 9 * U };
+static const int32_t g_gate_x[3] __attribute__((aligned(16))) =
+    { -4 * U - 128, 4 * U + 128, 128 };
+static const int32_t g_gate_z[3] __attribute__((aligned(16))) =
+    { 2 * U, -2 * U, 4 * U + 128 };
+static const int32_t g_spawn_x[3] __attribute__((aligned(16))) =
+    { -9 * U, 9 * U, 2 * U };
+static const int32_t g_spawn_z[3] __attribute__((aligned(16))) =
+    { 4 * U + 128, -4 * U - 128, 9 * U };
 
 static const int32_t g_pad_x[MAX_TOWERS] = { -2 * U - 64, 2 * U + 64, 96 };
 static const int32_t g_pad_z[MAX_TOWERS] = { 40, -80, 2 * U + 96 };
@@ -461,14 +491,17 @@ static void present(void)
 
     if(g_api == NULL || g_api->blit_pixels == NULL) return;
     for(y = 0; y < LH; y++) {
-        const uint16_t *src = g_fb + y * LW;
+        /* volatile: keeps the compiler from widening these packed 16-bit
+         * stores into unaligned 32/64-bit accesses, which fault on arm64. */
+        volatile uint16_t *src = g_fb + y * LW;
+        volatile uint16_t *band = g_band;
         for(x = 0; x < LW; x++) {
             uint16_t c = src[x];
             for(r = 0; r < BAND_ROWS; r++) {
                 int base = r * CW + x * SC;
-                g_band[base] = c;
-                g_band[base + 1] = c;
-                g_band[base + 2] = c;
+                band[base] = c;
+                band[base + 1] = c;
+                band[base + 2] = c;
             }
         }
         g_api->blit_pixels(0, y * SC, CW, BAND_ROWS, CW, g_band);
@@ -477,31 +510,34 @@ static void present(void)
 
 /* ---- game state ---------------------------------------------------------- */
 
+/* Every mutable field is 32-bit: the compiler merges adjacent small fields
+ * into wider stores, and a merged store at a 2-byte-aligned offset faults on
+ * arm64 (alignment fault, seen under the QEMU harness). */
 typedef struct {
     int32_t x, z;
-    int16_t hp, maxhp;
+    int32_t hp, maxhp;
     uint8_t kind;   /* 0 goblin, 1 brute, 2 slime, 3 flyingDino, 4 falcon, 5 boss */
     uint8_t lane;
     uint8_t state;
     uint8_t dead;
-    uint16_t cd, slow, flash;
+    int32_t cd, slow, flash;
 } enemy_t;
 
 typedef struct {
     int32_t x, z;
-    int16_t hp, maxhp;
+    int32_t hp, maxhp;
     uint8_t kind, alive;
-    uint16_t cd;
+    int32_t cd;
 } hero_t;
 
-typedef struct { uint8_t built, building; uint16_t build_ms, cd; } tower_t;
+typedef struct { int32_t built, building, build_ms, cd; } tower_t;
 
-typedef struct { int32_t x, z; uint8_t kind, alive; uint16_t life; } loot_t;
+typedef struct { int32_t x, z; uint8_t kind, alive; int32_t life; } loot_t;
 
 typedef struct {
     int32_t x, z, x2, z2;
     uint8_t kind;      /* 0 ring, 1 bolt, 2 gas, 3 burst */
-    uint16_t t, life;
+    int32_t t, life;
     uint16_t col;
 } fx_t;
 
@@ -532,9 +568,9 @@ static struct {
     tower_t towers[MAX_TOWERS];
     loot_t loot[MAX_LOOT];
     fx_t fx[MAX_FX];
-} g;
+} g __attribute__((aligned(16)));
 
-static prop_t g_props[MAX_PROPS];
+static prop_t g_props[MAX_PROPS] __attribute__((aligned(16)));
 static int32_t g_prop_count;
 static char g_msg[52] __attribute__((aligned(16)));
 
@@ -569,7 +605,7 @@ static void msg_wave(void)
 
     p = append_str(p, "DOT ");
     p = append_uint(p, g.wave);
-    p = append_str(p, ": BA HUONG TAN CONG!");
+    p = append_str(p, ": TAN CONG!");
     *p = '\0';
     msg(buf);
 }
@@ -614,7 +650,7 @@ static int32_t enemy_range(uint8_t kind)
     }
 }
 
-static uint16_t enemy_cd(uint8_t kind)
+static int32_t enemy_cd(uint8_t kind)
 {
     switch(kind) {
     case 0: return 1750;
@@ -658,7 +694,7 @@ static void add_fx(uint8_t kind, int32_t x, int32_t z, int32_t x2, int32_t z2,
     f->x2 = x2; f->z2 = z2;
     f->col = col;
     f->t = 0;
-    f->life = life;
+    f->life = (int32_t)life;
 }
 
 static void drop_loot(int32_t x, int32_t z)
@@ -685,14 +721,14 @@ static void damage_player(int dmg)
     if(g.php <= 0) {
         g.php = 0;
         g.down_ms = 15000;
-        msg("NHAN VAT BI HA! HOI SINH SAU 15s");
+        msg("NHAN VAT BI HA! 15s HOI SINH");
     }
 }
 
 static void damage_enemy(enemy_t *e, int dmg)
 {
     if(e->dead) return;
-    e->hp = (int16_t)(e->hp - dmg);
+    e->hp -= dmg;
     e->flash = 120;
     if(e->hp <= 0) {
         e->dead = 1;
@@ -724,9 +760,9 @@ static void spawn_enemy(uint8_t kind, uint8_t lane)
     e = &g.enemies[g.ecount++];
     e->kind = kind;
     e->lane = lane;
-    e->maxhp = (int16_t)enemy_hp(kind);
+    e->maxhp = enemy_hp(kind);
     e->hp = e->maxhp;
-    e->cd = (uint16_t)(150 + (rnd() % 600u));
+    e->cd = 150 + (int32_t)(rnd() % 600u);
     e->slow = 0;
     e->flash = 0;
     e->state = 0;
@@ -798,7 +834,7 @@ static void skill_ice(void)
             damage_enemy(e, 34);
         }
     }
-    add_fx(0, g.px, g.pz, 5 * U, 0, COL_ICE, 700);
+    add_fx(0, g.px, g.pz, 3 * U, 0, COL_ICE, 700);
     msg("BANG NOVA!");
 }
 
@@ -818,7 +854,7 @@ static void skill_bolt(void)
         if(d > 2432 * 2432) continue;
         if(best < 0 || d < bd) { best = i; bd = d; }
     }
-    if(best < 0) { msg("KHONG CO MUC TIEU TRONG TAM SET"); return; }
+    if(best < 0) { msg("KHONG CO MUC TIEU (SET)"); return; }
     g.cd_bolt = 8500;
     for(jumps = 0; jumps < 4 && best >= 0; jumps++) {
         enemy_t *e = &g.enemies[best];
@@ -945,7 +981,7 @@ static int hero_damage(uint8_t kind)
     }
 }
 
-static uint16_t hero_rate(uint8_t kind)
+static int32_t hero_rate(uint8_t kind)
 {
     switch(kind) {
     case 0: return 720;
@@ -965,12 +1001,6 @@ static void dec(int32_t *v, int32_t amount)
     if(*v < 0) *v = 0;
 }
 
-static void dec16(uint16_t *v, uint16_t amount)
-{
-    if(*v > amount) *v = (uint16_t)(*v - amount);
-    else *v = 0;
-}
-
 static void update_enemies(void)
 {
     int i;
@@ -981,9 +1011,9 @@ static void update_enemies(void)
         int flying, gate_alive;
 
         if(e->dead) continue;
-        if(e->flash > 0) e->flash = (uint16_t)(e->flash > DT_MS ? e->flash - DT_MS : 0);
+        if(e->flash > 0) e->flash = e->flash > DT_MS ? e->flash - DT_MS : 0;
         if(e->slow > 0) e->slow--;
-        if(e->cd > 0) e->cd = (uint16_t)(e->cd > DT_MS ? e->cd - DT_MS : 0);
+        if(e->cd > 0) e->cd = e->cd > DT_MS ? e->cd - DT_MS : 0;
 
         spd = enemy_speed(e->kind);
         if(e->slow > 0) spd = spd > 2 ? spd - 2 : 1;
@@ -1075,12 +1105,12 @@ static void update_towers(void)
     for(i = 0; i < MAX_TOWERS; i++) {
         tower_t *t = &g.towers[i];
         if(t->building) {
-            dec16(&t->build_ms, DT_MS);
+            dec(&t->build_ms, DT_MS);
             if(t->build_ms == 0) { t->building = 0; t->built = 1; msg("TRU HOAN THANH"); }
             continue;
         }
         if(!t->built) continue;
-        if(t->cd > 0) { dec16(&t->cd, DT_MS); continue; }
+        if(t->cd > 0) { dec(&t->cd, DT_MS); continue; }
         for(j = 0; j < g.ecount; j++) {
             enemy_t *e = &g.enemies[j];
             if(e->dead) continue;
@@ -1103,7 +1133,7 @@ static void update_heroes(void)
         int32_t bd = 0;
 
         if(!h->alive) continue;
-        if(h->cd > 0) { dec16(&h->cd, DT_MS); continue; }
+        if(h->cd > 0) { dec(&h->cd, DT_MS); continue; }
         for(j = 0; j < g.ecount; j++) {
             enemy_t *e = &g.enemies[j];
             int32_t d;
@@ -1179,7 +1209,7 @@ static void tick(void)
     update_loot();
 
     for(i = 0; i < g.fcount; i++) {
-        g.fx[i].t = (uint16_t)(g.fx[i].t + DT_MS);
+        g.fx[i].t += DT_MS;
     }
     while(g.fcount > 0 && g.fx[0].t >= g.fx[0].life) {
         for(i = 1; i < g.fcount; i++) g.fx[i - 1] = g.fx[i];
@@ -1291,7 +1321,7 @@ static void reset_game(void)
 
 typedef struct { int32_t d; uint8_t kind; int16_t idx; } item_t;
 
-static item_t g_items[MAX_ITEMS];
+static item_t g_items[MAX_ITEMS] __attribute__((aligned(16)));
 static int g_ni;
 
 static void push_item(int32_t depth, uint8_t kind, int16_t idx)
@@ -1405,15 +1435,15 @@ static void wall_seg(int32_t ax, int32_t az, int32_t bx, int32_t bz)
     if(len == 0) return;
     fx = udiv32((uint32_t)adx << 16, len);
     fz = udiv32((uint32_t)adz << 16, len);
-    px = (int32_t)((fz * 26u) >> 16);
-    pz = (int32_t)((fx * 26u) >> 16);
+    px = (int32_t)((fz * 40u) >> 16);
+    pz = (int32_t)((fx * 40u) >> 16);
 
     ao0 = proj(ax + px, 0, az + pz);
     bo0 = proj(bx + px, 0, bz + pz);
-    ai1 = proj(ax - px, 250, az - pz);
-    bi1 = proj(bx - px, 250, bz - pz);
-    ao1 = proj(ax + px, 250, az + pz);
-    bo1 = proj(bx + px, 250, bz + pz);
+    ai1 = proj(ax - px, 380, az - pz);
+    bi1 = proj(bx - px, 380, bz - pz);
+    ao1 = proj(ax + px, 380, az + pz);
+    bo1 = proj(bx + px, 380, bz + pz);
 
     quad3_pt(ao0, bo0, bo1, ao1, COL_WALL_X);
     quad3_pt(ai1, bi1, bo1, ao1, COL_WALL);
@@ -1435,8 +1465,8 @@ static void draw_gate(int lane)
         box3(x, z, 70, 0, 150, COL_GATE_TOP, COL_WALL_X, COL_GATE);
         box3(x, z, 40, 150, 60, COL_GATE_TOP, COL_GATE_TOP, COL_GATE_TOP);
     } else {
-        box3(x - 40, z, 30, 0, 30, COL_WALL_X, COL_WALL_X, COL_GATE);
-        box3(x + 40, z, 30, 0, 22, COL_WALL_X, COL_WALL_X, COL_GATE);
+        box3(x - 60, z, 44, 0, 40, COL_WALL_X, COL_WALL_X, COL_GATE);
+        box3(x + 60, z, 44, 0, 28, COL_WALL_X, COL_WALL_X, COL_GATE);
     }
 }
 
@@ -1513,12 +1543,12 @@ static void draw_player(void)
         box3(g.px, g.pz, 70, 0, 40, COL_PLAYER_X, COL_PLAYER_X, COL_PLAYER_X);
         return;
     }
-    box3(g.px, g.pz, 70, bob, 150, COL_PLAYER, COL_PLAYER_X, COL_PLAYER_Z);
-    box3(g.px, g.pz, 44, 150, 76, COL_HEAD, COL_HEAD, C(206, 148, 96));
-    box3(g.px - 42, g.pz - 16, 16, 220, 44, COL_EAR, COL_EAR, COL_EAR);
-    box3(g.px + 42, g.pz - 16, 16, 220, 44, COL_EAR, COL_EAR, COL_EAR);
+    box3(g.px, g.pz, 105, bob, 230, COL_PLAYER, COL_PLAYER_X, COL_PLAYER_Z);
+    box3(g.px, g.pz, 72, 230, 110, COL_HEAD, COL_HEAD, C(206, 148, 96));
+    box3(g.px - 66, g.pz - 24, 26, 320, 66, COL_EAR, COL_EAR, COL_EAR);
+    box3(g.px + 66, g.pz - 24, 26, 320, 66, COL_EAR, COL_EAR, COL_EAR);
     /* tail, opposite the facing direction */
-    box3(g.px - 70 - (g.mvx >> 2), g.pz - (g.mvz >> 2), 26, 60, 30,
+    box3(g.px - 110 - (g.mvx >> 2), g.pz - (g.mvz >> 2), 40, 80, 44,
          COL_PLAYER_Z, COL_PLAYER_X, COL_PLAYER_Z);
 
 }
@@ -1734,7 +1764,7 @@ static void draw_hud(void)
 
     if(g.phase == 0) {
         p = buf;
-        p = append_str(p, "XAY DUNG ");
+        p = append_str(p, "XAY ");
         p = append_uint(p, g.build_ms / 1000);
         p = append_str(p, "s");
         *p = '\0';
@@ -1747,7 +1777,7 @@ static void draw_hud(void)
         p = append_str(p, "THAT THU");
         *p = '\0';
     }
-    text(150, 4, buf, 1, g.phase == 1 ? COL_FIRE : COL_INK);
+    text(140, 4, buf, 1, g.phase == 1 ? COL_FIRE : COL_INK);
 
     p = buf;
     p = append_str(p, "VANG ");
@@ -1797,8 +1827,8 @@ static void draw_hud(void)
     draw_buttons();
 
     text(5, 450, "WASD/MUI TEN: DI CHUYEN", 1, COL_DIM);
-    text(5, 460, "Q BANG  E SET  SPACE LOC  R HOI", 1, COL_DIM);
-    text(5, 470, "ENTER: BAT DAU DOT  F TRU  G HERO", 1, COL_DIM);
+    text(5, 460, "Q:BANG E:SET SP:LOC R:HOI", 1, COL_DIM);
+    text(5, 470, "ENTER:DOT F:TRU G:HERO", 1, COL_DIM);
 
     if(g.msg_ms > 0) text(5, 484, g_msg, 1, COL_ACCENT);
 

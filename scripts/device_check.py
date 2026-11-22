@@ -299,6 +299,21 @@ class Device:
             time.sleep(2)
         return False
 
+    def probe(self, timeout=6.0):
+        """Round-trip proof that the rescue worker still services verbs.
+
+        wait_ready() only shows the LUN is enumerated. A boot that hung at the
+        splash stage leaves the volume mounted while nothing reads QEAF.CMD, so
+        a flash staged there would never be written - and would burn its whole
+        timeout before failing. Ask for an answer first."""
+        if not self.letter:
+            return False
+        # RESPONSE.TXT from an earlier boot already reads "### status", so the
+        # only proof of a live worker is send() moving the sequence on.
+        before = self.seq
+        self.send(["status"], wait=timeout)
+        return self.seq > before
+
     def flush(self):
         subprocess.run(["powershell", "-NoProfile", "-Command",
                         "Write-VolumeCache -DriveLetter %s"
@@ -356,12 +371,15 @@ class Device:
             raise SystemExit("device_check: missing image %s" % image)
         size = os.path.getsize(image)
         print("flash: %s (%d bytes)" % (os.path.relpath(image, ROOT), size))
-        if self.wait_ready(15):
+        if self.wait_ready(15) and self.probe():
             self.flash_rescue(image, size)
             return
+        if self.letter:
+            print("flash: QEAFRESCUE is mounted but silent - its worker "
+                  "stopped answering, so the phone cannot flash itself")
         # Not answering: the phone may be sitting in the vendor OS with adb.
         subprocess.run(["adb", "reboot", "recovery"], capture_output=True)
-        if self.wait_ready(120):
+        if self.wait_ready(120) and self.probe():
             print("flash: recovery answered after adb reboot")
             self.flash_rescue(image, size)
             return

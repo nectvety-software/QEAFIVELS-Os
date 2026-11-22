@@ -47,6 +47,8 @@ add_executable(vqeaf_settings_smoke tests/vqeaf_settings.c system/core/settings.
 target_include_directories(vqeaf_settings_smoke PRIVATE kernel/include system/core system/core/include)
 add_executable(vqeaf_violet_tap_smoke tests/violet_tap_smoke.c)
 target_include_directories(vqeaf_violet_tap_smoke PRIVATE platform/violet)
+add_executable(vqeaf_qvf_encode_test tests/vqeaf_qvf_encode.c platform/violet/qvf_encode.c)
+target_include_directories(vqeaf_qvf_encode_test PRIVATE platform/violet)
 add_executable(vqeaf_volume_lock_test tests/vqeaf_volume_lock_test.c)
 target_include_directories(vqeaf_volume_lock_test PRIVATE platform/violet)
 target_link_libraries(vqeaf_volume_lock_test PRIVATE Threads::Threads)
@@ -61,6 +63,7 @@ set(VQEAF_TEST_TARGETS vqeaf_ui_font_smoke vqeaf_update_screen_smoke
     vqeaf_kernel_core_smoke
     vqeaf_core_services_smoke vqeaf_system_v03_smoke vqeaf_vfs_mount_smoke
     vqeaf_settings_smoke vqeaf_violet_tap_smoke vqeaf_volume_lock_test
+    vqeaf_qvf_encode_test
     vqeaf_wcn3990_smoke vqeaf_wcn3990_phase2_smoke)
 foreach(t ${VQEAF_TEST_TARGETS})
   target_compile_options(${t} PRIVATE -UNDEBUG)
@@ -78,5 +81,6 @@ add_test(NAME vqeaf_vfs_mount_smoke COMMAND vqeaf_vfs_mount_smoke)
 add_test(NAME vqeaf_settings_smoke COMMAND vqeaf_settings_smoke)
 add_test(NAME vqeaf_violet_tap_smoke COMMAND vqeaf_violet_tap_smoke)
 add_test(NAME vqeaf_volume_lock_test COMMAND vqeaf_volume_lock_test)
+add_test(NAME vqeaf_qvf_encode_test COMMAND vqeaf_qvf_encode_test)
 add_test(NAME vqeaf_wcn3990_smoke COMMAND vqeaf_wcn3990_smoke)
 add_test(NAME vqeaf_wcn3990_phase2_smoke COMMAND vqeaf_wcn3990_phase2_smoke)

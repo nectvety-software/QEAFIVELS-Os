@@ -92,6 +92,13 @@ def compile_native(qen, project, arch, c_sources, entry, abi_version=5):
                    "-fno-stack-protector", "-fno-jump-tables", "-O2", "-std=c11",
                    "-Wall", "-Wextra", "-Werror", "-I", str(api_include),
                    "-I", str(project / "src"), "-c", str(source), "-o", str(obj)]
+            if arch == "arm64":
+                # A QEN module has no libc and the loader maps sections with
+                # ordinary alignment; aarch64 raises an alignment fault on an
+                # unaligned access. Keep LLVM from merging narrow fields into
+                # wider or SIMD stores (observed as a Data Abort with
+                # DFSC=0x21 inside reset_game on the QEMU harness).
+                cmd.insert(4, "-mstrict-align")
             proc = subprocess.run(cmd, capture_output=True, text=True,
                                   encoding="utf-8", errors="replace")
             if proc.returncode != 0:

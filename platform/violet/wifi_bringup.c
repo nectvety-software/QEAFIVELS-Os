@@ -914,6 +914,98 @@ static void list_dir(char *out, int cap, const char *label, const char *path,
     addf(out, cap, "\n");
 }
 
+/* Homologation-style diagnostic: every line is verified from live sysfs,
+ * mounted files and the QRTR/service census. No inferred or mocked status. */
+void vio_wifi_diag(char *out, int cap)
+{
+    char mounts[8192] = "";
+    char qr[6000] = "";
+    char subsys[8192] = "";
+    char svc[2048] = "";
+    DIR *dir;
+    struct dirent *entry;
+    int modem_state = 0;          /* 1 = ONLINE */
+    char state[64] = "absent";
+    int fw_mounted = 0, fw_image = 0;
+    int rmt_ok = 0, tftp_ok = 0, binder_ok = 0, cnss_ok = 0;
+    int wlfw_ok = 0, wlan0_ok = 0;
+    const char *servers;
+
+    if(out == NULL || cap <= 0) return;
+    out[0] = '\0';
+
+    /* Step 1: modem firmware mount and the real WLAN DSP image. */
+    (void)read_text("/proc/mounts", mounts, sizeof(mounts));
+    fw_mounted = strstr(mounts, "/vendor/firmware_mnt") != NULL;
+    fw_image = access("/vendor/firmware_mnt/image/wlanmdsp.mbn", F_OK) == 0 ||
+               access("/lib/firmware/wlanmdsp.mbn", F_OK) == 0;
+    addf(out, cap,
+         "STEP1 firmware_mnt=%s wlanmdsp.mbn=%s mount_source=%s %s\n",
+         fw_mounted ? "mounted" : "NOT_MOUNTED",
+         fw_image ? "present" : "MISSING",
+         strstr(mounts, "/dev/mmcblk0p82 ") ? "/dev/mmcblk0p82" : "unknown",
+         (fw_mounted && fw_image) ? "VERIFIED" : "FAILED");
+
+    /* Step 2: msm_subsys modem state, straight from the kernel. */
+    dir = opendir("/sys/bus/msm_subsys/devices");
+    if(dir != NULL) {
+        while((entry = readdir(dir)) != NULL) {
+            char base[320], path[400], name[64] = "";
+            if(entry->d_name[0] == '.') continue;
+            snprintf(base, sizeof(base), "/sys/bus/msm_subsys/devices/%s",
+                     entry->d_name);
+            snprintf(path, sizeof(path), "%s/name", base);
+            if(read_text(path, name, sizeof(name)) > 0 &&
+               strcmp(name, "modem") == 0) {
+                snprintf(path, sizeof(path), "%s/state", base);
+                (void)read_text(path, state, sizeof(state));
+                if(strstr(state, "ONLINE") != NULL ||
+                   strstr(state, "online") != NULL) modem_state = 1;
+                break;
+            }
+        }
+        closedir(dir);
+    }
+    addf(out, cap, "STEP2 modem_subsys state=%s %s\n", state,
+         modem_state ? "VERIFIED" : "FAILED");
+
+    /* Step 3: userspace stack from the live service registry. */
+    vio_host_services_report(svc, (int)sizeof(svc));
+    rmt_ok = strstr(svc, "rmtfs: running") != NULL;
+    tftp_ok = strstr(svc, "tqftpserv: running") != NULL;
+    binder_ok = strstr(svc, "binder: present") != NULL;
+    cnss_ok = strstr(svc, "cnss-daemon: running") != NULL;
+    addf(out, cap,
+         "STEP3 rmtfs=%s tqftpserv=%s binder=%s cnss-daemon=%s %s\n",
+         rmt_ok ? "running" : "MISSING",
+         tftp_ok ? "running" : "MISSING",
+         binder_ok ? "present" : "absent",
+         cnss_ok ? "running" : "MISSING",
+         (rmt_ok && tftp_ok && binder_ok && cnss_ok) ? "VERIFIED" : "FAILED");
+
+    /* Step 4: WLFW 0x45 must be in the QRTR SERVERS table, not LOOKUPS. */
+    vio_qrtr_ns_report(qr, (int)sizeof(qr));
+    servers = strstr(qr, "qrtr-ns servers:");
+    if(servers != NULL) {
+        const char *end = strstr(servers, "qrtr-ns nodes:");
+        size_t n = end != NULL ? (size_t)(end - servers) : strlen(servers);
+        char table[2048];
+        snprintf(table, sizeof(table), "%.*s", (int)n, servers);
+        wlfw_ok = strstr(table, "0x45/") != NULL;
+    }
+    addf(out, cap, "STEP4 WLFW_0x45 server=%s %s\n",
+         wlfw_ok ? "present" : "NOT_REGISTERED",
+         wlfw_ok ? "VERIFIED" : "FAILED");
+
+    /* Step 5: the driver must have created a real netdev. */
+    wlan0_ok = access("/sys/class/net/wlan0", F_OK) == 0;
+    addf(out, cap, "STEP5 wlan0=%s %s\n",
+         wlan0_ok ? "present" : "absent",
+         wlan0_ok ? "VERIFIED" : "FAILED");
+    (void)subsys;
+}
+
+
 static void attr(char *out, int cap, const char *label, const char *path)
 {
     char value[128] = "";

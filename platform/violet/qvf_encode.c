@@ -14,7 +14,7 @@
 #define LZ4_LAST_LITERALS 5u
 #define LZ4_END_OFFSET 12u
 
-#define QVF_MAGIC 0x31565651u /* "QVF1" little-endian */
+#define QVF_MAGIC 0x31465651u /* "QVF1" little-endian */
 #define QVF_VERSION 1u
 #define QVF_CODEC_LZ4_RGB565 1u
 

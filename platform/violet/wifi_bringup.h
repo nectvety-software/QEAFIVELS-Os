@@ -44,6 +44,8 @@ void vio_wifi_report(char *out, int cap);
 
 /* Dump the subsystem/modem sysfs the bring-up depends on. Read-only. */
 void vio_wifi_sysdump(char *out, int cap);
+/* Homologation diary: 5 verified/failed lines with evidence. */
+void vio_wifi_diag(char *out, int cap);
 
 /* Short one-line state for the status bar / settings page. */
 const char *vio_wifi_state_text(void);
