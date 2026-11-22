@@ -32,10 +32,11 @@ struct usb_gadget_lun {
  * in this image, so vio_lun_set_mode() turns a request into MTP and logs it
  * instead of pretending; only the rescue verb `usb ptp` can still ask.
  *
- * Charge-only therefore hides QEAFRESCUE while it lasts, and the way back is
- * the Settings USB entry (no replug): the RAM volume is never destroyed, so the
- * same drive reappears as soon as a data mode is picked again. A reboot also
- * re-binds the drive, because the boot bind is file transfer. */
+ * Charge-only therefore hides QEAFRESCUE while it lasts. Three ways back, all
+ * without a reboot: the Settings USB entry, unplugging and plugging the cable
+ * again (vio_lun_poll() sees the rising edge, main re-binds), or a reboot
+ * (the boot bind is file transfer). The RAM volume is never destroyed, so the
+ * same drive reappears as soon as a data mode is picked again. */
 enum usb_mode {
     USB_MODE_CHARGE = 0,        /* VBUS only, no data endpoint */
     USB_MODE_MTP,               /* files  + control LUN */

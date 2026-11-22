@@ -38,6 +38,7 @@
 #include "../../qrtr_probe.h"
 #include "../../vio_caps.h"
 #include "../../vqeaf_camera.h"
+#include "../../wifi_fw_check.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -1197,6 +1198,14 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                             if (rep[r - 1] != '\n') cat(resp, cap, "\n");
                         }
                     }
+                }
+                /* Structural check of the files just listed: the driver must
+                 * not hand a truncated or non-Hexagon image to icnss. */
+                {
+                    char chk[1024];
+                    chk[0] = '\0';
+                    (void)vio_wifi_fw_report(chk, sizeof(chk));
+                    cat(resp, cap, chk);
                 }
             } else if (sub == 6) {
                 /* Force a fresh mount/param pass. Idempotent: already-mounted

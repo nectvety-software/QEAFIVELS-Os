@@ -10,6 +10,7 @@ vqeaf_palette_t vqeaf_palette;
 /* The installed shell starts in Light; Settings can still switch to Dark. */
 static vqeaf_theme_mode_t g_theme_mode = VQEAF_THEME_DARK;
 static int g_liquid_glass;
+static int g_fluent;
 
 /* ---- dynamic colour (Material You style) --------------------------------- */
 /* One seed colour generates every role, the way Material You derives the
@@ -251,10 +252,61 @@ uint32_t vqeaf_theme_wallpaper_seed(void)
     return wallpaper_dominant(g_theme_mode);
 }
 
+/* ---- Windows 11 (Fluent) palette -----------------------------------------
+ * Mica neutrals with one accent (#0067C0 light / #4CC2FF dark) instead of the
+ * stock iOS-style greys. Red and amber stay semantic. While the skin is on it
+ * wins over both the stock palette and dynamic colour, so the shell cannot end
+ * up half Fluent and half Material You. */
+static void palette_fluent(void)
+{
+    int h, s, l;
+
+    if(g_theme_mode == VQEAF_THEME_LIGHT) {
+        vqeaf_palette.bg        = lv_color_hex(0xF3F3F3);
+        vqeaf_palette.bg_deep   = lv_color_hex(0xFFFFFF);
+        vqeaf_palette.surface   = lv_color_hex(0xFBFBFB);
+        vqeaf_palette.surface_2 = lv_color_hex(0xF3F3F3);
+        vqeaf_palette.surface_3 = lv_color_hex(0xE9E9E9);
+        vqeaf_palette.line      = lv_color_hex(0xDCDCDC);
+        vqeaf_palette.accent    = lv_color_hex(0x0067C0);
+        vqeaf_palette.accent_dk = lv_color_hex(0x005A9E);
+        vqeaf_palette.cyan      = lv_color_hex(0x0086D1);
+        vqeaf_palette.green     = lv_color_hex(0x107C10);
+        vqeaf_palette.text      = lv_color_hex(0x1B1B1B);
+        vqeaf_palette.text_dim  = lv_color_hex(0x5C5C5C);
+        vqeaf_palette.text_mute = lv_color_hex(0x8A8A8A);
+        vqeaf_palette.danger    = lv_color_hex(0xC42B1C);
+        vqeaf_palette.warn      = lv_color_hex(0x9D5D00);
+    }
+    else {
+        vqeaf_palette.bg        = lv_color_hex(0x202020);
+        vqeaf_palette.bg_deep   = lv_color_hex(0x1A1A1A);
+        vqeaf_palette.surface   = lv_color_hex(0x2B2B2B);
+        vqeaf_palette.surface_2 = lv_color_hex(0x262626);
+        vqeaf_palette.surface_3 = lv_color_hex(0x323232);
+        vqeaf_palette.line      = lv_color_hex(0x3D3D3D);
+        vqeaf_palette.accent    = lv_color_hex(0x4CC2FF);
+        vqeaf_palette.accent_dk = lv_color_hex(0x3AA0D8);
+        vqeaf_palette.cyan      = lv_color_hex(0x60CDFF);
+        vqeaf_palette.green     = lv_color_hex(0x6CCB5F);
+        vqeaf_palette.text      = lv_color_hex(0xFFFFFF);
+        vqeaf_palette.text_dim  = lv_color_hex(0xC9C9C9);
+        vqeaf_palette.text_mute = lv_color_hex(0x9A9A9A);
+        vqeaf_palette.danger    = lv_color_hex(0xFF99A4);
+        vqeaf_palette.warn      = lv_color_hex(0xFCE100);
+    }
+    rgb_to_hsl(lv_color_to_u32(vqeaf_palette.accent), &h, &s, &l);
+    palette_m3_roles(g_theme_mode, h);
+}
+
 void vqeaf_theme_set(vqeaf_theme_mode_t mode)
 {
     g_theme_mode = mode == VQEAF_THEME_LIGHT ?
                    VQEAF_THEME_LIGHT : VQEAF_THEME_DARK;
+    if(g_fluent) {
+        palette_fluent();
+        return;
+    }
     if(g_auto) {
         uint32_t derived = wallpaper_dominant(g_theme_mode);
         if(derived != 0) {
@@ -322,6 +374,45 @@ void vqeaf_theme_set_liquid_glass(int on)
 int vqeaf_theme_liquid_glass(void)
 {
     return g_liquid_glass;
+}
+
+void vqeaf_theme_set_fluent(int on)
+{
+    g_fluent = on ? 1 : 0;
+    if(g_fluent) {
+        /* The Fluent palette is fixed, and acrylic replaces Liquid Glass. */
+        g_seed = 0;
+        g_auto = 0;
+        g_liquid_glass = 0;
+    }
+    vqeaf_theme_set(g_theme_mode);
+}
+
+int vqeaf_theme_fluent(void)
+{
+    return g_fluent;
+}
+
+int32_t vqeaf_theme_card_radius(void)
+{
+    return g_fluent ? 12 : 28;
+}
+
+void vqeaf_acrylic_surface(lv_obj_t *obj, int32_t radius)
+{
+    if(obj == NULL) return;
+    lv_obj_set_style_bg_color(obj, VQEAF_C_SURFACE, 0);
+    lv_obj_set_style_bg_opa(obj,
+        (lv_opa_t)(g_theme_mode == VQEAF_THEME_LIGHT ? 235 : 225), 0);
+    lv_obj_set_style_radius(obj, radius, 0);
+    lv_obj_set_style_border_width(obj, 1, 0);
+    lv_obj_set_style_border_color(obj, VQEAF_C_LINE, 0);
+    lv_obj_set_style_border_opa(obj, LV_OPA_70, 0);
+    lv_obj_set_style_shadow_width(obj, 14, 0);
+    lv_obj_set_style_shadow_ofs_y(obj, 3, 0);
+    lv_obj_set_style_shadow_spread(obj, 0, 0);
+    lv_obj_set_style_shadow_color(obj, lv_color_black(), 0);
+    lv_obj_set_style_shadow_opa(obj, 26, 0);
 }
 
 /* LVGL has no backdrop blur in this renderer. Simulate the reference's glass
@@ -413,9 +504,16 @@ lv_obj_t *vqeaf_card(lv_obj_t *parent, int32_t w, int32_t h)
     lv_obj_set_size(card, w, h);
     lv_obj_set_style_bg_color(card, VQEAF_C_SURFACE, 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(card, 28, 0);
+    lv_obj_set_style_radius(card, vqeaf_theme_card_radius(), 0);
     lv_obj_set_style_border_width(card, 1, 0);
     lv_obj_set_style_border_color(card, VQEAF_C_LINE, 0);
+    if(g_fluent) {
+        /* Windows 11 surfaces are flat with a short, soft drop shadow. */
+        lv_obj_set_style_shadow_width(card, 10, 0);
+        lv_obj_set_style_shadow_ofs_y(card, 2, 0);
+        lv_obj_set_style_shadow_color(card, lv_color_black(), 0);
+        lv_obj_set_style_shadow_opa(card, 20, 0);
+    }
     lv_obj_set_style_pad_all(card, 20, 0);
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(card, LV_OBJ_FLAG_GESTURE_BUBBLE);

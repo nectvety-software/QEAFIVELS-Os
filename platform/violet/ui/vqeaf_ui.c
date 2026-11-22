@@ -732,15 +732,22 @@ static void build_navigation(lv_obj_t *screen)
     lv_obj_add_flag(g_nav, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_set_pos(g_nav, m.margin, m.dock_top);
     lv_obj_set_size(g_nav, dock_w, m.dock_h);
-    /* Keep the dock icons, remove the enclosing slab/frame. */
-    lv_obj_set_style_bg_color(g_nav,
-        vqeaf_wallpaper_active() ? lv_color_black() : VQEAF_C_SURFACE_2, 0);
-    lv_obj_set_style_bg_opa(g_nav,
-        vqeaf_wallpaper_active() ? 120 : LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(g_nav, 0, 0);
-    lv_obj_set_style_radius(g_nav, m.radius, 0);
-    lv_obj_set_style_shadow_width(g_nav, 0, 0);
-    lv_obj_set_style_shadow_opa(g_nav, LV_OPA_0, 0);
+    if(vqeaf_theme_fluent()) {
+        /* Windows 11 taskbar: the dock becomes one acrylic plate instead of
+         * bare icons floating over the wallpaper. */
+        vqeaf_acrylic_surface(g_nav, 20);
+    }
+    else {
+        /* Keep the dock icons, remove the enclosing slab/frame. */
+        lv_obj_set_style_bg_color(g_nav,
+            vqeaf_wallpaper_active() ? lv_color_black() : VQEAF_C_SURFACE_2, 0);
+        lv_obj_set_style_bg_opa(g_nav,
+            vqeaf_wallpaper_active() ? 120 : LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(g_nav, 0, 0);
+        lv_obj_set_style_radius(g_nav, m.radius, 0);
+        lv_obj_set_style_shadow_width(g_nav, 0, 0);
+        lv_obj_set_style_shadow_opa(g_nav, LV_OPA_0, 0);
+    }
     lv_obj_set_style_pad_hor(g_nav, 10, 0);
     lv_obj_set_flex_flow(g_nav, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(g_nav, LV_FLEX_ALIGN_SPACE_EVENLY,
@@ -914,6 +921,7 @@ static void build_dock_items(void)
 static vqeaf_theme_mode_t g_built_mode = VQEAF_THEME_LIGHT;
 static uint32_t g_built_seed;
 static int g_built_glass;
+static int g_built_fluent;
 
 static void refresh_chrome(void)
 {
@@ -1078,11 +1086,13 @@ void vqeaf_ui_show(vqeaf_page_t page)
     g_page = page;
     g_move_app = -1;
     if(g_built_mode != vqeaf_theme_get() || g_built_seed != vqeaf_theme_seed() ||
-       g_built_glass != vqeaf_theme_liquid_glass()) {
+       g_built_glass != vqeaf_theme_liquid_glass() ||
+       g_built_fluent != vqeaf_theme_fluent()) {
         refresh_chrome();
         g_built_mode = vqeaf_theme_get();
         g_built_seed = vqeaf_theme_seed();
         g_built_glass = vqeaf_theme_liquid_glass();
+        g_built_fluent = vqeaf_theme_fluent();
     }
     /* The taskbar owns its own strip under the status bar; page content
      * starts below it whenever the strip is visible. */

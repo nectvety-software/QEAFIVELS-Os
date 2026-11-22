@@ -50,6 +50,62 @@ int vqeaf_state_set_brightness(int percent)
 int vio_haptics_available(void) { return 0; }
 int vio_haptic_pulse(unsigned duration_ms) { (void)duration_ms; return 0; }
 
+/* ---- capture and camera stubs (Linux-only device code) --------------------
+ *
+ * The shell offers screenshot, screen recording and the camera census through
+ * vio_* and vqeaf_camera_*, which encode DRM scanout and talk to V4L2. The
+ * host renderer has neither, so every call reports "not available" and the
+ * pages draw their honest empty state instead of a fabricated capture.
+ */
+int vio_rec_start(int fps, int seconds)
+{
+    (void)fps;
+    (void)seconds;
+    return -1;
+}
+
+int vio_rec_stop(void)
+{
+    return -1;
+}
+
+int vio_rec_active(void)
+{
+    return 0;
+}
+
+const char *vio_rec_status(void)
+{
+    return "host renderer: no DRM scanout";
+}
+
+int vio_screenshot_now(void)
+{
+    return -1;
+}
+
+int vqeaf_camera_query_caps(char *buf, int cap)
+{
+    if(buf != NULL && cap > 0)
+        snprintf(buf, (size_t)cap, "host renderer: no V4L2 nodes");
+    return -1;
+}
+
+int vqeaf_camera_create_session(int32_t *session_handle, char *err, int err_cap)
+{
+    if(session_handle != NULL) *session_handle = -1;
+    if(err != NULL && err_cap > 0)
+        snprintf(err, (size_t)err_cap, "host renderer: no cam-req-mgr");
+    return -1;
+}
+
+int vqeaf_camera_probe(char *buf, int cap)
+{
+    if(buf != NULL && cap > 0)
+        snprintf(buf, (size_t)cap, "host renderer: no V4L2 nodes");
+    return -1;
+}
+
 /* ---- vqeaf_qeapp_device.c stubs (Linux-only device runtime) ----------------
  *
  * The real runtime forks a child and maps native modules; that cannot exist
@@ -343,6 +399,42 @@ int main(int argc, char **argv)
             break;
         }
         printf("%s\n", path);
+    }
+
+    /* Windows 11 (Fluent) skin: the pages the skin changes, rendered with the
+     * skin on, so the Start layout, acrylic surfaces and taskbar can be
+     * inspected on the desktop next to their stock counterparts. */
+    {
+        static const struct {
+            vqeaf_page_t page;
+            const char *name;
+        } fluent_states[] = {
+            { VQEAF_PAGE_LOCK, "lock-fluent" },
+            { VQEAF_PAGE_HOME, "home-fluent" },
+            { VQEAF_PAGE_APPS, "apps-fluent" },
+            { VQEAF_PAGE_SETTINGS, "settings-fluent" },
+        };
+
+        vqeaf_theme_set_fluent(1);
+        for(i = 0; i < sizeof(fluent_states) / sizeof(fluent_states[0]); i++) {
+            char path[512];
+            size_t bytes = (size_t)width * (size_t)height * sizeof(uint32_t);
+
+            memset(framebuffer, 0, bytes);
+            vqeaf_ui_show(fluent_states[i].page);
+            lv_obj_invalidate(lv_screen_active());
+            lv_refr_now(display);
+
+            snprintf(path, sizeof(path), "%s/%s-%dx%d-%s.ppm", out_dir,
+                     fluent_states[i].name, width, height, profile);
+            if(write_ppm(path, width, height) != 0) {
+                fprintf(stderr, "vqeaf-ui-host: cannot write %s\n", path);
+                rc = 1;
+                break;
+            }
+            printf("%s\n", path);
+        }
+        vqeaf_theme_set_fluent(0);
     }
 
     /* Installer overlay states (host render only). The FILES page sits behind

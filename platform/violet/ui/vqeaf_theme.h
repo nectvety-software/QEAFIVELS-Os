@@ -94,6 +94,20 @@ void vqeaf_theme_set_liquid_glass(int on);
 int vqeaf_theme_liquid_glass(void);
 void vqeaf_glass_surface(lv_obj_t *obj, int32_t radius, lv_opa_t opacity);
 
+/* Windows 11 (Fluent) skin. Independent session switch like Liquid Glass: it
+ * takes over the palette (Mica neutrals + the #0067C0 accent, or their dark
+ * counterparts), the corner radius and the surfaces the shell paints, so one
+ * switch turns the whole phone shell Fluent. Turning it on clears the dynamic
+ * colour seed and Liquid Glass, which would otherwise fight it. */
+void vqeaf_theme_set_fluent(int on);
+int vqeaf_theme_fluent(void);
+/* Corner radius for shell cards: Fluent 8 dp (12 px on the 720-wide canvas),
+ * the stock 28 otherwise. */
+int32_t vqeaf_theme_card_radius(void);
+/* Acrylic surface: translucent Mica tint, hairline border and a short drop
+ * shadow. The renderer has no backdrop blur, so the tint is alpha only. */
+void vqeaf_acrylic_surface(lv_obj_t *obj, int32_t radius);
+
 /* Dynamic colour (Material You style): every role is generated from one seed
  * colour — tinted neutrals for the background and surfaces, the seed's hue at
  * higher chroma for the accent. `rgb` is 0xRRGGBB; 0 restores the stock

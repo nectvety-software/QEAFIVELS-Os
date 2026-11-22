@@ -340,6 +340,18 @@ void vio_lun_poll(struct vio_lun *lun)
     if(cable != lun->cable) {
         lun->cable = cable;
         vio_log("usb: cable %s", cable ? "connected" : "removed");
+        /* "Chỉ sạc" keeps the UDC released, but pulling the cable out and
+         * putting it back is an unambiguous request to see the rescue drive
+         * again: no tap, no reboot. Only the rising edge counts, so a cable
+         * that was never removed leaves the choice alone. The bind itself
+         * belongs to main (one configfs writer), so this only sets the
+         * request: a slow configfs write here would park the rescue worker
+         * that holds the volume lock. */
+        if(cable && lun->charge_only && !lun->gadget) {
+            lun->rebind_request = 1;
+            vio_log("usb: cable replugged in charge-only mode - "
+                    "main will bind the drive again");
+        }
         publish_devinfo();
     }
     publish_homo_log();
@@ -369,7 +381,9 @@ int vio_lun_set_mode(struct vio_lun *lun, enum usb_mode mode)
             lun->gadget = 0;
         }
         /* Remember the choice: the late-UDC retry in main must not bind the
-         * data function back under it. */
+         * data function back under it. A pending replug request is dropped
+         * too - the newest choice wins over an older cable edge. */
+        lun->rebind_request = 0;
         lun->charge_only = 1;
         lun->mode = mode;
         vio_log("usb: mode charge - UDC released, the cable only charges");
@@ -388,6 +402,7 @@ int vio_lun_set_mode(struct vio_lun *lun, enum usb_mode mode)
     }
 
     lun->charge_only = 0;
+    lun->rebind_request = 0;
     lun->mode = mode;
     if(!lun->gadget && vio_lun_start_gadget(lun) < 0) {
         publish_devinfo();

@@ -60,6 +60,14 @@ def main():
         TESTS / "test_qrtr_qmi.c"], [str(TESTS / "fixtures")])
     build_and_run("test_firmware_boot", [
         drv / "firmware_boot.c", TESTS / "test_firmware_boot.c"], [])
+    # Container validation is checked against synthetic images, then against
+    # the real WCN3990 blobs staged into the violet image when present.
+    real_fw = ROOT / "build" / "violet-fw" / "image"
+    fw_args = []
+    if (real_fw / "wlanmdsp.mbn").is_file():
+        fw_args = [str(real_fw)]
+    build_and_run("test_wifi_firmware", [
+        drv / "wifi_firmware.c", TESTS / "test_wifi_firmware.c"], fw_args)
     return 0
 
 

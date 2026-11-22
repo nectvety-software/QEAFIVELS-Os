@@ -159,6 +159,31 @@ Quy trình kiểm thử trên máy thật (build → render → đóng gói → 
   thay vì bị lớp trong suốt nuốt mất. Long-press của dock/app nâng lên 900 ms để
   tap 3 poll không vô tình kích hoạt kéo-thả.
 
+## Giao diện Windows 11 (Fluent) (2026-11-22)
+
+Cài đặt → **Windows 11** bật skin Fluent cho shell trong phiên hiện tại; tắt thì
+quay lại giao diện VQEAF. Skin này độc lập với Sáng/Tối và dùng chung một switch
+với Liquid Glass — bật cái này sẽ tắt cái kia, vì hai bề mặt không thể cùng lúc.
+
+- **Bảng màu Mica:** nền #F3F3F3 / #202020, surface #FBFBFB / #2B2B2B, accent
+  #0067C0 / #4CC2FF; đỏ và hổ phách vẫn mang nghĩa cảnh báo. Bật skin sẽ xoá seed
+  Màu động (Material You) để palette không bị nửa Fluent nửa Material.
+- **Góc bo:** card dùng `vqeaf_theme_card_radius()` — 12 px (8 dp trên canvas
+  720) khi bật, 28 px như cũ khi tắt; app tile 104 px bo 20 thay vì 30.
+- **Bề mặt acrylic:** `vqeaf_acrylic_surface()` tô surface bằng alpha, viền hairline
+  và bóng đổ ngắn. Renderer không có backdrop blur nên đây là mô phỏng bằng alpha,
+  không phải kính thật.
+- **Trang chủ = Start:** lời chào theo giờ thật (`vqeaf_state.hour`), đồng hồ và
+  ngày, nút nguồn acrylic mở Control Center, ô tìm kiếm bo 12, mục **Đã ghim**
+  dùng lưới app 8 mục, card **Tiện ích hệ thống** (uptime/RAM/lưu trữ thật).
+  Dock của shell đổi thành **taskbar**: một dải acrylic liền thay vì icon trôi
+  trên hình nền; vẫn là dock kéo-thả cũ (4 slot, nhấn giữ mở sheet thông tin),
+  không dựng hàng launcher thứ hai.
+- Trạng thái skin nằm trong RAM initramfs nên khởi động lại trở về giao diện VQEAF;
+  trang Cài đặt không tuyên bố đây là thiết lập bền.
+- Ảnh đối chiếu: `scripts/render_phone_ui.py` render thêm bốn khung
+  `*-fluent` (`lock`, `home`, `apps`, `settings`) cạnh bản gốc.
+
 ## Khởi động lại / Tắt nguồn (2026-11-12)
 
 Menu nguồn (nhấn giữ phím nguồn) có ba hành động: **Khởi động lại**,

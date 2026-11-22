@@ -50,7 +50,10 @@ BOLD_STATES = ["settings-bold", "home-bold"]
 IME_STATES = ["ime-normal", "ime-split", "ime-one-hand", "ime-floating", "ime-extract"]
 # Music app surfaces beyond the plain player.
 MUSIC_STATES = ["music-canvas", "music-queue"]
-ALL_STATES = PAGES + INSTALL_STATES + BOLD_STATES + IME_STATES + MUSIC_STATES
+# Windows 11 (Fluent) skin: the pages the skin changes, rendered with it on.
+FLUENT_STATES = ["lock-fluent", "home-fluent", "apps-fluent", "settings-fluent"]
+ALL_STATES = (PAGES + INSTALL_STATES + BOLD_STATES + IME_STATES + MUSIC_STATES +
+              FLUENT_STATES)
 GEOMETRIES = [(720, 1560), (1560, 720)]
 PROFILES = ["unknown", "providers"]
 

@@ -72,8 +72,9 @@ therefore usable, and the shell offers only these:
   `usb_mode=mtp` with the drive visible, and nothing silently claims to be a
   camera.
 - Boot binds the drive, so the reported mode after boot is file transfer. A
-  deliberate charge-only choice releases the UDC; it is reversible from
-  Cài đặt › USB (Settings) without a replug, and a reboot re-binds the drive.
+  deliberate charge-only choice releases the UDC; it is reversible without a
+  reboot from Cài đặt › USB (Settings), by unplugging and plugging the cable
+  again (the rising edge re-binds the drive), and by a reboot.
 
 ### 3.2 Why every boot used to reset after ~40 s: the modem, not a watchdog
 

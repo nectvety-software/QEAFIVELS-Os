@@ -19,6 +19,11 @@ struct vio_lun {
      * late-UDC retry rebinds the data function a few seconds later and the
      * phone silently reappears on the PC. */
     int charge_only;
+    /* A cable was pulled and plugged again while `charge_only` was in force.
+     * vio_lun_poll() only records the intent: main is the single configfs
+     * writer, and a blocking bind must never park the rescue worker that holds
+     * the volume lock. Cleared by main when it binds, or by a new choice. */
+    int rebind_request;
     int cable;
     enum usb_mode mode;
     char udc[64];
@@ -39,7 +44,8 @@ int vio_lun_start_gadget(struct vio_lun *lun);
  * rescue verb `usb ptp`, since the shell does not offer it — is answered with
  * the drive and an honest log line, because this kernel has no responder.
  * Every choice is reversible without a reboot: the RAM volume is never
- * destroyed. */
+ * destroyed, and unplugging/replugging the cable re-binds the drive even in
+ * charge-only mode (vio_lun_poll() flags it, main performs the bind). */
 int vio_lun_set_mode(struct vio_lun *lun, enum usb_mode mode);
 void vio_lun_poll(struct vio_lun *lun);
 

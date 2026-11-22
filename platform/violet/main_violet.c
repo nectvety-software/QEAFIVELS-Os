@@ -1319,6 +1319,7 @@ static int usb_mode_for_ui(void)
 int main(void)
 {
     uint64_t last_gadget_retry = 0;
+    int rebind_after_replug = 0;
 
     signal(SIGPIPE, SIG_IGN);
     main_thread = pthread_self();
@@ -1716,17 +1717,41 @@ int main(void)
             }
         }
 
-        /* The dwc3 UDC can register after the first bind attempt; keep trying
-         * so a late probe still gives the host a rescue drive. A deliberate
-         * "Chỉ sạc" is not a failed bind, so it is excluded: otherwise the
-         * retry would put the phone back on the PC three seconds later. */
-        if(lun.ready && !lun.gadget && !lun.charge_only &&
-           vio_monotonic_ms() - last_gadget_retry >= 3000) {
+        /* Two independent reasons to bind without a tap:
+         *   - the dwc3 UDC can register after the first attempt, so a late
+         *     probe still gives the host a rescue drive;
+         *   - the cable was pulled and plugged again while the user's
+         *     "Chỉ sạc" choice was in force. vio_lun_poll() only records that
+         *     edge in `rebind_request`; the bind happens here, because main is
+         *     the single configfs writer and must not hand a blocking bind to
+         *     the rescue worker that holds the volume lock.
+         * A deliberate "Chỉ sạc" with the cable still in place is not a failed
+         * bind, so the timed retry excludes it: otherwise the retry would put
+         * the phone back on the PC three seconds later. */
+        if(lun.ready && !lun.gadget &&
+           (lun.rebind_request ||
+            (!lun.charge_only && vio_monotonic_ms() - last_gadget_retry >= 3000))) {
+            if(lun.rebind_request) {
+                /* The replug wins over the old choice; if the bind fails now,
+                 * the timed retry keeps trying instead of hiding the phone. */
+                lun.rebind_request = 0;
+                lun.charge_only = 0;
+                rebind_after_replug = 1;
+                vio_log("boot: cable replugged in charge-only mode; "
+                        "binding the drive again");
+            }
+            else {
+                rebind_after_replug = 0;
+            }
             last_gadget_retry = vio_monotonic_ms();
             if(sigsetjmp(ui_recovery, 1) == 0) {
                 in_ui = 1;
                 if(vio_lun_start_gadget(&lun) == 0)
-                    vio_log("boot: USB gadget bound on retry");
+                    vio_log(rebind_after_replug
+                            ? "boot: USB gadget bound again after replug"
+                            : "boot: USB gadget bound on retry");
+                else
+                    vio_log("boot: gadget bind on retry failed; will try again");
                 in_ui = 0;
             }
             else {

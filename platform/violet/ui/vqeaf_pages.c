@@ -623,11 +623,13 @@ static lv_obj_t *search_pill(lv_obj_t *parent, const char *placeholder)
     lv_obj_set_size(pill, lv_pct(100), 86);
     lv_obj_set_style_bg_color(pill, VQEAF_C_SURFACE, 0);
     lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(pill, 43, 0);
+    lv_obj_set_style_radius(pill, vqeaf_theme_fluent() ? 12 : 43, 0);
     lv_obj_set_style_border_width(pill, 1, 0);
     lv_obj_set_style_border_color(pill, VQEAF_C_LINE, 0);
     if(vqeaf_theme_liquid_glass())
         vqeaf_glass_surface(pill, 43, (lv_opa_t)166);
+    else if(vqeaf_theme_fluent())
+        vqeaf_acrylic_surface(pill, 12);
     lv_obj_set_flex_flow(pill, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(pill, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
@@ -973,7 +975,8 @@ static lv_obj_t *app_tile(lv_obj_t *parent, const app_def_t *app, int app_id)
         lv_obj_t *tile = vqeaf_icon_img(item, icon, 104);
         if(tile == NULL) {
             tile = vqeaf_tile(item, app->symbol, lv_color_hex(app->fg),
-                              lv_color_white(), 104, 30);
+                              lv_color_white(), 104,
+                              vqeaf_theme_fluent() ? 20 : 30);
             vqeaf_app_icon_style(tile, lv_color_hex(app->fg),
                                  lv_color_hex(app->bg));
         }
@@ -1553,8 +1556,92 @@ static lv_obj_t *home_stat_cell(lv_obj_t *parent, lv_obj_t **value_out,
     return cell;
 }
 
+/* ---- Windows 11 (Fluent) start ----------------------------------------- */
+
+static const char *fluent_greeting(void)
+{
+    int hour;
+    if(!vqeaf_state.time_valid) return "Xin chào";
+    hour = vqeaf_state.hour;
+    if(hour < 12) return "Chào buổi sáng";
+    if(hour < 18) return "Chào buổi chiều";
+    return "Chào buổi tối";
+}
+
+/* Live system widget: uptime, RAM and storage from the kernel. Shared by the
+ * stock Home and the Fluent Start page so both show the same real readings. */
+static void home_widget_card(lv_obj_t *root)
+{
+    lv_obj_t *widget = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    if(vqeaf_theme_liquid_glass())
+        vqeaf_glass_surface(widget, 28, LV_OPA_60);
+    lv_obj_set_flex_flow(widget, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(widget, 14, 0);
+    lv_obj_t *whead = vqeaf_row(widget);
+    vqeaf_label(whead, "Tiện ích hệ thống", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    lv_obj_t *edit = vqeaf_label(whead, "Sửa", VQEAF_FONT_BODY,
+        vqeaf_theme_liquid_glass() ? lv_color_hex(0xF6CEFF) : VQEAF_C_ACCENT);
+    vqeaf_on_click(edit, nav_cb, (void *)(intptr_t)VQEAF_PAGE_APPS_EDIT);
+    lv_obj_t *stats = vqeaf_weighted_row(widget);
+    lv_obj_set_style_pad_ver(stats, 4, 0);
+    home_stat_cell(stats, &live_uptime, "Thời gian chạy");
+    home_stat_cell(stats, &live_mem_pair, "RAM đã dùng");
+    home_stat_cell(stats, &live_storage_pct, "Lưu trữ");
+}
+
+/* Start page in the Windows 11 layout: greeting header with the power button,
+ * a rounded search box, the pinned app grid, the live system widget and the
+ * taskbar at the bottom. Everything below is the same real data the stock Home
+ * shows; only the composition and surfaces change. */
+static void build_home_fluent(lv_obj_t *content)
+{
+    vqeaf_wallpaper(content);
+    lv_obj_t *root = page_root(content);
+
+    lv_obj_t *head = vqeaf_row(root);
+    lv_obj_set_style_pad_top(head, 4, 0);
+    lv_obj_t *when = vqeaf_column(head);
+    lv_obj_set_width(when, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_row(when, 2, 0);
+    vqeaf_label(when, fluent_greeting(), VQEAF_FONT_HEADLINE_BOLD,
+                VQEAF_C_TEXT);
+    page_clock = vqeaf_label(when, vqeaf_state.clock_text,
+                             VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    page_date = vqeaf_label(when, vqeaf_state.date_text,
+                            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+
+    /* Power sits where Windows 11 puts the account/power button and opens the
+     * real control centre, not a mock menu. */
+    lv_obj_t *power = vqeaf_obj(head);
+    lv_obj_set_size(power, 76, 76);
+    vqeaf_acrylic_surface(power, 38);
+    lv_obj_set_flex_flow(power, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(power, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    vqeaf_glyph(power, VQEAF_SYM_POWER_SETTINGS_NEW, VQEAF_ICON_SM,
+                VQEAF_C_ACCENT);
+    vqeaf_on_click(power, nav_cb, (void *)(intptr_t)VQEAF_PAGE_CONTROL);
+
+    search_pill(root, "Tìm kiếm ứng dụng, cài đặt…");
+    section_row(root, "Đã ghim", "Tất cả");
+    app_grid(root, home_apps, sizeof(home_apps) / sizeof(home_apps[0]), 4);
+    home_widget_card(root);
+    /* The shell's own dock strip is restyled into the Fluent taskbar by
+     * vqeaf_ui.c, so Home does not draw a second launcher row. */
+
+    lv_obj_t *footer = vqeaf_label(root,
+        "Giao diện Windows 11 · chỉ hiển thị trạng thái thật",
+        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    lv_obj_set_width(footer, lv_pct(100));
+    lv_obj_set_style_text_align(footer, LV_TEXT_ALIGN_CENTER, 0);
+}
+
 static void build_home(lv_obj_t *content)
 {
+    if(vqeaf_theme_fluent()) {
+        build_home_fluent(content);
+        return;
+    }
     vqeaf_wallpaper(content);
     lv_obj_t *root = page_root(content);
 
@@ -1596,22 +1683,7 @@ static void build_home(lv_obj_t *content)
     vqeaf_on_click(battery, nav_cb, (void *)(intptr_t)VQEAF_PAGE_CONTROL);
     vqeaf_m3_ripple(battery);
 
-    /* Live system widget: uptime, RAM and storage from the kernel. */
-    lv_obj_t *widget = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
-    if(vqeaf_theme_liquid_glass())
-        vqeaf_glass_surface(widget, 28, LV_OPA_60);
-    lv_obj_set_flex_flow(widget, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(widget, 14, 0);
-    lv_obj_t *whead = vqeaf_row(widget);
-    vqeaf_label(whead, "Tiện ích hệ thống", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
-    lv_obj_t *edit = vqeaf_label(whead, "Sửa", VQEAF_FONT_BODY,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xF6CEFF) : VQEAF_C_ACCENT);
-    vqeaf_on_click(edit, nav_cb, (void *)(intptr_t)VQEAF_PAGE_APPS_EDIT);
-    lv_obj_t *stats = vqeaf_weighted_row(widget);
-    lv_obj_set_style_pad_ver(stats, 4, 0);
-    home_stat_cell(stats, &live_uptime, "Thời gian chạy");
-    home_stat_cell(stats, &live_mem_pair, "RAM đã dùng");
-    home_stat_cell(stats, &live_storage_pct, "Lưu trữ");
+    home_widget_card(root);
 
     search_pill(root, "Tìm trên thiết bị...");
     section_row(root, "Ứng dụng", "Tất cả");
@@ -4242,6 +4314,15 @@ static void liquid_glass_toggle_cb(lv_event_t *event)
 {
     (void)event;
     vqeaf_theme_set_liquid_glass(!vqeaf_theme_liquid_glass());
+    /* The two surface treatments are exclusive: glass wins this turn. */
+    if(vqeaf_theme_liquid_glass()) vqeaf_theme_set_fluent(0);
+    vqeaf_ui_show(vqeaf_ui_page());
+}
+
+static void fluent_toggle_cb(lv_event_t *event)
+{
+    (void)event;
+    vqeaf_theme_set_fluent(!vqeaf_theme_fluent());
     vqeaf_ui_show(vqeaf_ui_page());
 }
 
@@ -4626,6 +4707,16 @@ static void build_settings(lv_obj_t *content)
             &trailing);
         vqeaf_m3_switch(trailing, vqeaf_theme_liquid_glass());
         lv_obj_add_event_cb(glass_item, liquid_glass_toggle_cb,
+                            LV_EVENT_CLICKED, NULL);
+    }
+
+    {
+        lv_obj_t *trailing = NULL;
+        lv_obj_t *fluent_item = vqeaf_m3_list_item(root, VQEAF_SYM_APPS,
+            "Windows 11", "Mica, Start dạng tile, taskbar và góc bo 8",
+            &trailing);
+        vqeaf_m3_switch(trailing, vqeaf_theme_fluent());
+        lv_obj_add_event_cb(fluent_item, fluent_toggle_cb,
                             LV_EVENT_CLICKED, NULL);
     }
 
@@ -8069,6 +8160,7 @@ static void term_help(void)
     term_print("Available commands:");
     term_print("  help status date uptime battery storage wifi apps");
     term_print("  defaults default theme page echo clear");
+    term_print("  theme dark|light|fluent|glass|classic");
     term_print("  pwd ls cat cd whoami uname env which history");
     term_print("Keys: TAB complete  UP/DOWN history  CTRL+C cancel  ENTER run");
 }
@@ -8250,7 +8342,25 @@ static void term_run(const char *line)
             vqeaf_ui_set_theme(VQEAF_THEME_DARK); term_print("theme: dark");
         } else if(strcmp(arg, "light") == 0) {
             vqeaf_ui_set_theme(VQEAF_THEME_LIGHT); term_print("theme: light");
-        } else term_print("theme: dung dark hoac light");
+        } else if(strcmp(arg, "fluent") == 0 ||
+                  strcmp(arg, "windows11") == 0) {
+            /* Same switch Settings uses, reachable from the rescue `term`
+             * verb so the skin can be exercised without a finger tap. */
+            vqeaf_theme_set_liquid_glass(0);
+            vqeaf_theme_set_fluent(1);
+            vqeaf_ui_show(vqeaf_ui_page());
+            term_print("theme: Windows 11 (Fluent)");
+        } else if(strcmp(arg, "glass") == 0) {
+            vqeaf_theme_set_fluent(0);
+            vqeaf_theme_set_liquid_glass(1);
+            vqeaf_ui_show(vqeaf_ui_page());
+            term_print("theme: Liquid Glass");
+        } else if(strcmp(arg, "classic") == 0) {
+            vqeaf_theme_set_fluent(0);
+            vqeaf_theme_set_liquid_glass(0);
+            vqeaf_ui_show(vqeaf_ui_page());
+            term_print("theme: VQEAF classic");
+        } else term_print("theme: dung dark|light|fluent|glass|classic");
     } else if(strcmp(cmd, "page") == 0 && argc == 2) {
         vqeaf_page_t p = VQEAF_PAGE_COUNT;
         if(strcmp(arg, "home") == 0) p = VQEAF_PAGE_HOME;
