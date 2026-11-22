@@ -3148,3 +3148,45 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   (sha `c246cbae...89ee`); config có trong ramdisk, MAC giả không có.
 - Docs: `docs/platforms/VIOLET_CRDROID_CONFIG_PORT.md`.
 - Không đổi trạng thái WLFW 0x45 / wlan0; config không giải quyết blocker.
+
+
+## Chụp màn hình + quay video màn hình (2026-11-22)
+- `shot` trước đây luôn hỏng trên máy: `shot: failed (4)`. Nguyên nhân thật là
+  PNG 1080x2340 vượt hạn 64 cluster (256 KiB) của `fat16_write_file`, nên lần
+  ghi nào vào gốc volume cũng bị từ chối.
+- Thêm `fat16_write_path()` + `fat16_free_bytes()`: ghi được vào thư mục con
+  (`UserData/Pictures`, `UserData/Videos`), giới hạn chỉ bởi cluster còn trống;
+  ghi đè tại chỗ khi entry đã có, từ chối khi hết chỗ thay vì đè entry sống.
+- Ảnh màn hình: `UserData/Pictures/SHOTnnnn.PNG` (1080x2340, lodepng chạy trong
+  tiến trình, fallback BMP 24-bit). Gọi từ ô "Chụp màn hình" ở Trung tâm điều
+  khiển hoặc verb `shot`.
+- Quay màn hình: recorder ghi thẳng QVF1 (`platform/violet/qvf_encode.c`, LZ4
+  block + RGB565 240x416) ra `UserData/Videos/VIDnnnn.QVF` - đúng container
+  `docs/QEAF_VIDEO_FORMAT.md`, phát được bằng trang Video và player QEAPP.
+  Vòng lặp UI lấy một frame mỗi 1/fps giây (`rec_tick()`); bản cũ chạy đồng bộ
+  trong `vio_rec_start()` nên UI đứng suốt lúc quay và clip chỉ có một ảnh.
+  Giới hạn: fps 1..15, 1..60 s, ngân sách min(6 MiB, nửa dung lượng trống).
+- Gate: `tests/vqeaf_qvf_encode.c` (CMake `vqeaf_qvf_encode_test`) nén rồi giải
+  nén lại 3 frame và so từng pixel -> ALL OK; file sinh ra được kiểm chứng chéo
+  bằng bộ giải LZ4 Python của `scripts/mp4_to_qvf.py` -> 0 pixel sai, walk-end
+  khớp đúng độ dài file.
+- Build device `build_violet.py` OK; `package_violet.py` OK, image
+  `32.497.664 B`, sha256 `b407d2b4e8f4d538f324c105df177ce7f5d856d58b533d48c46a2ef2e7e3f58c`.
+- **Chưa kiểm chứng trên máy**: điện thoại đang kẹt stage `splash` (userspace
+  chết) sau lần reboot trước; phải power-cycle rồi nạp p77 mới chạy được bản có
+  hai tính năng này.
+
+
+## Sửa treo boot ở stage splash (2026-11-22)
+- Triệu chứng: QEAFBOOT.LOG dừng ở `boot stage splash`, RESPONSE.TXT không đổi,
+  worker rescue không xử lý QEAF.CMD (FAT chain/BOOTIMG.BIN kiểm tra không lặp).
+- Fix: tách `splash_present()` + `start_phone_ui()` vào thread riêng
+  `boot_ui_worker()`; main thread chờ tối đa 5 s rồi tiếp tục `loop` dù UI chưa
+  xong. Thêm log `boot: UI worker started/splash painted/phone UI ready` để lần
+  sau xác định chính xác điểm dừng. Rescue worker/watchdog không còn bị main
+  thread chặn bởi display ioctl.
+- Build OK (11.401.784 B); package OK, ảnh sha
+  `1baca56cd8ffec6938bea891f38c8ed12400ebeb14ec931a818fa7cda1470faf`.
+- Chưa flash/kiểm chứng trên máy: ảnh đang chạy bị treo nên không gửi được
+  lệnh flash confirm. Cần boot fastboot để `fastboot boot` ảnh mới (RAM, không
+  ghi partition).

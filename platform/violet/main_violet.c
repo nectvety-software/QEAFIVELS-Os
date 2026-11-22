@@ -43,6 +43,7 @@
 #include "boot_journal.h"
 #include "watchdog.h"
 
+#include "qvf_encode.h"
 #include "fs/rescue.h"
 #include "qeaf_version.h"
 #include "splash.h"
@@ -181,6 +182,19 @@ static int snapshot_scanout(struct fat16_volume *vol)
  * partition is touched. */
 static unsigned shot_frame;
 
+/* Captures are published inside the storage tree the OS advertises, so a PC
+ * sees them next to the user's own files and the shell's folders can list
+ * them; the volume root stays the rescue channel's namespace. */
+static int capture_write(struct fat16_volume *vol, const char *dir,
+                         const char *name, const unsigned char *data,
+                         size_t len)
+{
+    char path[64];
+
+    snprintf(path, sizeof(path), "%s%s", dir, name);
+    return fat16_write_path(vol, path, data, len);
+}
+
 static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
 {
     unsigned char *rgba;
@@ -249,7 +263,8 @@ static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
             }
         }
         snprintf(name, cap, "SHOT%04u.BMP", ++shot_frame);
-        rc = fat16_write_file(vol, name, bmp, bmp_len) < 0 ? -4 : (int)bmp_len;
+        rc = capture_write(vol, "UserData/Pictures/", name, bmp, bmp_len) < 0 ?
+             -4 : (int)bmp_len;
         free(bmp);
         if(rc > 0) {
             vio_log("shot: PNG encoder error %u; wrote BMP %s (%d bytes)",
@@ -261,7 +276,7 @@ static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
     free(rgba);
 
     snprintf(name, cap, "SHOT%04u.PNG", ++shot_frame);
-    if(fat16_write_file(vol, name, png, png_len) < 0)
+    if(capture_write(vol, "UserData/Pictures/", name, png, png_len) < 0)
         rc = -4;
     else
         rc = (int)png_len;
@@ -273,6 +288,196 @@ static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
     }
     return rc;
 }
+
+/* ---- Screen recorder (QVF) ----------------------------------------------
+ * The clip is the container the OS itself decodes (docs/QEAF_VIDEO_FORMAT.md):
+ * 240x416 RGB565 frames, LZ4-compressed, written to UserData/Videos. Frames are
+ * sampled from the UI loop once per interval, so the file shows the shell
+ * moving; the previous implementation captured synchronously inside
+ * vio_rec_start(), which froze the panel for the whole recording and produced
+ * one still picture.
+ */
+#define REC_W 240u
+#define REC_H 416u
+#define REC_BUDGET (6u * 1024u * 1024u)
+#define REC_MAX_SECONDS 60
+#define REC_DIR "UserData/Videos/"
+
+static uint8_t *g_rec_buf;
+static size_t g_rec_cap, g_rec_used;
+static uint32_t *g_rec_xrgb;
+static unsigned g_rec_frames, g_rec_limit;
+static unsigned g_rec_interval_ms, g_rec_next_ms;
+static int g_rec_active, g_rec_fps, g_rec_seconds;
+static unsigned g_rec_file;
+static char g_rec_status[128] = "idle";
+static char g_rec_name[24];
+
+/* A clip may use at most half of the volume's free space and never more than
+ * its own budget, so a long recording cannot fill the rescue drive. */
+static size_t rec_budget(void)
+{
+    size_t free_bytes, budget = REC_BUDGET;
+
+    volume_lock_acquire();
+    free_bytes = lun.ready ? fat16_free_bytes(&lun.volume) : 0;
+    volume_lock_release();
+    if(free_bytes / 2u < budget) budget = free_bytes / 2u;
+    if(budget < (size_t)REC_W * REC_H * 2u) return 0;
+    return budget;
+}
+
+static int rec_capture_frame(void)
+{
+    unsigned x, y;
+
+    if(!drm_ready || drm.map == NULL) return -1;
+    if(g_rec_buf == NULL || g_rec_xrgb == NULL) return -1;
+    for(y = 0; y < REC_H; y++) {
+        unsigned sy = (y * (unsigned)drm.height) / REC_H;
+        const uint32_t *row = (const uint32_t *)(drm.map +
+                                                 (size_t)sy * drm.pitch);
+        for(x = 0; x < REC_W; x++) {
+            unsigned sx = (x * (unsigned)drm.width) / REC_W;
+            g_rec_xrgb[y * REC_W + x] = row[sx];
+        }
+    }
+    return vio_qvf_append(g_rec_buf, g_rec_cap, &g_rec_used, g_rec_xrgb,
+                          REC_W, REC_H);
+}
+
+/* Writes the finished clip. Called with the recorder already stopped, from the
+ * UI thread, so the volume lock is taken only for the write itself. */
+static void rec_save(const char *reason)
+{
+    char path[64];
+    int rc = -1;
+
+    if(g_rec_frames == 0 || g_rec_buf == NULL || g_rec_used <= VIO_QVF_HEADER) {
+        snprintf(g_rec_status, sizeof(g_rec_status),
+                 "stopped: no frame captured (%s)", reason);
+        vio_log("rec: %s", g_rec_status);
+        return;
+    }
+    vio_qvf_set_frames(g_rec_buf, g_rec_used, g_rec_frames);
+    snprintf(g_rec_name, sizeof(g_rec_name), "VID%04u.QVF", ++g_rec_file);
+    snprintf(path, sizeof(path), "%s%s", REC_DIR, g_rec_name);
+    volume_lock_acquire();
+    if(lun.ready)
+        rc = fat16_write_path(&lun.volume, path, g_rec_buf, g_rec_used);
+    if(rc == 0) rescue_flush_log(&lun.volume);
+    volume_lock_release();
+
+    if(rc == 0) {
+        snprintf(g_rec_status, sizeof(g_rec_status),
+                 "saved %s (%u frames, %u bytes, %s)", g_rec_name,
+                 g_rec_frames, (unsigned)g_rec_used, reason);
+        vio_log("rec: %s", g_rec_status);
+        vqeaf_ui_notify("Quay màn hình", g_rec_name, VQEAF_SYM_MOVIE, 0xFF7A7A);
+    }
+    else {
+        snprintf(g_rec_status, sizeof(g_rec_status),
+                 "save failed after %u frames (%s)", g_rec_frames, reason);
+        vio_log("rec: %s", g_rec_status);
+        vqeaf_ui_notify("Quay màn hình", "Không ghi được tệp video",
+                        VQEAF_SYM_MOVIE, 0xFF8A7A);
+    }
+}
+
+static void rec_tick(void)
+{
+    unsigned now;
+
+    if(!g_rec_active) return;
+    now = (unsigned)vio_monotonic_ms();
+    if(g_rec_next_ms != 0u && now < g_rec_next_ms) return;
+    g_rec_next_ms = now + g_rec_interval_ms;
+
+    if(rec_capture_frame() != 0) {
+        g_rec_active = 0;
+        rec_save("clip budget reached");
+        return;
+    }
+    g_rec_frames++;
+    if(g_rec_frames >= g_rec_limit) {
+        g_rec_active = 0;
+        rec_save("time limit reached");
+        return;
+    }
+    snprintf(g_rec_status, sizeof(g_rec_status),
+             "recording %u/%u frames (%ux%u @%d fps)",
+             g_rec_frames, g_rec_limit, REC_W, REC_H, g_rec_fps);
+}
+
+int vio_rec_start(int fps, int seconds)
+{
+    size_t budget;
+
+    if(g_rec_active) return -16;                  /* EBUSY */
+    if(!drm_ready || drm.map == NULL) return -19; /* ENODEV */
+    if(fps < 1 || fps > 15) fps = 8;
+    if(seconds < 1 || seconds > REC_MAX_SECONDS) seconds = 10;
+
+    budget = rec_budget();
+    if(budget == 0) {
+        snprintf(g_rec_status, sizeof(g_rec_status),
+                 "refused: no room on the rescue volume");
+        vio_log("rec: %s", g_rec_status);
+        return -28;                               /* ENOSPC */
+    }
+    if(g_rec_buf == NULL) g_rec_buf = malloc(REC_BUDGET);
+    if(g_rec_xrgb == NULL)
+        g_rec_xrgb = malloc((size_t)REC_W * REC_H * sizeof(uint32_t));
+    if(g_rec_buf == NULL || g_rec_xrgb == NULL) return -12;
+
+    g_rec_cap = budget;
+    g_rec_used = vio_qvf_header(g_rec_buf, g_rec_cap, REC_W, REC_H,
+                                (uint16_t)fps);
+    if(g_rec_used == 0) return -22;                /* EINVAL */
+    g_rec_frames = 0;
+    g_rec_fps = fps;
+    g_rec_seconds = seconds;
+    g_rec_limit = (unsigned)fps * (unsigned)seconds;
+    g_rec_interval_ms = 1000u / (unsigned)fps;
+    g_rec_next_ms = 0;
+    g_rec_active = 1;
+    snprintf(g_rec_status, sizeof(g_rec_status),
+             "recording 0/%u frames (%ux%u @%d fps)", g_rec_limit,
+             REC_W, REC_H, fps);
+    vio_log("rec: started, %ux%u @%d fps, %u frame(s), %u-byte budget",
+            REC_W, REC_H, fps, g_rec_limit, (unsigned)g_rec_cap);
+    return 0;
+}
+
+int vio_rec_stop(void)
+{
+    if(!g_rec_active) return -1;
+    g_rec_active = 0;
+    rec_save("stopped by user");
+    return 0;
+}
+
+int vio_rec_active(void) { return g_rec_active; }
+
+const char *vio_rec_status(void) { return g_rec_status; }
+
+/* Screenshot on demand, from the shell or the rescue `shot` verb. The volume
+ * lock is what keeps a capture from racing the rescue worker's own writes. */
+int vio_screenshot_now(void)
+{
+    char name[24];
+    int rc;
+
+    if(!drm_ready || drm.map == NULL) return -1;
+    volume_lock_acquire();
+    rc = lun.ready ? screenshot_png(&lun.volume, name, sizeof(name)) : -1;
+    if(rc > 0) rescue_flush_log(&lun.volume);
+    volume_lock_release();
+    if(rc > 0)
+        vqeaf_ui_notify("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8);
+    return rc;
+}
+
 
 static void status_fields(char *resp, int cap)
 {
@@ -417,6 +622,13 @@ static void *rescue_worker(void *arg)
 
 /* ---- UI ------------------------------------------------------------------ */
 
+/* Boot UI init runs in its own thread. A stalled DRM ioctl or LVGL draw must
+ * never pin the main thread at `splash`: the rescue worker and the watchdog
+ * live on the main thread's timeline. If this does not finish in time, boot
+ * continues with the splash already on the panel and UI disabled. */
+static volatile int ui_init_done;
+static pthread_t ui_init_tid;
+
 static const char *const splash_lines[] = {
     "[  OK  ] drm: scanout ready",
     "[  OK  ] lun: QEAFRESCUE bound",
@@ -446,6 +658,27 @@ static void splash_present(void)
     }
     vio_log("ui: splash %dx%d (%s)", ui_w, ui_h,
             display_orientation_name(display_orientation()));
+}
+
+static int start_phone_ui(void); /* defined below, used by boot_ui_worker */
+
+static void *boot_ui_worker(void *arg)
+{
+    (void)arg;
+    vio_log("boot: UI worker started (splash paint)");
+    splash_present();
+    vio_log("boot: splash painted; starting phone UI");
+    if(start_phone_ui() == 0) {
+        ui_orientation = (int)display_orientation();
+        ui_ready = 1;
+        set_stage("phone-ui");
+        vio_log("boot: phone UI ready");
+    } else {
+        ui_ready = 0;
+        vio_log("boot: LVGL shell unavailable; keeping splash and rescue LUN");
+    }
+    ui_init_done = 1;
+    return NULL;
 }
 
 static uint32_t lv_tick_cb(void)
@@ -1106,15 +1339,21 @@ int main(void)
             vio_panel_set_stride(&panel, (int)(drm.pitch / 4));
             vio_display_bind(&panel);
             set_stage("splash");
-            splash_present();
-            if(start_phone_ui() == 0) {
-                ui_orientation = (int)display_orientation();
-                ui_ready = 1;
-                set_stage("phone-ui");
-            }
-            else {
+            /* Bounded init: never let a display ioctl keep PID 1 at `splash`.
+             * The splash itself was painted by DRM init already, so the panel
+             * is not blank even when the shell never comes up. */
+            ui_init_done = 0;
+            if(pthread_create(&ui_init_tid, NULL, boot_ui_worker, NULL) == 0) {
+                for(int tick = 0; tick < 100 && !ui_init_done; tick++)
+                    vio_sleep_ms(50);   /* at most 5 s */
+                if(!ui_init_done) {
+                    ui_ready = 0;
+                    vio_log("boot: UI init timed out after 5 s; "
+                            "rescue LUN stays up");
+                }
+            } else {
                 ui_ready = 0;
-                vio_log("boot: LVGL shell unavailable; keeping splash and rescue LUN");
+                vio_log("boot: UI init thread did not start; splash stays up");
             }
             in_ui = 0;
         }
@@ -1218,6 +1457,7 @@ int main(void)
                         /* The restarting screen keeps rendering; all hardware
                          * button input is ignored until the machine resets. */
                         lv_timer_handler();
+                        rec_tick();
                         {
                             char request[64];
                             if(vqeaf_qeapp_take_launch_request(request, sizeof(request))) {
