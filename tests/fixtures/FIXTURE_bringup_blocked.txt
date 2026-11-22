@@ -1,0 +1,5 @@
+FIXTURE: recorded shape of a blocked bring-up report (not live device state)
+net: verified step1 firmware_mnt and wlanmdsp.mbn present
+net: verified step2 modem state=ONLINE
+net: verified step3 ipc router reachable
+net: blocked step4 WLFW_0x45_NOT_REGISTERED

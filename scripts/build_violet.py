@@ -91,6 +91,7 @@ SOURCES = [
     os.path.join(ROOT, "platform", "lvgl", "src", "libs", "lz4", "lz4.c"),
     os.path.join(VIOLET, "netd", "core", "netd_core.c"),
     os.path.join(VIOLET, "netd", "link", "netd_link.c"),
+    os.path.join(VIOLET, "netd", "bringup", "netd_bringup.c"),
 ]
 
 # Build LVGL 9.4 from the vendored source tree. Hardware-specific display and
