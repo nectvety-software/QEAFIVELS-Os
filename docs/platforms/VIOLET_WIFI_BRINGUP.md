@@ -1165,3 +1165,62 @@ Các daemon userspace chạy đúng thứ tự, firmware cần thiết có mặt
 ở trạng thái **OFFLINING** và mọi yêu cầu restart PD/root_pd qua SERVREG đều bị
 từ chối (`error 9`). Đây là blocker tầng modem/firmware, không phải lỗi boot
 order hay thiếu file. Không mock QMI, không server giả, không partition write.
+
+
+## Trích và stage firmware từ Fastboot ROM gốc (2026-11-23)
+### Nguồn và trích xuất (RAM/build only)
+- Nguồn: `build/violet-fw.zip` (MIUI Fastboot ROM, violet) chứa
+  `firmware-update/NON-HLOS.bin` (114.640.384 B, FAT) và `dspso.bin`
+  (33.554.432 B, ext4). Bản trích đầy đủ cũng có tại
+  `build/reference-upstream/firmware_violet_20.11.25/NON-HLOS.bin`.
+- Công cụ: `mtools` (`mdir`/`mcopy`) và `debugfs` qua WSL Ubuntu-24.04.
+  Script: `scripts/wifi/extract_full_firmware.sh`, `scripts/wifi/extract_dspso.sh`.
+- Kết quả: NON-HLOS **425 file / 105.588.299 B** (trong `image/`),
+  DSP `dspso.bin` **67 file / 21.048.648 B** (`adsp/`, `cdsp/`). Không ghi phân
+  vùng thiết bị; chỉ ghi `build/firmware-full/`.
+
+### Firmware liên quan được liệt kê
+- Modem: `modem.mdt`, `modem.b00..b29` (29 file, 58.678.354 B), `modemr.jsn`,
+  `modemuw.jsn` (713 B — chứa `msm/modem/wlan_pd`, `kernel/elf_loader`, `tms`).
+- WLAN: `wlanmdsp.mbn` (3.694.736 B), `bdwlan.bin` + 27 biến thể `bdwlan.*`
+  (26.328 B mỗi file), `regdb.bin` (19.348 B), `qdss_trace_config.cfg`.
+- SERVREG: `adspr.jsn`, `adsps.jsn`, `adspua.jsn`, `cdspr.jsn`, `modemr.jsn`,
+  `modemuw.jsn` (6 file). DSP: 48 file `adsp/`, 19 file `cdsp/` (fastrpc_shell,
+  libsysmon, libchre, codec modules...).
+- Hash đối chiếu: `wlanmdsp.mbn` `4c3d277812fe0496…`, `bdwlan.bin`
+  `38ecb9a2d5ad40c2…`, `regdb.bin` `6267f3e7bd62e1c4…` — **giống hệt** bản
+  đã stage trước đó từ MIUI 20.10.30, nên thay file WLAN không đổi hành vi.
+
+### Stage vào ramdisk / ảnh boot
+- Do p77 chỉ 64 MiB (kernel ~17,5 MiB), không thể nhét toàn bộ 126 MiB firmware
+  đã trích (nén xz vẫn ~53 MiB). Stage trung thực subset đầy đủ liên quan:
+  **32 file WLAN + 6 file SERVREG + 67 file DSP = 25,5 MiB**, copy vào:
+  `/lib/firmware/`, `/lib/firmware/wlan/qca_cld/`,
+  `/lib/firmware/dsp/{adsp,cdsp}/` và `/vendor/dsp/` trong initramfs.
+  Modem binaries vẫn đọc từ p82 (đã mount ro), không nhân bản.
+- Marker `/etc/qeaf/rom-firmware-staged`: `set_firmware_paths()` dùng
+  `use_staged_rom_firmware()` tạo symlink RAM trong `/lib/firmware` cho mọi file
+  p82 chưa staged, rồi đặt `firmware_class.path=/lib/firmware`. Không ghi phân
+  vùng; `/vendor` mount từ p86 vẫn che `/vendor/dsp` trong ramdisk nên đường dẫn
+  hiệu lực là `/lib/firmware/dsp`.
+- Build/package/flash p77 (via `fastboot flash recovery`, vì máy đang fastboot):
+  ảnh `sha256 fd3272adff57f5f82f655ffda0d2846d5dcb731b525f82eb62513185bcaeda8a`,
+  51.310.592 B (vừa p77).
+
+### Kiểm chứng trên máy sau flash
+- `wifi find wlanmdsp.mbn` → `/lib/firmware/wlanmdsp.mbn`;
+  `wifi ls /lib/firmware/dsp` → `cdsp adsp`;
+  `wifi cat /lib/firmware/modemuw.jsn` trả nội dung JSON thật (có `msm`,
+  `modem`, `wlan_pd`); `wifi cat /sys/module/firmware_class/parameters/path`
+  → `/lib/firmware`.
+- `wifi dmesg` vẫn có `subsys-pil-tz`, `icnss`, `wlan_hdd_state wlan major(500)
+  initialized`; **không có dòng request_firmware cho wlanmdsp**.
+- `wifi listen 10 3 msm/modem/wlan_pd` → `result=1 error=45` (không đổi).
+- `wifi discover` → `recv_calls=0`, `0x45 NOT_REGISTERED`, `rc=-2 ENOENT`.
+- `wlfw_cal_00.bin`: **không sinh**; `wlan0`: **absent**.
+
+### Kết luận
+Dù đã trích và stage firmware ROM thật, blocker vẫn là modem/WLAN PD
+(`result=1 error=45`) — cùng trạng thái trước khi stage. Firmware WLAN trong
+ROM này đồng hash với bản đã dùng, nên kết quả nhất quán: **không phải firmware
+bị thiếu/cũ**. Không mock QMI, không server giả, không partition write.

@@ -177,6 +177,49 @@ def stage_root():
                   encoding="ascii") as status:
             status.write("radio firmware: not staged\n")
 
+    # Full Fastboot-ROM firmware extracted from NON-HLOS.bin + dspso.bin.
+    # Only WLAN/SERVREG/DSP subsets are RAM-staged: the whole 126 MiB image
+    # cannot fit p77 (64 MiB) once the 17.5 MiB kernel is included. Modem
+    # binaries stay on the real p82 partition, which is already mounted ro.
+    FULLFW = os.path.join(ROOT, "build", "firmware-full")
+    NH = os.path.join(FULLFW, "non-hlos", "image")
+    DSP = os.path.join(FULLFW, "dspso")
+    if os.path.isdir(NH) and os.path.isdir(DSP):
+        staged_rom = []
+        # WLAN + SERVREG descriptors: the exact files icnss/tqftpserv/pd-mapper read.
+        for name in sorted(os.listdir(NH)):
+            low = name.lower()
+            if not (low.startswith(("wlanmdsp", "bdwlan", "regdb",
+                                    "qdss_trace_config")) or low.endswith(".jsn")):
+                continue
+            src = os.path.join(NH, name)
+            if not os.path.isfile(src):
+                continue
+            for rel in ("lib/firmware", "lib/firmware/wlan/qca_cld"):
+                dst = os.path.join(STAGE, rel, name)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy2(src, dst)
+            staged_rom.append(name)
+        # DSP images/libraries from dspso.bin ext4.
+        for dirpath, _dirs, files in os.walk(DSP):
+            for name in files:
+                src = os.path.join(dirpath, name)
+                rel = os.path.relpath(src, DSP)
+                for base in ("lib/firmware/dsp", "vendor/dsp"):
+                    dst = os.path.join(STAGE, base, rel)
+                    os.makedirs(os.path.dirname(dst), exist_ok=True)
+                    shutil.copy2(src, dst)
+                staged_rom.append(rel)
+        # Marker: bringup uses the staged RAM firmware instead of p82/p86.
+        marker = os.path.join(STAGE, "etc", "qeaf", "rom-firmware-staged")
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        with open(marker, "w", encoding="ascii") as fh:
+            fh.write("NON-HLOS.bin+dspso.bin WLAN/SERVREG/DSP RAM stage\n")
+            for name in staged_rom:
+                fh.write(name + "\n")
+        print("package_violet: staged %d ROM firmware file(s) in RAM" %
+              len(staged_rom))
+
     # QEAF identity: the staged runtime APEX is published under a QEAFIVELS
     # name. The source sysroot keeps the vendor name (the exact filesystem
     # path in the dump); only the initramfs shown by the Files app is renamed.

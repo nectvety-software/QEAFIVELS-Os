@@ -253,6 +253,36 @@ static int link_firmware_tree(void)
     return made > 0 ? 0 : -1;
 }
 
+/* RAM-only ROM firmware override. The Fastboot-ROM WLAN/SERVREG/DSP files are
+ * already in /lib/firmware from the initramfs. p82 still holds the large modem
+ * image, so link any file we did NOT stage from p82 into /lib/firmware. This
+ * writes no partition: /lib/firmware is rootfs RAM and symlinks are RAM-only. */
+static int use_staged_rom_firmware(void)
+{
+    DIR *dir;
+    struct dirent *de;
+    int linked = 0;
+
+    if(!file_exists("/etc/qeaf/rom-firmware-staged")) return 0;
+    dir = opendir(IMAGE_DIR);
+    if(dir == NULL) return 0;
+    while((de = readdir(dir)) != NULL) {
+        char source[320], target[320];
+        struct stat st;
+        if(de->d_name[0] == '.') continue;
+        if(snprintf(source, sizeof(source), "%s/%s", IMAGE_DIR,
+                    de->d_name) >= (int)sizeof(source)) continue;
+        if(snprintf(target, sizeof(target), "/lib/firmware/%s",
+                    de->d_name) >= (int)sizeof(target)) continue;
+        if(stat(target, &st) == 0) continue;   /* staged file wins */
+        if(symlink(source, target) == 0) linked++;
+    }
+    closedir(dir);
+    vio_log("wifi: staged ROM firmware active (%d p82 links in /lib/firmware)",
+            linked);
+    return 1;
+}
+
 static int set_firmware_paths(void)
 {
     const char *fw_class = "/sys/module/firmware_class/parameters/path";
@@ -261,9 +291,11 @@ static int set_firmware_paths(void)
     int ok = 0;
 
     if(file_exists(fw_class)) {
+        const char *path = use_staged_rom_firmware() ?
+                           "/lib/firmware" : IMAGE_DIR;
         if(read_text(fw_class, current, sizeof(current)) > 0)
             vio_log("wifi: firmware_class.path was '%s'", current);
-        if(write_text(fw_class, IMAGE_DIR) == 0) ok++;
+        if(write_text(fw_class, path) == 0) ok++;
         else vio_log("wifi: cannot set firmware_class.path: %s",
                      strerror(errno));
     }

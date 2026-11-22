@@ -1,5 +1,29 @@
 # Milestone status
 
+## Wi-Fi: driver kiểm tra container firmware WCN3990 trước khi giao cho icnss (2026-11-22)
+
+- User: "phát triển tính năng wifi dùng drive/firmware". Phạm vi: phần driver/firmware
+  phía QEAF; không flash, không ghi partition, không đụng modem/EFS/persist.
+- `wifi_firmware.c` trước đây chỉ đọc blob + băm FNV, không kiểm gì: file cụt, sai
+  class hay không phải ảnh Hexagon vẫn được coi là đã nạp. Nay thêm
+  `vqeaf_wifi_fw_probe()` (đọc tối đa 4 KiB header, đối chiếu kích thước thật):
+  kiểm ELF32/ELF64 little-endian, `e_phoff`/`e_phentsize`/`e_phnum`, bảng program header
+  nằm trong file, `p_offset+p_filesz <= file_size`, tổng payload > 0, `e_entry` nằm
+  trong một `PT_LOAD`; BDF version 1/2; regdb magic `0x00040ED3`.
+  `vqeaf_wifi_fw_check_set()` đòi đủ `wlanmdsp.mbn` + `bdwlan.*` + `regdb.bin` và
+  DSP phải là ELF32 machine 164 (Hexagon) — `ok=1` chỉ khi cả ba đạt.
+- Phía máy: `platform/violet/wifi_fw_check.c` đọc chính các file trong ảnh bằng
+  `open/stat/read`, `wifi fw` in thêm các dòng `fw check:` và `fw set: OK/FAILED`.
+- Kiểm chứng: `scripts/wifi/run_hal_tests.py` → cả 4 test `ALL OK`; test mới
+  `test_wifi_firmware` assert trên firmware thật 3.694.736 B / 3 `PT_LOAD` /
+  payload 3.121.976 B / entry `0xb0000000`; mọi nhánh hỏng (cụt, sai machine,
+  thiếu board, rỗng) đều bị từ chối. `tests/wifi/test_wifi_firmware.py` 3/3 OK.
+  Build violet PASS: `dist/boot-vqeaf-violet.img` 32.534.528 B, sha256
+  `139075f2d5149d6181956c34a357b4fdc747665eb0530f250657ec5338b4e356`.
+- Chưa chạy `wifi fw` trên máy (lúc phát triển điện thoại đang rút cáp) và
+  **chưa có wlan0**: các blocker cũ (persist/wlan_mac.bin, WLFW 0x45, modem reset,
+  kernel chưa có network stack) không đổi. Chi tiết: `docs/wifi/VIOLET_FIRMWARE_LOADER.md`.
+
 ## Đổi /apex/com.qeafivels.runtime → com.qeafivels.runtime trên máy (2026-11-20 19:32)
 
 - User: "ở tệp tab hệ thống /apex/ có thư mục com.qeafivels.runtime hãy thay
@@ -563,6 +587,26 @@ Truyền tệp) mà không phụ thuộc việc rút cắm cáp, và gate host k
   - mở lại từ chính mục đó, chọn "Sạc thiết bị" → pick `VQEAF_USB_CHARGE`, phụ
     đề quay lại "Chỉ sạc · máy ẩn khỏi máy tính".
   - Ảnh: `build/screens/phone-ui/interaction-settings-usb.png`.
+- **Cắm lại cáp tự bind lại LUN sau khi chọn "Chỉ sạc":** trước đây `charge_only`
+  chặn cả retry UDC lẫn mọi lần cắm lại, nên muốn thấy lại ổ phải chạm màn hình
+  (Cài đặt › USB) hoặc reboot. Giờ `vio_lun_poll()` bắt cạnh *lên* của cáp khi
+  `charge_only && !gadget` và chỉ đặt cờ `lun.rebind_request`; `main` — người
+  ghi configfs duy nhất — xoá `charge_only` và gọi `vio_lun_start_gadget()`
+  trong vòng chính, nên bind không bao giờ chạy trong worker cứu hộ đang giữ
+  `volume_lock` (một `write_attr` chậm ở đó sẽ chặn luôn QEAF.CMD). Một lần
+  rút/cắm là đủ; cáp chưa từng rút thì lựa chọn "Chỉ sạc" vẫn nguyên, vì chỉ
+  cạnh lên mới đặt cờ. Bind lại hỏng thì `charge_only` đã bị xoá nên retry 3 s
+  tiếp tục thử thay vì ẩn máy; chọn lại Sạc/Tệp trong sheet xoá cờ chờ, nên
+  lựa chọn mới thắng cạnh cáp cũ. Log: `usb: cable replugged in charge-only
+  mode - main will bind the drive again`, rồi `boot: USB gadget bound again
+  after replug`. **Trạng thái kiểm chứng:** build ARM + đóng gói lại toàn bộ
+  PASS, ảnh mới `sha256 91c6a14d…` đã ghi vào p77 qua QEAFRESCUE
+  (`written and verified byte for byte`) và máy boot lại bằng ảnh đó —
+  `status` trả `QEAFIVELS OS 0.3.0 … usb_mode=mtp; usb_cable=1; stage=phone-ui`.
+  Chính đường "chọn Sạc → rút/cắm lại → tự bind" **chưa được chứng minh trên
+  máy**: nó cần một lần rút/cắm cáp thật, và bước đó chưa chạy. Bằng chứng
+  gián tiếp cho phần đọc cạnh cáp là sheet "Dùng USB cho" vẫn mở đúng một
+  lần mỗi lần cắm, tức `read_cable()` đọc được cả 0 lẫn 1 trên máy này.
 - **Sửa lỗi "Chỉ sạc" bị ghi đè:** `vio_lun_set_mode(CHARGE)` thả UDC và đặt
   `gadget = 0`, nhưng vòng retry UDC muộn trong `main` lại bind lại sau ≤3 s —
   trên máy, chọn "Sạc" sẽ tự biến thành ổ đĩa. Thêm cờ `lun.charge_only`
@@ -587,7 +631,7 @@ Truyền tệp) mà không phụ thuộc việc rút cắm cáp, và gate host k
   kênh điều khiển luôn hiện ở cả ba chế độ, nhưng ở violet cả function dữ liệu
   *chính là* LUN đó — thả UDC thì máy tính không thấy gì. Không thể vừa "ẩn
   khỏi máy tính" vừa "luôn hiện", nên ghi chú `usb_gadget.h` được sửa cho
-  đúng sự thật, kèm đường về: mục USB trong Cài đặt (không cần rút cắm) và một
+  đúng sự thật, kèm đường về: mục USB trong Cài đặt, một lần rút/cắm cáp (cạnh lên tự bind lại) và một
   lần reboot (bind lúc boot là truyền tệp); volume RAM không bị huỷ nên cùng ổ
   đó hiện lại. Thông báo khi chọn Sạc nay chỉ thẳng "Cài đặt › USB", và gate
   host thêm check: đang Chỉ sạc vẫn mở được bảng chọn và đổi lại Truyền tệp.
@@ -3465,3 +3509,16 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   error=45`. Không có sysfs remoteproc để restart.
 - BLOCKED giữ nguyên ở tầng modem/firmware; không mock/bypass QMI.
   Chi tiết: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.
+
+
+## Trích firmware Fastboot ROM + stage ramdisk + flash p77 (2026-11-23)
+- Trích `NON-HLOS.bin` (425 file) và `dspso.bin` (67 file) bằng mtools/debugfs;
+  stage WLAN/SERVREG/DSP thật (32+6+67 file, 25,5 MiB) vào `/lib/firmware`
+  (+ `/vendor/dsp` trong initramfs); `firmware_class.path=/lib/firmware`.
+- Hash WLAN ROM = bản cũ (wlanmdsp `4c3d277812fe0496…`) → firmware không cũ.
+- Build/package OK; chỉ flash p77 qua `fastboot flash recovery`, ảnh
+  `fd3272adff57f5f82f655ffda0d2846d5dcb731b525f82eb62513185bcaeda8a`
+  (51.310.592 B). Không ghi modem/dsp/persist/NV.
+- Đo lại: `wlan_pd result=1 error=45`, `0x45 NOT_REGISTERED`, `recv_calls=0`,
+  `wlfw_cal_*` không sinh, `wlan0` absent. Blocker vẫn modem/PD, không phải file
+  firmware. Chi tiết: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.
