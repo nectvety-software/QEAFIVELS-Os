@@ -44,6 +44,13 @@ const char *vqeaf_files_kind_key(vqeaf_file_kind_t kind);
  * -errno. */
 int vqeaf_files_read(const char *path, uint8_t *out, size_t cap);
 
+/* Optional read/list backend for virtual volumes (the QEAFRESCUE RAM LUN).
+ * A backend returning a negative errno lets the normal filesystem path run. */
+typedef int (*vqeaf_files_read_fn)(const char *path, uint8_t *out, size_t cap);
+typedef int (*vqeaf_files_list_fn)(const char *path, vqeaf_file_t *out, int max);
+void vqeaf_files_set_backends(vqeaf_files_read_fn read_fn,
+                              vqeaf_files_list_fn list_fn);
+
 /* Lists an absolute directory path. ".." is included for non-root paths.
  * Returns the count, or -errno when the directory cannot be opened. */
 int vqeaf_files_list(const char *path, vqeaf_file_t *out, int max);

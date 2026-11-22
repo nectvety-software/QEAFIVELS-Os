@@ -44,7 +44,9 @@
 #include "watchdog.h"
 
 #include "qvf_encode.h"
+#include "fs/fat16.h"
 #include "fs/rescue.h"
+#include "ui/vqeaf_files.h"
 #include "qeaf_version.h"
 #include "splash.h"
 
@@ -592,6 +594,58 @@ static int shutdown_final(vqeaf_shutdown_action_t action)
     saved = errno;
     vio_log("shutdown: machine reset refused errno=%d", saved);
     return -1;
+}
+
+/* ---- Files/Video/Gallery read the real QEAFRESCUE LUN ---------------------
+ * Captures live in UserData/Pictures and UserData/Videos on the RAM FAT volume.
+ * Virtual paths map to those folders; everything still goes through the volume
+ * lock, exactly like the rescue channel. No file is faked. */
+static int lun_media_path(const char *path, char *out, size_t cap)
+{
+    if(path == NULL || out == NULL || cap == 0) return -1;
+    if(strcmp(path, "/media") == 0 ||
+       strcmp(path, "/Videos") == 0)
+        return snprintf(out, cap, "%s", "UserData/Videos") >= 0 ? 0 : -1;
+    if(strncmp(path, "/media/", 7) == 0)
+        return snprintf(out, cap, "UserData/Videos/%s", path + 7) >= 0 ? 0 : -1;
+    if(strncmp(path, "/Videos/", 8) == 0)
+        return snprintf(out, cap, "UserData/Videos/%s", path + 8) >= 0 ? 0 : -1;
+    if(strcmp(path, "/Pictures") == 0)
+        return snprintf(out, cap, "%s", "UserData/Pictures") >= 0 ? 0 : -1;
+    if(strncmp(path, "/Pictures/", 10) == 0)
+        return snprintf(out, cap, "UserData/Pictures/%s", path + 10) >= 0 ? 0 : -1;
+    return -1;   /* let the normal filesystem handle this path */
+}
+
+static int lun_files_read(const char *path, uint8_t *out, size_t cap)
+{
+    char rel[256];
+    int n;
+    if(lun_media_path(path, rel, sizeof(rel)) != 0 || !lun.ready) return -1;
+    volume_lock_acquire();
+    n = fat16_read_path(&lun.volume, rel, out, cap);
+    volume_lock_release();
+    return n;
+}
+
+static int lun_files_list(const char *path, vqeaf_file_t *out, int max)
+{
+    char rel[256];
+    fat16_entry_t entries[32];
+    int i, n, nmax;
+    if(lun_media_path(path, rel, sizeof(rel)) != 0 || !lun.ready) return -1;
+    nmax = max < (int)(sizeof(entries)/sizeof(entries[0])) ?
+           max : (int)(sizeof(entries)/sizeof(entries[0]));
+    volume_lock_acquire();
+    n = fat16_list_path(&lun.volume, rel, entries, nmax);
+    volume_lock_release();
+    if(n <= 0) return n;
+    for(i = 0; i < n && i < max; i++) {
+        snprintf(out[i].name, sizeof(out[i].name), "%s", entries[i].name);
+        out[i].size = entries[i].size;
+        out[i].is_dir = entries[i].is_dir;
+    }
+    return n;
 }
 
 /* ---- the rescue worker ---------------------------------------------------- */
@@ -1294,6 +1348,7 @@ int main(void)
     if(sigsetjmp(ui_recovery, 1) == 0) {
         in_ui = 1;
         if(vio_lun_init(&lun) == 0) {
+            vqeaf_files_set_backends(lun_files_read, lun_files_list);
             if(vio_lun_start_gadget(&lun) < 0)
                 vio_log("boot: LUN built but USB gadget is not bound; will retry");
         }

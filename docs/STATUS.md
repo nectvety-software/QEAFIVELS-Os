@@ -3311,3 +3311,23 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   `saved VID0001.QVF (8 frames, 194400 bytes, time limit reached)` — frame thật
   từ scanout, không phải ảnh tĩnh giả. Test `tests.test_qeaf_capture_shortcuts`
   4 tests OK.
+
+
+## Trình xem ảnh/video và thư mục phương tiện (2026-11-22)
+- Ảnh chụp lưu `UserData/Pictures`, video QVF lưu `UserData/Videos` trên RAM
+  LUN. Nối LUN vào `vqeaf_files_*` qua backend (`vqeaf_files_set_backends`)
+  với path ảo `/Pictures`, `/Videos`, `/media`, vẫn đi qua volume_lock.
+- Gallery không còn placeholder: liệt kê ảnh thật, đọc **toàn bộ** tệp (ảnh
+  chụp ~7,5 MB) rồi giải mã PNG/BMP/JPEG bằng decoder có sẵn, hiển thị pixel
+  thật; có nút Đóng. Video page dùng `vqeaf_video_scan("/media")` + QVF
+  frame decoder có sẵn — giờ đọc được `VID0001.QVF`.
+- Thêm verb `media list` để kiểm chứng thư mục trên máy.
+- Build/package/flash OK, ảnh sha
+  `7d1d2e92dd235ac9668c8c76752079cb07cd8076dc7937082e6acc259da44add`.
+- Kiểm chứng trên máy: `media list` ->
+  `UserData/Pictures: SHOT0001.BMP(7581654B)`,
+  `UserData/Videos: VID0001.QVF(193736B)`.
+- Test `tests.test_qeaf_media_viewer` 4 tests OK.
+- Wi-Fi vẫn BLOCKED (không đổi); cnss-daemon alive (S sleeping), strace không
+  có trong rootfs, qrtr-lookup 0x45 timeout — chưa rõ nguyên nhân ENOENT,
+  không tạo server/response giả.

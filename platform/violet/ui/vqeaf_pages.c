@@ -3364,20 +3364,57 @@ static void build_video(lv_obj_t *content)
 }
 
 /* ---- gallery / library --------------------------------------------------- */
+static void gallery_open_image(const char *path);
+static int view_decode_jpg(const uint8_t *data, size_t len);
+
+static char g_gallery_paths[24][256];
+
+static void gallery_tile_cb(lv_event_t *event)
+{
+    const char *path = (const char *)lv_event_get_user_data(event);
+    if(path != NULL) gallery_open_image(path);
+}
+
 static void build_gallery(lv_obj_t *content)
 {
     lv_obj_t *root = page_root(content);
     detail_header(root, "Thư viện");
+    vqeaf_file_t files[24];
+    int count = vqeaf_files_list("/Pictures", files, 24);
+    int shown = 0;
 
     lv_obj_t *card = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(card, 12, 0);
     lv_obj_set_style_pad_row(card, 10, 0);
-    vqeaf_label(card, "Thư viện ảnh", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
-    lv_obj_t *note = vqeaf_label(card,
-        "Hệ điều hành chưa có decoder ảnh đầy đủ cho thư viện; các tệp ảnh "
-        "trong QEAFRESCUE chỉ được liệt kê và hiển thị metadata.",
-        VQEAF_FONT_BODY, VQEAF_C_TEXT_DIM);
-    lv_obj_set_width(note, lv_pct(100));
+
+    if(count <= 0) {
+        lv_obj_t *note = vqeaf_label(card,
+            "Chưa có ảnh. Dùng Chụp màn hình trong Trung tâm điều khiển "
+            "hoặc tổ hợp Power + Volume; ảnh lưu tại UserData/Pictures.",
+            VQEAF_FONT_BODY, VQEAF_C_TEXT_DIM);
+        lv_obj_set_width(note, lv_pct(100));
+        return;
+    }
+    for(int i = 0; i < count && i < 24; i++) {
+        if(files[i].is_dir) continue;
+        char label[128];
+        snprintf(g_gallery_paths[i], sizeof(g_gallery_paths[i]),
+                 "/Pictures/%s", files[i].name);
+        lv_obj_t *btn = lv_button_create(card);
+        lv_obj_set_width(btn, lv_pct(100));
+        lv_obj_add_event_cb(btn, gallery_tile_cb, LV_EVENT_CLICKED,
+                            g_gallery_paths[i]);
+        snprintf(label, sizeof(label), "%s  (%u B)", files[i].name,
+                 (unsigned)files[i].size);
+        lv_obj_t *lbl = lv_label_create(btn);
+        lv_label_set_text(lbl, label);
+        lv_obj_center(lbl);
+        shown++;
+    }
+    if(shown == 0)
+        vqeaf_label(card, "Không có tệp ảnh hợp lệ.", VQEAF_FONT_BODY,
+                    VQEAF_C_TEXT_DIM);
 }
 
 /* ---- recents / multitasking --------------------------------------------- */
@@ -3633,6 +3670,9 @@ typedef enum {
     CTL_ROTATE,
     CTL_DARK,
     CTL_NAVKEYS,
+    /* Screen capture: appended so every existing tile index keeps its value. */
+    CTL_SHOT,
+    CTL_RECORD,
     CTL_COUNT,
 } ctl_kind_t;
 
@@ -3660,6 +3700,8 @@ static const ctl_def_t control_tiles[] = {
     { VQEAF_SYM_SCREEN_ROTATION,     "Xoay màn hình",    CTL_ROTATE,        2 },
     { VQEAF_SYM_CONTRAST,            "Chế độ tối",       CTL_DARK,          2 },
     { VQEAF_SYM_APPS,                "Phím ảo",          CTL_NAVKEYS,       2 },
+    { VQEAF_SYM_IMAGE,               "Chụp màn hình",    CTL_SHOT,          2 },
+    { VQEAF_SYM_MOVIE,               "Quay màn hình",    CTL_RECORD,        2 },
 };
 
 static const char *const control_groups[] = {
@@ -3717,6 +3759,30 @@ static void control_tile_cb(lv_event_t *event)
         break;
     case CTL_NAVKEYS:
         vqeaf_ui_set_virtual_keys(!vqeaf_ui_virtual_keys());
+        vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+        break;
+    case CTL_SHOT: {
+        /* A real capture of the live scanout, encoded and written before the
+         * toast answers: no placeholder is ever shown as a screenshot. */
+        int bytes = vio_screenshot_now();
+        vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+        if(bytes > 0)
+            show_toast("Đã lưu ảnh vào UserData/Pictures");
+        else
+            show_toast("Không chụp được màn hình");
+        break;
+    }
+    case CTL_RECORD:
+        if(vio_rec_active()) {
+            vio_rec_stop();
+            show_toast("Đã lưu video vào UserData/Videos");
+        }
+        else if(vio_rec_start(8, 10) == 0) {
+            show_toast("Đang quay màn hình 10 giây");
+        }
+        else {
+            show_toast("Không quay được màn hình");
+        }
         vqeaf_ui_show(VQEAF_PAGE_CONTROL);
         break;
     case CTL_BLUETOOTH:
@@ -3841,6 +3907,13 @@ static void build_control(lv_obj_t *content)
             case CTL_NAVKEYS:
                 on = vqeaf_ui_virtual_keys();
                 status = on ? "Đang bật" : "Cử chỉ";
+                break;
+            case CTL_SHOT:
+                status = "Lưu vào Pictures";
+                break;
+            case CTL_RECORD:
+                on = vio_rec_active();
+                status = on ? "Đang quay" : "10 giây, 8 fps";
                 break;
             default:
                 supported = 0;
@@ -5931,6 +6004,7 @@ static void files_entry_cb(lv_event_t *event)
 }
 
 static lv_obj_t *g_file_view;
+static lv_obj_t *g_gallery_layer;
 
 /* Decoded preview pixels for the file viewer. Kept in a shell-local buffer so
  * the lv_image can reference it directly; freed when the viewer closes or a
@@ -6033,6 +6107,66 @@ static int view_decode_bmp(const uint8_t *d, size_t n)
     }
     view_set_image(w, h);
     return 0;
+}
+
+/* Full-size image preview from the RAM LUN: reads the whole file (screenshots
+ * are several MB), decodes with the same PNG/BMP/JPEG decoders as the file
+ * viewer, and shows the real pixels. No placeholder image is ever drawn. */
+static void gallery_close_cb(lv_event_t *event)
+{
+    (void)event;
+    if(g_gallery_layer != NULL) {
+        lv_obj_delete(g_gallery_layer);
+        g_gallery_layer = NULL;
+    }
+    view_free_pixels();
+}
+
+static void gallery_open_image(const char *path)
+{
+    uint8_t *data;
+    int got, decoded = -1;
+    vqeaf_media_info_t info;
+    vqeaf_file_t files[24];
+    size_t len = 0;
+    const char *name;
+
+    if(path == NULL) return;
+    name = strrchr(path, '/');
+    name = name != NULL ? name + 1 : path;
+    int count = vqeaf_files_list("/Pictures", files, 24);
+    for(int i = 0; i < count; i++)
+        if(strcmp(files[i].name, name) == 0) { len = files[i].size; break; }
+    if(len == 0 || len > 24u * 1024u * 1024u) return;
+
+    data = lv_malloc(len);
+    if(data == NULL) return;
+    got = vqeaf_files_read(path, data, len);
+    if(got > 0 && vqeaf_media_inspect(data, (size_t)got, &info) == 0) {
+        if(info.type == VQEAF_MEDIA_PNG) decoded = view_decode_png(data, (size_t)got);
+        else if(info.type == VQEAF_MEDIA_BMP) decoded = view_decode_bmp(data, (size_t)got);
+        else if(info.type == VQEAF_MEDIA_JPEG) decoded = view_decode_jpg(data, (size_t)got);
+    }
+    lv_free(data);
+    if(decoded != 0) { view_free_pixels(); return; }
+
+    g_gallery_layer = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(g_gallery_layer, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(g_gallery_layer, lv_color_hex(0x05060A), 0);
+    lv_obj_set_style_pad_all(g_gallery_layer, 12, 0);
+    lv_obj_t *img = lv_image_create(g_gallery_layer);
+    int avail = lv_obj_get_width(g_gallery_layer) - 24;
+    int zoom = 256;
+    if(g_view_w > 0 && g_view_w > avail) zoom = avail * 256 / g_view_w;
+    lv_image_set_scale(img, (uint32_t)zoom);
+    lv_image_set_src(img, &g_view_dsc);
+    lv_obj_center(img);
+    lv_obj_t *close = lv_button_create(g_gallery_layer);
+    lv_obj_add_event_cb(close, gallery_close_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *cl = lv_label_create(close);
+    lv_label_set_text(cl, "Đóng");
+    lv_obj_center(cl);
+    lv_obj_align(close, LV_ALIGN_BOTTOM_MID, 0, -8);
 }
 
 /* JPEG via the bundled tjpgd (RGB888 MCU blocks) -> BGRA preview. */
@@ -7687,7 +7821,7 @@ static lv_obj_t *g_term_cwd_label;
 static const char *const term_commands[] = {
     "help", "status", "date", "uptime", "battery", "storage", "wifi",
     "apps", "defaults", "default", "theme", "page", "echo", "clear",
-    "scan", "gateway", "connect",
+    "scan", "gateway", "connect", "rec",
     "pwd", "ls", "cat", "cd", "whoami", "uname", "env", "which",
     "history"
 };
@@ -7882,6 +8016,17 @@ static void term_run(const char *line)
         int rc = vqeaf_wifi_connect(arg, "");
         term_printf("connect %s: %s", arg,
                     rc == 0 ? "OK" : vqeaf_wifi_error(rc));
+    } else if(strcmp(cmd, "rec") == 0) {
+        if(argc == 2 && strcmp(arg, "start") == 0) {
+            term_printf("rec: %s", vio_rec_start(8, 10) == 0 ?
+                        "started (REC0001.PNG...)" : "refused");
+        } else if(argc == 2 && strcmp(arg, "stop") == 0) {
+            term_printf("rec: %s", vio_rec_stop() == 0 ?
+                        "stop requested" : "not recording");
+        } else {
+            term_printf("rec: %s", vio_rec_status());
+            term_print("usage: rec start | rec stop | rec status");
+        }
     } else if(strcmp(cmd, "apps") == 0) {
         term_printf("apps: %d dang ky (built-in + QEAPP)", vqeaf_app_count());
     } else if(strcmp(cmd, "defaults") == 0) {

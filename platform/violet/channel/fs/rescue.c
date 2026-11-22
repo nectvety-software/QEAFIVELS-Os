@@ -187,6 +187,7 @@ static const char SUMMARY[] =
     "to exist. Read with raw sectors, not the Windows mounted view.\n\n"
     "--- commands (QEAF.CMD, one per line)\n"
     "  help  status  wifi  sync  usb MODE  echo TEXT  ls  df  del NAME\n"
+"  media list         list UserData/Pictures and UserData/Videos on QEAFRESCUE\n"
 "  wifi ramtest       RAM-only tmpfs persist + TEST MAC (session only)\n"
     "  rotate 0|90|180|270|auto\n"
     "  lang vi|en|zh       switch the UI language\n"
@@ -1358,6 +1359,23 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 cat(resp, cap, "usb: mode set\n");
             else
                 cat(resp, cap, "usb: refused (gadget not started?)\n");
+        } else if (eq(line, "media list")) {
+            static const char *const dirs[] = { "UserData/Pictures",
+                                                "UserData/Videos" };
+            for(unsigned d = 0; d < 2; d++) {
+                fat16_entry_t ents[32];
+                int n = fat16_list_path(vol, dirs[d], ents, 32);
+                cat(resp, cap, dirs[d]);
+                cat(resp, cap, ": ");
+                if(n <= 0) { cat(resp, cap, "(empty)\n"); continue; }
+                for(int i = 0; i < n; i++) {
+                    cat(resp, cap, ents[i].name);
+                    cat(resp, cap, "(");
+                    cat_u(resp, cap, ents[i].size);
+                    cat(resp, cap, "B) ");
+                }
+                cat(resp, cap, "\n");
+            }
         } else if (eq(line, "ls")) {
             cat(resp, cap,
                 "HELP.TXT SUMMARY.TXT RESPONSE.TXT QEAFBOOT.LOG DEVINFO.TXT "

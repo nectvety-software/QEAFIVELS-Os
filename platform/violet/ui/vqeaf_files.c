@@ -103,13 +103,28 @@ const char *vqeaf_files_kind_key(vqeaf_file_kind_t kind)
     }
 }
 
+static vqeaf_files_read_fn g_files_read;
+static vqeaf_files_list_fn g_files_list;
+
+void vqeaf_files_set_backends(vqeaf_files_read_fn read_fn,
+                              vqeaf_files_list_fn list_fn)
+{
+    g_files_read = read_fn;
+    g_files_list = list_fn;
+}
+
 #ifdef __linux__
 int vqeaf_files_read(const char *path, uint8_t *out, size_t cap)
 {
     FILE *file;
     size_t count;
+    int got;
 
     if(path == NULL || out == NULL || cap == 0) return -EINVAL;
+    if(g_files_read != NULL) {
+        got = g_files_read(path, out, cap);
+        if(got >= 0) return got;
+    }
     file = fopen(path, "rb");
     if(file == NULL) return -errno;
     count = fread(out, 1, cap, file);
@@ -211,6 +226,10 @@ int vqeaf_files_list(const char *path, vqeaf_file_t *out, int max)
 
     if(path == NULL || out == NULL || max <= 0 || path[0] != '/')
         return -EINVAL;
+    if(g_files_list != NULL) {
+        count = g_files_list(path, out, max);
+        if(count >= 0) return count;
+    }
     dir = opendir(path);
     if(dir == NULL) return -errno;
 
