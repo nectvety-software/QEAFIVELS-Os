@@ -3211,3 +3211,18 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   lại đúng, xoá thu hồi, ghi lại OK. Build OK (11.410.920 B); package OK
   sha `3236fca7...77dd`.
 - Chưa flash: thiết bị đang kẹt; cần fastboot theo docs/UI_DEVICE_TEST.md.
+
+
+## Tìm ra nguyên nhân kẹt QEAF.CMD: tự deadlock volume_lock (2026-11-22)
+- `rescue_worker()` giữ `volume_lock` quanh `rescue_poll()`. Các verb gọi hook
+  `vio_screenshot_now()` (shot) và `vio_rec_start()` -> `rec_budget()` (rec)
+  lại gọi `volume_lock_acquire()` trên **cùng mutex không đệ quy** của worker
+  → tự deadlock: F: vẫn mount nhưng QEAF.CMD không bao giờ được đọc.
+- Sửa: `volume_lock` thành `PTHREAD_MUTEX_RECURSIVE` (khởi tạo qua pthread_once
+  trong `volume_lock.h`, gọi `volume_lock_init()` ở đầu main). Depth TLS vẫn
+  được giữ nên `volume_lock_drop_on_fault()` trả đúng mọi cấp khi fault.
+- Test `tests/vqeaf_volume_lock_test.c` mở rộng lên **5 checks OK**, kiểm chứng
+  nesting 3 cấp + drop_on_fault trả sạch; `scripts/test_fat16_path.py` ALL OK.
+- Build OK (11.422.696 B); package OK sha
+  `5ca6e6fba3652fd87ee105115d33e85fcf78e7643611e987870954fd0e015a96`.
+- Chưa flash: thiết bị chưa kết nối; cần fastboot để nạp ảnh này (chỉ p77).

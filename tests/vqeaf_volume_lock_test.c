@@ -63,7 +63,7 @@ static void *held_then_faulting_worker(void *arg)
 static void reset_lock(void)
 {
     assert(pthread_mutex_destroy(&volume_lock) == 0);
-    assert(pthread_mutex_init(&volume_lock, NULL) == 0);
+    volume_lock_do_init();   /* recursive, exactly as PID 1 uses it */
     volume_lock_depth = 0;
 }
 
@@ -138,6 +138,21 @@ int main(void)
     assert(pthread_mutex_trylock(&volume_lock) == 0);
     pthread_mutex_unlock(&volume_lock);
 
-    puts("vqeaf_volume_lock: 4 checks OK (fault escape leaves QEAF.CMD consumable)");
+    /* 5. A rescue verb hook re-acquires the lock the rescue worker already
+     *    holds (shot / rec start / rec_budget). On a non-recursive mutex this
+     *    self-deadlocked the worker. Nesting must work and every level must
+     *    be handed back by drop_on_fault. */
+    reset_lock();
+    volume_lock_acquire();          /* rescue_poll() */
+    volume_lock_acquire();          /* vio_screenshot_now() / rec_budget() */
+    assert(volume_lock_depth == 2);
+    volume_lock_acquire();          /* a third nested hook, still same thread */
+    assert(volume_lock_depth == 3);
+    volume_lock_drop_on_fault();    /* fault unwinds every level */
+    assert(volume_lock_depth == 0);
+    assert(pthread_mutex_trylock(&volume_lock) == 0);
+    pthread_mutex_unlock(&volume_lock);
+
+    puts("vqeaf_volume_lock: 5 checks OK (nested verb hooks no longer wedge QEAF.CMD)");
     return 0;
 }

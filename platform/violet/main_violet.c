@@ -317,8 +317,10 @@ static char g_rec_name[24];
  * its own budget, so a long recording cannot fill the rescue drive. */
 static size_t rec_budget(void)
 {
-    size_t free_bytes, budget = REC_BUDGET;
+    size_t free_bytes = 0, budget = REC_BUDGET;
 
+    /* volume_lock is recursive, so this is safe even though `rec start`
+     * arrives from rescue_poll(), which already holds the lock. */
     volume_lock_acquire();
     free_bytes = lun.ready ? fat16_free_bytes(&lun.volume) : 0;
     volume_lock_release();
@@ -1251,6 +1253,7 @@ int main(void)
 
     signal(SIGPIPE, SIG_IGN);
     main_thread = pthread_self();
+    volume_lock_init();   /* recursive: verb hooks may re-acquire it */
     install_ui_fault_handlers();
     drm.fd = -1;
     lun.fd = -1;
