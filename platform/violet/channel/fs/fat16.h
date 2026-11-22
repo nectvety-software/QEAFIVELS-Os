@@ -69,6 +69,11 @@ int fat16_mkdir_in(struct fat16_volume *vol, uint32_t parent_cluster, const char
 int fat16_write_file(struct fat16_volume *vol, const char *name,
                      const uint8_t *data, size_t len);
 
+/* Deletes a root file and returns all of its clusters to the free pool.
+ * Returns the number of clusters freed, 0 for an empty chain, or -errno.
+ * Re-enables writes after the volume would otherwise be full. */
+int fat16_delete_file(struct fat16_volume *vol, const char *name);
+
 /* Reads a root file back by name. Returns the byte count, or -1. Used by the
  * rescue command loop to see the QEAF.CMD a host just dropped on the LUN. */
 int fat16_read_file(struct fat16_volume *vol, const char *name,
@@ -123,5 +128,15 @@ int fat16_list_path(struct fat16_volume *vol, const char *path,
                     fat16_entry_t *out, int max);
 int fat16_read_path(struct fat16_volume *vol, const char *path,
                     uint8_t *out, size_t cap);
+
+/* Free space left in the volume, in bytes. */
+uint32_t fat16_free_bytes(struct fat16_volume *vol);
+
+/* Writes `data` to `path` ("UserData/Videos/VID0001.QVF"): the entry is
+ * created in that directory when absent and replaced in place when it exists.
+ * Unlike fat16_write_file the size is bounded only by the free clusters, so
+ * captures (PNG screenshots, QVF clips) fit. Returns 0 or -1. */
+int fat16_write_path(struct fat16_volume *vol, const char *path,
+                     const uint8_t *data, size_t len);
 
 #endif

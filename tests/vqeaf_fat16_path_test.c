@@ -124,6 +124,39 @@ static void fragment_big(void)
            (unsigned)first, (unsigned)next);
 }
 
+
+/* The rescue volume used to refuse any file bigger than 64 clusters (~256 KiB)
+ * and never reclaimed a deleted file's clusters. Prove both limits are gone. */
+static void unlimited_write_and_reclaim(void)
+{
+    const size_t len = 300u * 1024u;   /* > 64 clusters at 4096 B/cluster */
+    uint8_t *big = malloc(len);
+    uint8_t *back = malloc(len);
+    uint32_t before, after;
+
+    if(!big || !back) { CHECK(0, "large test allocation"); free(big); free(back); return; }
+    for(size_t i = 0; i < len; i++) big[i] = (uint8_t)((i * 31u + 7u) & 0xFF);
+
+    before = fat16_free_bytes(&vol);
+    CHECK(fat16_write_file(&vol, "LARGE.BIN", big, len) == 0,
+          "file larger than 64 clusters is accepted");
+    CHECK(fat16_read_file(&vol, "LARGE.BIN", back, len) == (int)len &&
+          memcmp(back, big, len) == 0,
+          "large file reads back byte for byte");
+    CHECK(fat16_free_bytes(&vol) < before, "large file consumes free space");
+
+    CHECK(fat16_delete_file(&vol, "LARGE.BIN") > 64,
+          "delete reclaims all clusters of the large file");
+    after = fat16_free_bytes(&vol);
+    CHECK(after >= before, "free space is restored after delete");
+    CHECK(fat16_write_file(&vol, "LARGE.BIN", big, len) == 0,
+          "large file can be written again after reclaim");
+    CHECK(fat16_delete_file(&vol, "LARGE.BIN") > 0,
+          "second delete succeeds");
+    free(big);
+    free(back);
+}
+
 int main(void)
 {
     uint8_t *data = calloc(FAT16_VOLUME_SIZE, 1);
@@ -247,6 +280,8 @@ int main(void)
               (int)sizeof(big) && memcmp(out, big, sizeof(big)) == 0,
               "fragmented file still reads through the path API");
     }
+
+    unlimited_write_and_reclaim();
 
     printf(g_failures == 0 ? "ALL OK\n" : "%d FAILURES\n", g_failures);
     free(data);

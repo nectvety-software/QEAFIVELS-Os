@@ -3190,3 +3190,24 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Chưa flash/kiểm chứng trên máy: ảnh đang chạy bị treo nên không gửi được
   lệnh flash confirm. Cần boot fastboot để `fastboot boot` ảnh mới (RAM, không
   ghi partition).
+- `dist/boot-vqeaf-violet.img` hiện tại là bản **gộp**: tính năng chụp màn hình
+  + quay video (mục trên) và fix treo splash. Đã kiểm tra chuỗi trong
+  `build/violet/vqeaf-init` của chính image: có `shot`, `rec start|stop|status`,
+  `QVF1`, `UserData/Pictures/`, `UserData/Videos/`, `rec_tick`.
+  sha256 `1baca56cd8ffec6938bea891f38c8ed12400ebeb14ec931a818fa7cda1470faf`,
+  32.497.664 B; `validate_bootimg` + `audit_rescue_channel` PASS.
+
+
+## Mở rộng QEAFRESCUE (2026-11-22)
+- Bỏ giới hạn cứng 64 cluster/file (~256 KiB) trong `fat16_write_file()` và
+  `file_capacity()`; `fat_alloc()` tái use cluster đã xoá, cập nhật
+  `next_cluster` để mkdir không cấp trùng (lỗi này từng làm FAT test crash).
+- Thêm `fat16_delete_file()` + verb `del NAME`, `df` — thu hồi cluster, cho phép
+  ghi lại sau khi ổ đầy (BOOTIMG.BIN 32 MB trước đó chiếm gần toàn bộ LUN).
+- `fat16_free_bytes()` đếm cluster trống thật thay vì phần đuôi chưa dùng.
+- Worker fault không còn "park vĩnh viễn": đặt `rescue_thread_up = 0`, main loop
+  tự tiếp QEAF.CMD qua trylock fallback.
+- Test `tests.test_qeaf_rescue_fat` 5 tests OK; file 300 KiB (>64 cluster) ghi/đọc
+  lại đúng, xoá thu hồi, ghi lại OK. Build OK (11.410.920 B); package OK
+  sha `3236fca7...77dd`.
+- Chưa flash: thiết bị đang kẹt; cần fastboot theo docs/UI_DEVICE_TEST.md.

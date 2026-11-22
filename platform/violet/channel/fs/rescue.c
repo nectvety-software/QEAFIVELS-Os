@@ -156,7 +156,11 @@ static const char HELP[] =
     "                       ramoops), /proc/last_kmsg and bootreason ->\n"
     "                       PSTORE.TXT, to find why the last boot reset\n"
     "  snap                 dump the live scanout to SCREEN.RAW (RGB565)\n"
-"  shot                 save a full-resolution PNG screenshot\n"
+    "  shot                 save a full-resolution PNG screenshot to\n"
+    "                       UserData/Pictures/SHOTnnnn.PNG\n"
+    "  rec start [fps] [secs] / rec stop / rec status\n"
+    "                       record the live scanout into a QVF clip at\n"
+    "                       UserData/Videos/VIDnnnn.QVF (non-blocking)\n"
     "  tap X Y              inject a touch at canvas pixel (X,Y)\n"
     "  hold X Y [ms]        keep the touch down at (X,Y) for ms (default\n"
     "                       1200, 100..10000) so a long-press fires\n"
@@ -182,10 +186,12 @@ static const char SUMMARY[] =
     "Built in RAM by fat16.c; no partition has to survive for these bytes\n"
     "to exist. Read with raw sectors, not the Windows mounted view.\n\n"
     "--- commands (QEAF.CMD, one per line)\n"
-    "  help  status  wifi  sync  usb MODE  echo TEXT  ls\n"
+    "  help  status  wifi  sync  usb MODE  echo TEXT  ls  df  del NAME\n"
     "  rotate 0|90|180|270|auto\n"
     "  lang vi|en|zh       switch the UI language\n"
     "  snap                 write SCREEN.RAW (240x520 RGB565) for the host\n"
+    "  shot                 PNG screenshot -> UserData/Pictures\n"
+    "  rec start|stop|status  QVF screen recording -> UserData/Videos\n"
     "  diag                 watchdog/charger/thermal census\n"
     "  pstore               write PSTORE.TXT (prior-boot reset reason)\n"
     "  flash recovery BOOTIMG.BIN confirm\n\n"
@@ -1340,6 +1346,22 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
             cat(resp, cap,
                 "HELP.TXT SUMMARY.TXT RESPONSE.TXT QEAFBOOT.LOG DEVINFO.TXT "
                 "QEAF.CMD BOOTIMG.BIN SCREEN.RAW HOMOLOG.TXT VQEAF UserData Install\n");
+        } else if (eq(line, "df")) {
+            cat(resp, cap, "rescue: free ");
+            cat_u(resp, cap, fat16_free_bytes(vol));
+            cat(resp, cap, " bytes (no per-file cluster cap)\n");
+        } else if (starts(line, "del ") || starts(line, "rm ")) {
+            const char *name = starts(line, "del ") ? line + 4 : line + 3;
+            int freed = fat16_delete_file(vol, name);
+            if (freed >= 0) {
+                cat(resp, cap, "rescue: deleted ");
+                cat(resp, cap, name);
+                cat(resp, cap, " (");
+                cat_u(resp, cap, (unsigned)freed);
+                cat(resp, cap, " cluster(s) reclaimed)\n");
+            } else {
+                cat(resp, cap, "rescue: delete refused (file missing?)\n");
+            }
         } else if (eq(line, "flash recovery BOOTIMG.BIN confirm")) {
             do_flash(vol, resp, cap);
         } else if (starts(line, "flash")) {

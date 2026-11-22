@@ -1174,10 +1174,14 @@ static void ui_fault(int sig, siginfo_t *info, void *context)
     }
     {
         static const char message[] =
-            "<2>vqeaf: worker fault, thread parked, PID 1 stays up\n";
+            "<2>vqeaf: worker fault, thread parked, main loop takes over QEAF.CMD\n";
         ssize_t ignored = write(STDERR_FILENO, message, sizeof(message) - 1);
         (void)ignored;
     }
+    /* Hand the rescue channel to the main loop's trylock fallback. A parked
+     * worker must not look "up" forever: that is what used to wedge QEAF.CMD
+     * while the drive still appeared healthy to the host. */
+    if(!is_main) rescue_thread_up = 0;
     for(;;) pause();
 }
 

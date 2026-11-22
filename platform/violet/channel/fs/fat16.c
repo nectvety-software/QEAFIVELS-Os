@@ -3,6 +3,7 @@
 
 #include "fat16.h"
 #include <string.h>
+#include <errno.h>
 #include "core/log.h"
 
 /* One timestamp for the whole volume: the rescue disk is rebuilt at every
@@ -23,6 +24,36 @@ static void fat_set(struct fat16_volume *vol, uint32_t cluster, uint16_t value) 
         fat[off] = (uint8_t)(value & 0xFF);
         fat[off + 1] = (uint8_t)(value >> 8);
     }
+}
+
+/* Reads one FAT entry from the primary FAT. A zero means the cluster is free. */
+static uint16_t fat_get(const struct fat16_volume *vol, uint32_t cluster) {
+    uint16_t v;
+    uint8_t *f = vol->data + (size_t)vol->fat_start * vol->bytes_per_sector;
+    if(cluster >= vol->total_clusters + 2u) return FAT16_EOF;
+    memcpy(&v, f + cluster * 2u, 2);
+    return v;
+}
+
+/* Allocates a cluster: first reuse a freed one (a deleted file's chain), then
+ * fall back to the never-used tail. No arbitrary cluster-count limit. */
+static uint32_t fat_alloc(struct fat16_volume *vol) {
+    for(uint32_t c = 2; c < vol->total_clusters + 2u; c++)
+        if(fat_get(vol, c) == 0) {
+            fat_set(vol, c, FAT16_EOF);
+            /* Other allocators (mkdir/dir chains) still use next_cluster as
+             * a monotonic high-water mark. Keep it ahead of every cluster we
+             * hand out, otherwise they reuse this one and corrupt the chain. */
+            if(c + 1u > vol->next_cluster) vol->next_cluster = c + 1u;
+            return c;
+        }
+    if(vol->next_cluster >= 2 &&
+       vol->next_cluster < vol->total_clusters + 2u) {
+        uint32_t c = vol->next_cluster++;
+        fat_set(vol, c, FAT16_EOF);
+        return c;
+    }
+    return 0;
 }
 
 static uint8_t *root_entry(struct fat16_volume *vol, uint32_t index) {
@@ -424,10 +455,57 @@ static uint8_t *find_short_entry(struct fat16_volume *vol,
     return NULL;
 }
 
+/* Frees a root file: marks its directory entries deleted and returns every
+ * cluster of its chain to the free pool, so a later write can reuse them.
+ * This is what makes the rescue volume bounded only by its total size instead
+ * of by one-shot writes. */
+int fat16_delete_file(struct fat16_volume *vol, const char *name) {
+    char base[21], ext[4];
+    uint8_t exact[11];
+    uint8_t *entry;
+    uint32_t cur, next, freed = 0;
+    uint16_t val;
+    int base_len, ext_len;
+    uint32_t index;
+    uint8_t *root = vol->data +
+        (size_t)vol->root_dir_start * vol->bytes_per_sector;
+
+    if (!vol || !name_ok(name)) return -1;
+    split_name(name, base, &base_len, ext, &ext_len);
+    for (int i = 0; i < 11; i++) exact[i] = ' ';
+    for (int i = 0; i < base_len && i < 8; i++) exact[i] = (uint8_t)base[i];
+    for (int i = 0; i < ext_len && i < 3; i++) exact[8 + i] = (uint8_t)ext[i];
+    entry = find_short_entry(vol, exact);
+    if (entry == NULL) entry = find_long_entry(vol, name);
+    if (entry == NULL) return -ENOENT;
+
+    index = (uint32_t)((entry - root) / FAT16_ENTRY_SIZE);
+    cur = (uint32_t)entry[26] | ((uint32_t)entry[27] << 8);
+    while (cur >= 2 && cur < FAT16_EOF - 8 && freed < vol->total_clusters + 2u) {
+        memcpy(&val, vol->data + (size_t)vol->fat_start *
+               vol->bytes_per_sector + cur * 2u, 2);
+        next = val;
+        fat_set(vol, cur, 0);            /* return it to the free pool */
+        freed++;
+        cur = next;
+    }
+    entry[0] = 0xE5;                     /* delete the short entry */
+    /* Delete the contiguous LFN run immediately before it, if any. */
+    while (index > 0) {
+        uint8_t *lfn = root_entry(vol, index - 1);
+        if (lfn[11] != FAT16_ATTR_LFN) break;
+        lfn[0] = 0xE5;
+        index--;
+    }
+    umos_logf("fat16: deleted %s (%u cluster(s) freed)\n", name, (unsigned)freed);
+    return (int)freed;
+}
+
 static uint32_t file_capacity(struct fat16_volume *vol, uint32_t first) {
     uint32_t n = 0, cur = first;
     uint16_t fat_val;
-    while (cur >= 2 && cur < FAT16_EOF - 8 && n < 64) {
+    while (cur >= 2 && cur < FAT16_EOF - 8 &&
+           n < vol->total_clusters + 2u) {
         uint8_t *f = vol->data + (size_t)vol->fat_start * vol->bytes_per_sector;
         memcpy(&fat_val, f + cur * 2, 2);
         n++;
@@ -450,7 +528,7 @@ int fat16_write_file(struct fat16_volume *vol, const char *name,
     cluster_bytes = (uint32_t)vol->sectors_per_cluster * vol->bytes_per_sector;
     need = (uint32_t)((len + cluster_bytes - 1) / cluster_bytes);
     if (need == 0) need = 1;
-    if (need > 64 || len > 64 * cluster_bytes) return -1;
+    /* No fixed per-file cap: bounded only by the free clusters on the LUN. */
 
     split_name(name, base, &base_len, ext, &ext_len);
     /* The exact 8.3 spelling is the identity of this file. Calling
@@ -504,7 +582,8 @@ int fat16_write_file(struct fat16_volume *vol, const char *name,
     prev = 0;
     written = 0;
     for (uint32_t i = 0; i < need; i++) {
-        cur = vol->next_cluster++;
+        cur = fat_alloc(vol);
+        if(!cur) return -1;
         if (prev) fat_set(vol, prev, (uint16_t)cur);
         prev = cur;
         {
@@ -1088,4 +1167,192 @@ int fat16_read_path(struct fat16_volume *vol, const char *path,
         if (cluster < 0) return -1;
     }
     return fat16_read_file_in(vol, (uint32_t)cluster, slash + 1, out, cap);
+}
+
+/* ---- path writes (captures: screenshots and screen recordings) -----------
+ * fat16_write_file() is the small-root-file path the sync protocol uses and
+ * is bounded only by free clusters. Captures go through the path below:
+ * the entry lives in a storage folder (UserData/Pictures, UserData/Videos)
+ * and the size is bounded only by the free clusters, because a PNG screenshot
+ * or a QVF clip does not fit in 256 KiB. */
+
+uint32_t fat16_free_bytes(struct fat16_volume *vol) {
+    uint32_t used;
+    if (!vol) return 0;
+    used = 0;
+    for(uint32_t c = 2; c < vol->total_clusters + 2u; c++)
+        if(fat_get(vol, c) == 0) used++;
+    return used * (uint32_t)vol->sectors_per_cluster * vol->bytes_per_sector;
+}
+
+static uint32_t chain_capacity(struct fat16_volume *vol, uint32_t first,
+                               uint32_t max_clusters) {
+    uint32_t n = 0, cur = first;
+    while (cur >= 2 && cur < FAT16_EOF - 8 && n < max_clusters) {
+        n++;
+        cur = fat_next(vol, cur);
+    }
+    return n * (uint32_t)vol->sectors_per_cluster * vol->bytes_per_sector;
+}
+
+/* First free (never used or deleted) slot of a directory chain, or NULL when
+ * the directory has no room: the caller then refuses instead of overwriting a
+ * live entry. */
+static uint8_t *dir_free_slot(struct fat16_volume *vol, uint32_t cluster) {
+    uint32_t slots = (uint32_t)vol->sectors_per_cluster *
+                     vol->bytes_per_sector / FAT16_ENTRY_SIZE;
+    uint32_t cur = cluster;
+    while (cur >= 2 && cur < FAT16_EOF - 8) {
+        uint8_t *base = vol->data +
+            (size_t)cluster_sector(vol, cur) * vol->bytes_per_sector;
+        for (uint32_t s = 0; s < slots; s++) {
+            uint8_t *e = base + (size_t)s * FAT16_ENTRY_SIZE;
+            if (e[0] == 0x00 || e[0] == 0xE5) return e;
+        }
+        cur = fat_next(vol, cur);
+    }
+    return NULL;
+}
+
+static void fill_entry(uint8_t *e, const uint8_t *name11, uint8_t attr,
+                       uint32_t cluster, uint32_t size) {
+    memset(e, 0, FAT16_ENTRY_SIZE);
+    memcpy(e, name11, 11);
+    e[11] = attr;
+    e[14] = (uint8_t)(DOS_TIME & 0xFF); e[15] = (uint8_t)(DOS_TIME >> 8);
+    e[16] = (uint8_t)(DOS_DATE & 0xFF); e[17] = (uint8_t)(DOS_DATE >> 8);
+    e[18] = (uint8_t)(DOS_DATE & 0xFF); e[19] = (uint8_t)(DOS_DATE >> 8);
+    e[22] = (uint8_t)(DOS_TIME & 0xFF); e[23] = (uint8_t)(DOS_TIME >> 8);
+    e[24] = (uint8_t)(DOS_DATE & 0xFF); e[25] = (uint8_t)(DOS_DATE >> 8);
+    e[26] = (uint8_t)(cluster & 0xFF); e[27] = (uint8_t)(cluster >> 8);
+    e[28] = (uint8_t)(size & 0xFF);
+    e[29] = (uint8_t)((size >> 8) & 0xFF);
+    e[30] = (uint8_t)((size >> 16) & 0xFF);
+    e[31] = (uint8_t)((size >> 24) & 0xFF);
+}
+
+int fat16_write_path(struct fat16_volume *vol, const char *path,
+                     const uint8_t *data, size_t len) {
+    char dir[192];
+    char name[16];
+    uint8_t short_name[11];
+    char base[21], ext[4];
+    uint8_t *entry;
+    const char *slash;
+    uint32_t dir_cluster, cluster_bytes, need, first, prev, cur, written;
+    uint32_t free_clusters;
+    size_t name_len, dir_len;
+    int base_len, ext_len, resolved;
+
+    if (!vol || !path || (!data && len)) return -1;
+    slash = strrchr(path, '/');
+    if (slash == NULL) {
+        dir[0] = '/';
+        dir[1] = '\0';
+        name_len = strlen(path);
+        if (name_len == 0 || name_len >= sizeof(name)) return -1;
+        memcpy(name, path, name_len + 1);
+    } else {
+        name_len = strlen(slash + 1);
+        if (name_len == 0 || name_len >= sizeof(name)) return -1;
+        memcpy(name, slash + 1, name_len + 1);
+        dir_len = (size_t)(slash - path);
+        if (dir_len >= sizeof(dir)) return -1;
+        if (dir_len == 0) {
+            dir[0] = '/';
+            dir[1] = '\0';
+        } else {
+            memcpy(dir, path, dir_len);
+            dir[dir_len] = '\0';
+        }
+    }
+    if (!name_ok(name)) return -1;
+
+    if (dir[0] == '/' && dir[1] == '\0') {
+        dir_cluster = 0;
+    } else {
+        resolved = path_cluster(vol, dir);
+        if (resolved < 2) return -1;
+        dir_cluster = (uint32_t)resolved;
+    }
+
+    split_name(name, base, &base_len, ext, &ext_len);
+    for (int i = 0; i < 11; i++) short_name[i] = ' ';
+    for (int i = 0; i < base_len && i < 8; i++) {
+        char c = base[i];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        short_name[i] = (uint8_t)c;
+    }
+    for (int i = 0; i < ext_len && i < 3; i++) {
+        char c = ext[i];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        short_name[8 + i] = (uint8_t)c;
+    }
+
+    cluster_bytes = (uint32_t)vol->sectors_per_cluster * vol->bytes_per_sector;
+    need = (uint32_t)((len + cluster_bytes - 1) / cluster_bytes);
+    if (need == 0) need = 1;
+    free_clusters = (vol->next_cluster >= 2 &&
+                     vol->next_cluster - 2 < vol->total_clusters)
+                    ? vol->total_clusters - (vol->next_cluster - 2) : 0;
+
+    entry = (dir_cluster == 0) ? find_short_entry(vol, short_name)
+                               : find_entry_in(vol, dir_cluster, name);
+    if (entry != NULL) {
+        /* Replace in place; it may only grow into clusters it already owns. */
+        first = (uint32_t)entry[26] | ((uint32_t)entry[27] << 8);
+        if (!first || chain_capacity(vol, first, need + 1) < len) return -1;
+        cur = first;
+        written = 0;
+        while (written < len) {
+            uint8_t *dst = vol->data +
+                (size_t)cluster_sector(vol, cur) * vol->bytes_per_sector;
+            uint32_t chunk = (uint32_t)len - written;
+            if (chunk > cluster_bytes) chunk = cluster_bytes;
+            memset(dst, 0, cluster_bytes);
+            memcpy(dst, data + written, chunk);
+            written += chunk;
+            cur = fat_next(vol, cur);
+        }
+        entry[28] = (uint8_t)(len & 0xFF);
+        entry[29] = (uint8_t)((len >> 8) & 0xFF);
+        entry[30] = (uint8_t)((len >> 16) & 0xFF);
+        entry[31] = (uint8_t)((len >> 24) & 0xFF);
+        umos_logf("fat16: rewrote %s (%u bytes)\n", path, (unsigned)len);
+        return 0;
+    }
+
+    if (need > free_clusters) return -1;
+    if (dir_cluster == 0) {
+        if (vol->root_entries_used + 1u > FAT16_ROOT_ENTRIES) return -1;
+        entry = root_entry(vol, vol->root_entries_used);
+    } else {
+        entry = dir_free_slot(vol, dir_cluster);
+        if (entry == NULL) return -1;
+    }
+
+    first = vol->next_cluster;
+    prev = 0;
+    written = 0;
+    for (uint32_t i = 0; i < need; i++) {
+        cur = vol->next_cluster++;
+        if (prev) fat_set(vol, prev, (uint16_t)cur);
+        prev = cur;
+        {
+            uint8_t *dst = vol->data +
+                (size_t)cluster_sector(vol, cur) * vol->bytes_per_sector;
+            uint32_t chunk = (uint32_t)len - written;
+            if (chunk > cluster_bytes) chunk = cluster_bytes;
+            memset(dst, 0, cluster_bytes);
+            if (chunk) memcpy(dst, data + written, chunk);
+            written += chunk;
+        }
+    }
+    fat_set(vol, prev, FAT16_EOF);
+
+    fill_entry(entry, short_name, FAT16_ATTR_ARCHIVE, first, (uint32_t)len);
+    if (dir_cluster == 0) vol->root_entries_used++;
+    umos_logf("fat16: wrote %s (%u bytes, %u cluster(s))\n",
+              path, (unsigned)len, (unsigned)need);
+    return 0;
 }
