@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Host tests for the WCN3990 firmware boot state machine (mock callbacks). */
-#include <assert.h>
+#include "vqeaf_assert.h"
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>

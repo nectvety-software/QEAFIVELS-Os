@@ -40,7 +40,8 @@ def compiler():
 def build_and_run(name, srcs, args):
     exe = OUT / (name + (".exe" if os.name == "nt" else ""))
     run(compiler() + ["-std=c11", "-Wall", "-Wextra", "-O1",
-                      "-I", str(ROOT / "kernel" / "include")] +
+                      "-I", str(ROOT / "kernel" / "include"),
+                      "-I", str(ROOT / "tests")] +
         [str(s) for s in srcs] + ["-o", str(exe)], "compile " + name)
     p = run([str(exe)] + args, "run " + name)
     sys.stdout.write(p.stdout)

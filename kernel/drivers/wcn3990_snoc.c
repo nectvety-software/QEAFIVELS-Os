@@ -21,7 +21,12 @@ static VqeafWcn3990Device *g_device;
 static int resources_valid(const VqeafWcn3990Device *d)
 {
  const VqeafWcn3990Resources *r=&d->resources;
- if(!r->compatible||strcmp(r->compatible,VQEAF_WCN3990_COMPATIBLE)!=0)return 0;
+ /* The real violet SM6150 DTS exposes the WLAN platform device as
+  * qcom,icnss; accept it alongside the documented qcom,wcn3990-wifi binding.
+  * Never rewrite the DT value itself to make validation pass. */
+ if(!r->compatible||
+    (strcmp(r->compatible,VQEAF_WCN3990_COMPATIBLE)!=0&&
+     strcmp(r->compatible,"qcom,icnss")!=0))return 0;
  if(!r->bus||strcmp(r->bus,VQEAF_WCN3990_BUS_SNOC)!=0)return 0;
  if(!r->regs_base||r->regs_size<0x1000u||r->regs_base>UINT64_MAX-r->regs_size)return 0;
  if(r->ce_irq_count!=VQEAF_WCN3990_CE_COUNT||

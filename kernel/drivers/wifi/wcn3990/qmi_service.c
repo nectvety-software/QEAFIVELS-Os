@@ -237,6 +237,9 @@ int vqeaf_qmi_request(vqeaf_qmi_client_t *c, const vqeaf_qrtr_addr_t *dst,
             return rc;
         }
         if(rc) { pending_free(c, slot); return rc; }
+        /* A zero-length receive means "no packet in this slice", not a
+         * malformed response. Counting it as bad corrupts diagnostics. */
+        if(rx_len == 0) continue;
         if(rx_len < VQEAF_QMI_HDR_SIZE ||
            vqeaf_qmi_header_decode(c->rx_buf, rx_len, &rh) != 0 ||
            rh.len != rx_len - VQEAF_QMI_HDR_SIZE) {

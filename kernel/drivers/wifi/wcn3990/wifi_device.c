@@ -108,7 +108,7 @@ static int collect_props(fdt_t *f)
 {
     size_t pos = 0;
     int depth = -1;
-    static const char names[MAX_DEPTH][NAME_CAP];
+    static char names[MAX_DEPTH][NAME_CAP];
     char path[PATH_CAP];
     int ended = 0;
 
@@ -123,8 +123,8 @@ static int collect_props(fdt_t *f)
             while(pos + n < (size_t)(f->st_end - f->st) && p[n] != 0) n++;
             if(pos + n >= (size_t)(f->st_end - f->st)) return -EINVAL;
             if(n >= NAME_CAP) n = NAME_CAP - 1u;
-            memcpy((void *)names[depth + 1], p, n);
-            ((char *)names[depth + 1])[n] = '\0';
+            memcpy(names[depth + 1], p, n);
+            names[depth + 1][n] = '\0';
             pos += align4(n + 1u);
             depth++;
         } else if(tok == FDT_END_NODE) {

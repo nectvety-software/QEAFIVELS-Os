@@ -6,7 +6,7 @@
  * is passed as argv[1], the same code is pointed at the actual blobs staged
  * into the violet image (wlanmdsp.mbn / bdwlan.* / regdb.bin).
  */
-#include <assert.h>
+#include "vqeaf_assert.h"
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -305,9 +305,17 @@ int main(int argc, char **argv)
     assert(probe_mem(big, 4096, &info, 1) == -ENOTSUP);       /* unknown blob */
 
     /* Absent and empty files are errors, never successes. */
-    memset(&m, 0, sizeof(m));
-    m.data = img; m.len = 4096; m.err = -ENOENT;
-    assert(probe_mem(img, 4096, &info, 1) == -ENOENT);
+    {
+        mem_io em;
+        vqeaf_wifi_firmware_io_t eio;
+        uint8_t ehdr[4096];
+        memset(&em, 0, sizeof(em));
+        em.data = img; em.len = 4096; em.err = -ENOENT;
+        memset(&eio, 0, sizeof(eio));
+        eio.ctx = &em; eio.read = mem_read; eio.size = mem_size;
+        assert(vqeaf_wifi_fw_probe(&eio, "missing.bin", &info,
+                                   ehdr, sizeof(ehdr)) == -ENOENT);
+    }
     m.err = 0; m.len = 0;
     assert(probe_mem(img, 0, &info, 1) == -ENODATA);
 

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Host-side QRTR/QMI protocol tests. Inputs are labelled FIXTURE files only. */
-#include <assert.h>
+#include "vqeaf_assert.h"
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -161,11 +161,13 @@ int main(int argc, char **argv)
            srv.port == 0x1234);
     assert(m.last_tx_len == 20 && m.sends == 1);
 
+    vqeaf_qrtr_table_reset(); /* isolate: prior case inserted a real server */
     mock_init(&m);
     fixture_io(&m, &io);
     assert(vqeaf_qrtr_discover(&io, 0x45, 1, 1, 50, &srv) == -ENOENT);
     assert(m.sends == 1); /* one real lookup, no fabricated answer */
 
+    vqeaf_qrtr_table_reset();
     mock_init(&m);
     mock_push(&m, shortpkt, n_short);
     fixture_io(&m, &io);

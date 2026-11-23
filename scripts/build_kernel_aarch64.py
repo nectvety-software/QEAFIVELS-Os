@@ -49,7 +49,9 @@ def build():
     if genq.returncode != 0:
         raise SystemExit("user .qen aarch64 generation FAILED:\n"
                          + (genq.stderr or genq.stdout))
-    inc = ["-I", str(ROOT / "kernel" / "include")]
+    MRE = ROOT / "integrations" / "MRE-Os"
+    inc = ["-I", str(ROOT / "kernel" / "include"),
+           "-I", str(MRE / "kernel" / "include" / "mre")]
     flags = ["-target", "aarch64-linux-musl", "-ffreestanding", "-fno-pie",
              "-fno-builtin", "-fno-stack-protector", "-mstrict-align",
              "-O2", "-std=c11", "-Wall", "-Wextra", "-DVQEAF_ELF_MACHINE=0xB7"]
@@ -58,6 +60,17 @@ def build():
                ARCH / "vectors.S", ARCH / "irq.c", ARCH / "sched.c",
                ARCH / "user.S",                ARCH / "entry.c", ARCH / "display.c",
                ARCH / "compositor.c", ARCH / "window.c",
+               ROOT / "kernel" / "platform" / "aarch64" / "violet_boot_probe.c",
+               ROOT / "kernel" / "platform" / "aarch64" / "violet_bootstrap.c",
+               ROOT / "kernel" / "platform" / "aarch64" / "violet_memory.c",
+               ROOT / "kernel" / "platform" / "aarch64" / "violet_irq_bridge.c",
+               MRE / "kernel" / "core" / "fdt.c",
+               MRE / "kernel" / "core" / "violet.c",
+               MRE / "kernel" / "core" / "mmu.c",
+               MRE / "kernel" / "core" / "gic.c",
+               MRE / "kernel" / "core" / "timer_math.c",
+               MRE / "kernel" / "arch" / "aarch64" / "mmu.c",
+               MRE / "kernel" / "arch" / "aarch64" / "timer.c",
                ROOT / "kernel" / "core" / "memory.c",
                ROOT / "kernel" / "core" / "elf.c",
                ROOT / "kernel" / "core" / "qen.c",
@@ -73,13 +86,18 @@ def build():
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_firmware.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "qrtr_transport.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "qmi_service.c",
+               ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "violet_platform.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "firmware_boot.c",
                ROOT / "system" / "core" / "driver.c",
                ROOT / "system" / "core" / "capability.c",
                ROOT / "system" / "core" / "block.c"]
     objs = []
     for src in sources:
-        obj = OUT / (src.stem + ".o")
+        # Preserve source-relative paths in object names. The MRE integration
+        # intentionally contains both core/mmu.c and arch/aarch64/mmu.c;
+        # basename-only objects silently overwrite one another.
+        obj_name = "__".join(src.relative_to(ROOT).with_suffix("").parts) + ".o"
+        obj = OUT / obj_name
         proc = run([zig, "cc"] + flags + inc + ["-c", str(src), "-o", str(obj)])
         if proc.returncode != 0:
             raise SystemExit("aarch64 kernel compile FAILED %s:\n%s"

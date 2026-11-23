@@ -6,8 +6,9 @@
 extern "C" {
 #endif
 
-#define VQEAF_WCN3990_P2_ABI 1u
+#define VQEAF_WCN3990_P2_ABI 2u
 #define VQEAF_WCN3990_CE_MAX 12u
+#define VQEAF_WCN3990_P2_DEFAULT_TIMEOUT_MS 1000u
 #define VQEAF_WCN3990_DMA_BITS 37u
 #define VQEAF_WCN3990_CE_RING_ALIGN 8u
 
@@ -60,12 +61,18 @@ typedef struct {
  int (*ce_configure)(void *,const VqeafWcn3990CeConfig *,
                      uint64_t,uint64_t);
  void (*ce_disable)(void *,uint8_t);
+ /* Optional timeout support (ABI v2): a step returning -EAGAIN is retried
+  * until step_timeout_ms elapses, then fails with -ETIMEDOUT. Without a
+  * clock, -EAGAIN is propagated instead of looping forever. */
+ uint64_t (*now_ms)(void *);
+ void (*delay_ms)(void *,uint32_t);
 } VqeafWcn3990P2Ops;
 
 typedef struct {
  uint32_t abi,size;
  VqeafWcn3990P2Resources resources;
  VqeafWcn3990P2Ops ops;
+ uint32_t step_timeout_ms;   /* 0 = VQEAF_WCN3990_P2_DEFAULT_TIMEOUT_MS */
 } VqeafWcn3990P2Device;
 
 int vqeaf_wcn3990_phase2_register(void);

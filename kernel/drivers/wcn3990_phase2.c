@@ -91,31 +91,62 @@ static int fail(VqeafWcn3990P2Device *d,int rc,VqeafWcn3990P2State stage)
  vqeaf_cap_set("radio.wifi.snoc_ce",VQEAF_CAP_ERROR,0,last_error);
  return last_error;
 }
+/* Bounded retry for steps that report -EAGAIN (ABI v2). A clock must be
+ * supplied by the provider; without one -EAGAIN is propagated unchanged. */
+static uint64_t step_now(VqeafWcn3990P2Device *d)
+{
+ return d->ops.now_ms ? d->ops.now_ms(d->ops.ctx) : 0;
+}
+static uint64_t step_deadline(VqeafWcn3990P2Device *d)
+{
+ uint32_t t=d->step_timeout_ms?d->step_timeout_ms:VQEAF_WCN3990_P2_DEFAULT_TIMEOUT_MS;
+ return step_now(d)+t;
+}
+static int step_before(VqeafWcn3990P2Device *d,uint64_t dl)
+{
+ return d->ops.now_ms!=0&&step_now(d)<dl;
+}
+static void step_delay(VqeafWcn3990P2Device *d)
+{
+ if(d->ops.delay_ms)d->ops.delay_ms(d->ops.ctx,1);
+}
+#define VQEAF_STEP(d,expr,rc,dl) do {                                  \
+ if(!(d)->ops.now_ms){(rc)=(expr);break;}                              \
+ (dl)=step_deadline(d);                                                \
+ while(step_before(d,dl)){                                             \
+  (rc)=(expr);                                                         \
+  if((rc)!=-EAGAIN)break;                                              \
+  step_delay(d);                                                       \
+ }                                                                     \
+ if((rc)==-EAGAIN)(rc)=-ETIMEDOUT;                                     \
+} while(0)
+
 static int probe(void *opaque)
 {
  VqeafWcn3990P2Device *d=(VqeafWcn3990P2Device *)opaque;
  VqeafWcn3990P2State stage=VQEAF_WCN_P2_OFF;
  int rc;
+ uint64_t dl;
  if(!d||d->abi!=VQEAF_WCN3990_P2_ABI||d->size<sizeof(*d)||!valid(d))
   return fail(d,-EINVAL,stage);
  memset(ce_rt,0,sizeof(ce_rt));irq_registered=0;active=d;state=VQEAF_WCN_P2_OFF;last_error=0;
- rc=d->ops.map_snoc(d->ops.ctx,d->resources.snoc_base,d->resources.snoc_size);
+ VQEAF_STEP(d,d->ops.map_snoc(d->ops.ctx,d->resources.snoc_base,d->resources.snoc_size),rc,dl);
  if(rc)return fail(d,rc,stage);
  stage=state=VQEAF_WCN_P2_MAPPED;
- rc=d->ops.regulators_enable(d->ops.ctx);
+ VQEAF_STEP(d,d->ops.regulators_enable(d->ops.ctx),rc,dl);
  if(rc)return fail(d,rc,stage);
  stage=state=VQEAF_WCN_P2_REGULATORS;
- rc=d->ops.clocks_enable(d->ops.ctx);
+ VQEAF_STEP(d,d->ops.clocks_enable(d->ops.ctx),rc,dl);
  if(rc)return fail(d,rc,stage);
  stage=state=VQEAF_WCN_P2_CLOCKS;
- rc=d->ops.icnss_power_on(d->ops.ctx);
+ VQEAF_STEP(d,d->ops.icnss_power_on(d->ops.ctx),rc,dl);
  if(rc)return fail(d,rc,stage);
  stage=state=VQEAF_WCN_P2_ICNSS;
- rc=d->ops.msa_prepare(d->ops.ctx,d->resources.msa_base,d->resources.msa_size);
+ VQEAF_STEP(d,d->ops.msa_prepare(d->ops.ctx,d->resources.msa_base,d->resources.msa_size),rc,dl);
  if(rc)return fail(d,rc,stage);
  stage=state=VQEAF_WCN_P2_MSA;
  for(uint32_t i=0;i<VQEAF_WCN3990_CE_MAX;i++){
-  rc=d->ops.request_irq(d->ops.ctx,d->resources.ce_irq[i],(uint8_t)i);
+  VQEAF_STEP(d,d->ops.request_irq(d->ops.ctx,d->resources.ce_irq[i],(uint8_t)i),rc,dl);
   if(rc)return fail(d,rc,stage);
   irq_registered=(uint16_t)(irq_registered|(1u<<i));
  }
@@ -125,7 +156,7 @@ static int probe(void *opaque)
   if(!cfg->src_entries&&!cfg->dst_entries)continue;
   if(cfg->src_entries){
    c->src_bytes=(uint64_t)cfg->src_entries*sizeof(VqeafWcn3990CeDesc);
-   rc=d->ops.dma_alloc(d->ops.ctx,c->src_bytes,VQEAF_WCN3990_CE_RING_ALIGN,&c->src_cpu,&c->src_dma);
+   VQEAF_STEP(d,d->ops.dma_alloc(d->ops.ctx,c->src_bytes,VQEAF_WCN3990_CE_RING_ALIGN,&c->src_cpu,&c->src_dma),rc,dl);
    if(rc||!c->src_cpu||!c->src_dma)return fail(d,rc?rc:-ENOMEM,stage);
    if((c->src_dma&7u)||c->src_dma>=(1ull<<VQEAF_WCN3990_DMA_BITS)||
       c->src_bytes>((1ull<<VQEAF_WCN3990_DMA_BITS)-c->src_dma))
@@ -134,14 +165,14 @@ static int probe(void *opaque)
   }
   if(cfg->dst_entries){
    c->dst_bytes=(uint64_t)cfg->dst_entries*sizeof(VqeafWcn3990CeDesc);
-   rc=d->ops.dma_alloc(d->ops.ctx,c->dst_bytes,VQEAF_WCN3990_CE_RING_ALIGN,&c->dst_cpu,&c->dst_dma);
+   VQEAF_STEP(d,d->ops.dma_alloc(d->ops.ctx,c->dst_bytes,VQEAF_WCN3990_CE_RING_ALIGN,&c->dst_cpu,&c->dst_dma),rc,dl);
    if(rc||!c->dst_cpu||!c->dst_dma)return fail(d,rc?rc:-ENOMEM,stage);
    if((c->dst_dma&7u)||c->dst_dma>=(1ull<<VQEAF_WCN3990_DMA_BITS)||
       c->dst_bytes>((1ull<<VQEAF_WCN3990_DMA_BITS)-c->dst_dma))
     return fail(d,-ERANGE,stage);
    zero_mem(c->dst_cpu,c->dst_bytes);
   }
-  rc=d->ops.ce_configure(d->ops.ctx,cfg,c->src_dma,c->dst_dma);
+  VQEAF_STEP(d,d->ops.ce_configure(d->ops.ctx,cfg,c->src_dma,c->dst_dma),rc,dl);
   if(rc)return fail(d,rc,stage);
   c->configured=1;
  }

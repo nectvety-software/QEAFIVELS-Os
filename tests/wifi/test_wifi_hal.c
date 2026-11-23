@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Host-side C runner for the Violet Wi-Fi HAL. Uses FIXTURE inputs only. */
-#include <assert.h>
+#include "vqeaf_assert.h"
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
