@@ -1,0 +1,250 @@
+{
+  "board_dts_found": false,
+  "branch": "mkq-mr1",
+  "commit": "54dd13a140754a865867b38000ae7ae96fc43ce4",
+  "files": [
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150.dts",
+      "sha256": "24f7c48ae97e074c1f38ec8abd1c308e812a0b2d3d27b5a140051d790163ff2b",
+      "size": 703
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150.dtsi",
+      "sha256": "7e6f039aa13d095790f82131c09ee6e09bbebda32c8f9678f3154dfc464f6339",
+      "size": 76799
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/skeleton64.dtsi",
+      "sha256": "3a9772ea40d5f0b3b59837158e81fad50d549644c2589dab74779186b23d481f",
+      "size": 345
+    },
+    {
+      "path": "include/dt-bindings/interrupt-controller/arm-gic.h",
+      "sha256": "0343e3fe31d7e6b694c0b25a2da29dc51dc1715d69fef4bd66df33f832f20910",
+      "size": 529
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,aop-qmp.h",
+      "sha256": "d15c5883e0241dcf33ce04352ff37b428046163f4a485ef361c39fc05811007a",
+      "size": 943
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,rpmh.h",
+      "sha256": "433d22c2a5f3bc4ad5800fa93f66dfeb1b840e974edc3df993aedd33400b705c",
+      "size": 1099
+    },
+    {
+      "path": "include/dt-bindings/regulator/qcom,rpmh-regulator.h",
+      "sha256": "8eee550ddc3eefbde1776ec1ed88cb3164e74aa19c7e3d18da80689ee0139e42",
+      "size": 3425
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,gcc-sm6150.h",
+      "sha256": "de7d7b0fa3b6df48f7666ceda105eb7e47eb4e025889b36199dbc810001c5f06",
+      "size": 7748
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,camcc-sm6150.h",
+      "sha256": "bf91b9a9a9edf2b944fdc8ad8bae3bff8a9668cdcabb072894b16dedaa711b1e",
+      "size": 3201
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,cpucc-sm8150.h",
+      "sha256": "775fef241942d2040616d0ad598f529d5795b6330703f2dca232938058c25d13",
+      "size": 1191
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,dispcc-sm6150.h",
+      "sha256": "18429c49d32b5a8f366d04ea1dc3c0feca1097ae2e6a86f2a273d478104f8506",
+      "size": 1902
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,gpucc-sm6150.h",
+      "sha256": "3745d71ae0c076417f0f1316a4c423d9aefdb9f39c53531d4611cf8301462eae",
+      "size": 1344
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,videocc-sm6150.h",
+      "sha256": "ab96d7d8095cfd04f809316942ff46950f84b3914f2c50325bad3d80ec7108fd",
+      "size": 1066
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,scc-sm6150.h",
+      "sha256": "c4953f0f3f6d2783bea6915c3b5c600eb838812af6ff2f8812f3d189022f08f1",
+      "size": 1259
+    },
+    {
+      "path": "include/dt-bindings/soc/qcom,tcs-mbox.h",
+      "sha256": "871a74f6068d6777ef2e573bae1afa9d82c07005968e32a60c2095808d177e04",
+      "size": 616
+    },
+    {
+      "path": "include/dt-bindings/spmi/spmi.h",
+      "sha256": "5f819221ac3ab337d433a0d9275d9fa5c2c6aea91c647cc557338cbdfcc83a1b",
+      "size": 635
+    },
+    {
+      "path": "include/dt-bindings/msm/msm-bus-ids.h",
+      "sha256": "53b7e1ffc26f1f9e58a2c562b56b87f44bb959d6187dd03f18ae8647a2bbaae5",
+      "size": 42248
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/pm6150.dtsi",
+      "sha256": "24a90db87bde0cc5b179b6e5503a8dfa300d94b40aba5475b4b789407439aa22",
+      "size": 16834
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/pm6150l.dtsi",
+      "sha256": "afc8b7f070aab33bf63f110f922041878133536acd2db1ee756ba795bdd09b72",
+      "size": 13967
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-pinctrl.dtsi",
+      "sha256": "429f46ba38937dc094673dd25937c29eb7cd284055619b99885309f0ccd0120c",
+      "size": 38911
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-slpi-pinctrl.dtsi",
+      "sha256": "975c899b5cba96155ad33170f3331f907e3272f9a7ebf441ad1075485dd284cd",
+      "size": 8052
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-regulator.dtsi",
+      "sha256": "1ffe3e22b52630e64fe3cd1fb251be5dcac04a3af6e8491f7fd77634812d2f9b",
+      "size": 22897
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-pm.dtsi",
+      "sha256": "988e608edb9fbfe87dd19a69828850ef323ba259e475feedea61b0f60a1bc357",
+      "size": 4088
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-gdsc.dtsi",
+      "sha256": "44597ddafa038c99cad7561152bbf6fb572237185889678762559926c250be61",
+      "size": 5346
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-qupv3.dtsi",
+      "sha256": "f2179da5e8be20e407f95629b853ccacb07f4f3fcf0cd04a481f790cb7bf05f2",
+      "size": 15113
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-thermal.dtsi",
+      "sha256": "0d99333f70357d45dc2a222dca5f6024f8b24fa8061b0d278b842eb8eaaa433e",
+      "size": 43376
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-gpu.dtsi",
+      "sha256": "080e15ff4408a9958769bfb954eb375be7023545f2a2e15dc8ecbfc9783b4214",
+      "size": 14268
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-usb.dtsi",
+      "sha256": "741de1383ad9dddb0a562f581120f39827aabc2df6f21c7769a5bf144c968288",
+      "size": 11757
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-camera.dtsi",
+      "sha256": "d02d2804ecf23a9cad9df63213eb6dfa42201ef0ee3d00a2871c533c21052dc4",
+      "size": 29988
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-ion.dtsi",
+      "sha256": "6851f93d99c15660e4d4ab752c7fdff06538353d603ec3589cea5ba95be63b9a",
+      "size": 1640
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/msm-arm-smmu-sm6150.dtsi",
+      "sha256": "9053958252ec5db00ee372086216d76273a68bde3963f33d71031703a728b8e2",
+      "size": 9610
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-coresight.dtsi",
+      "sha256": "ceb70f2c5af95b02e3206a76eb96ca0401ba15a2d224de0af0cac4827d4a517e",
+      "size": 54846
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-bus.dtsi",
+      "sha256": "36ac5f4cfc87bd442bf449ca2ddebe93c085b4001b0f6d3bdf5af7b0ea66bb53",
+      "size": 46530
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-vidc.dtsi",
+      "sha256": "2218c7084103f96e35501c66df07d22835e74f77709299b8a1a48c82eec5bb08",
+      "size": 3280
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-audio.dtsi",
+      "sha256": "9d9144517ffca5b19c96e9a5b5fee8338ff9af10c7f4ac6dbd19e305b6b199b1",
+      "size": 4867
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-sde-pll.dtsi",
+      "sha256": "a76ca1be958194abea29b84148175e2ebba913c66b28c157177d6c36ba520d7b",
+      "size": 2420
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/sm6150-sde.dtsi",
+      "sha256": "75a000a4e8c3af04ae3af972ff51e81f8df6a397b2f2f0f69d95ab97e37c6c82",
+      "size": 16090
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/msm-rdbg.dtsi",
+      "sha256": "f9d150eb6f3be13db111285f06cb63c0234ef52c7ea5f8b30459bc83bd1c7aca",
+      "size": 1259
+    },
+    {
+      "path": "include/dt-bindings/interrupt-controller/irq.h",
+      "sha256": "41209dee029601b0151a03734122e62e07bbd3a694e2549af1742347776969fe",
+      "size": 604
+    },
+    {
+      "path": "include/dt-bindings/input/input.h",
+      "sha256": "2f7ae2ec64f1b033e9c3d34d9128c0851f86cfffa010a890b46ac49aae4f17ea",
+      "size": 538
+    },
+    {
+      "path": "include/dt-bindings/input/qcom,qpnp-power-on.h",
+      "sha256": "8af90d42a188920e7ea6c3eab14f93a9d5b2bb429bf886de35a102f7ee015c8e",
+      "size": 1104
+    },
+    {
+      "path": "include/dt-bindings/iio/qcom,spmi-vadc.h",
+      "sha256": "56fbd092a078980fbe896eae0d6e3dab53f75f9eb284f9ce8334d6ba624ede9b",
+      "size": 8019
+    },
+    {
+      "path": "include/dt-bindings/pinctrl/qcom,pmic-gpio.h",
+      "sha256": "0c38d9ef40a20896c0dc9b5de5d493350b0993ecb6eaba03064f7c26206ff2ab",
+      "size": 5943
+    },
+    {
+      "path": "include/dt-bindings/thermal/thermal.h",
+      "sha256": "9c47c45c01d4078196724be65bffbe955f52594af868a5d849998fc88ceb18d7",
+      "size": 392
+    },
+    {
+      "path": "arch/arm64/boot/dts/qcom/msm-audio-lpass.dtsi",
+      "sha256": "79d27ccb19dc54de3e01f3b68e8e6a539ec3715b6b72d7fd2ce6f1a1618f0ff4",
+      "size": 24107
+    },
+    {
+      "path": "include/dt-bindings/clock/qcom,audio-ext-clk.h",
+      "sha256": "49a4f788f2c1fe1fc007c8e52a9b8a8dab8dbe4eec2ebbef4967bb72cb3f685f",
+      "size": 946
+    },
+    {
+      "path": "include/dt-bindings/clock/mdss-14nm-pll-clk.h",
+      "sha256": "1e7f34461e53d7ccba8efba729a3d1912c8844525c3f339f98a38ca47f36879d",
+      "size": 1684
+    },
+    {
+      "path": "include/dt-bindings/input/linux-event-codes.h",
+      "sha256": "7a4b0eb4821228c164381b743ae67442fad85651359c2470eda69e5aedd398ad",
+      "size": 36
+    }
+  ],
+  "note": "This upstream has no violet board DTS; sm6150.dts is the reference SoC board.",
+  "repository": "GuaiYiHu/android_kernel_xiaomi_sm6150",
+  "source": "https://raw.githubusercontent.com/GuaiYiHu/android_kernel_xiaomi_sm6150/54dd13a140754a865867b38000ae7ae96fc43ce4/"
+}
