@@ -1,5 +1,36 @@
 # Milestone status
 
+## Wi-Fi: bằng chứng máy thật cho chuỗi chặn wlan0 + báo lý do binder bị thiếu (2026-11-22)
+
+- Máy đang kết nối lại (volume `F:` sống, `status` trả `QEAFIVELS OS 0.3.0; device violet;
+  ... stage=loop; ui=1; drm=1; uptime=657s`). Lượt này **không flash**: chỉ đọc và chạy verb.
+- `wifi up` (opt-in) → `wifi bring: stage=2 ... modem_started=1` và
+  `wifi modem: fd=11 rc=1 thread_done=1` (PIL modem mở được). Nhưng ~30 s sau bring-up
+  tự quay lại `stage=1 ... modem_started=0` và `subsys1 name=modem state=OFFLINING`
+  (`wifi modem`), tức modem online rồi bị nhả; `wlan=0`, vẫn không có `wlan0`.
+- QRTR name service **có** nhận lookup `0x45/0x0->0x4028` nhưng `qrtr-ns servers`
+  không có `0x45` (`... 0x41d/0x0`), tức WLFW vẫn chưa được publish.
+- Chặn ở lớp QEAF (không phải thiếu dữ liệu): `hostsvc wlan: p74 not mounted or
+  factory WLAN MAC absent/invalid; WLAN blocked (on=0 errno=0)`. Kiểm chứng trực tiếp:
+  p74 (persist, ext4) mount được và liệt kê nội dung MIUI thật
+  (`display bluetooth vpp misc ... qti_fp hlos_rfs`), **không có** `wlan_mac.bin`;
+  `wifi find wlan_mac.bin` → `not found`; `/vendor/firmware/wlan/qca_cld/wlan_mac.bin`
+  tồn tại nhưng là **symlink hỏng** (`wifi cat` → `unreadable (errno 2)`).
+- Binder cũng thiếu ngay lúc chạy: `hostsvc binder: absent`, dù kernel đang chạy có
+  `nodev binder` trong `/proc/filesystems` và `/dev/binderfs` không tồn tại trên
+  `/proc/mounts`. `wifi vendor` (đường bỏ qua cổng MAC) trả `wifi vendor: started`
+  nhưng ngay sau đó `hostsvc cnss-daemon: not started` — daemon thoát vì không có
+  `/dev/binder`.
+- Vì `HOMOLOG.TXT` chỉ được chụp một lần lúc boot (tail kết thúc ở mốc ~62 s), lý do
+  mount binderfs thất bại không tới được host. Đã sửa để `wifi state` in lý do thật:
+  `binder_note` trong `platform/violet/host_services.c` ghi lại mkdir/mount/
+  `BINDER_CTL_ADD`/fallback đã trả gì, report in `hostsvc binder: present|absent (<lý do>)`.
+  Chuỗi `binder: present` giữ nguyên nên `wifi bring` STEP3 vẫn đọc được.
+- Kiểm chứng: `scripts/package_violet.py` PASS (build + validate_bootimg +
+  audit_rescue_channel), ảnh `dist/boot-vqeaf-violet.img` 51.310.592 B, sha256
+  `8b942bc0c307001c1d846becf35cea6427a8f5b0028fcac32b1260f15f0a5c74`. **Chưa flash**
+  (cần user xác nhận); chưa có kết quả `wifi state` mới trên máy.
+
 ## Wi-Fi: driver kiểm tra container firmware WCN3990 trước khi giao cho icnss (2026-11-22)
 
 - User: "phát triển tính năng wifi dùng drive/firmware". Phạm vi: phần driver/firmware
@@ -3522,3 +3553,18 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Đo lại: `wlan_pd result=1 error=45`, `0x45 NOT_REGISTERED`, `recv_calls=0`,
   `wlfw_cal_*` không sinh, `wlan0` absent. Blocker vẫn modem/PD, không phải file
   firmware. Chi tiết: `docs/platforms/VIOLET_WIFI_BRINGUP.md`.
+
+
+## Cấu trúc thư mục QEAFRESCUE kiểu internal storage (2026-11-23)
+- Theo ảnh tham chiếu `This PC\OPPO A37fw > Bộ nhớ trong`, thêm 24 thư mục trống
+  RAM-only vào root của QEAFRESCUE: `.androidsafe`, `.applogs`, `.camera`,
+  `.mcs`, `.OTA`, `.SAU`, `.thumbnails`, `Android`, `apn`, `ColorOS`, `DCIM`,
+  `Download`, `Kingroot`, `kinguserdown`, `Movies`, `Music`, `ndownloads`,
+  `oppo_log`, `Pictures`, `Recordings`, `tencent`, `ThemeStore`, `toprange`,
+  `TouchPal2015`. Giữ nguyên `VQEAF/UserData/Install`; không đổi tên thiết bị,
+  không tạo file/assets giả, không ghi phân vùng vật lý.
+- Build OK (11.484.368 B); package OK, ảnh
+  sha `02c1e888cf1bd0b09e33fa36da3d287c32573aa76fbe4fa8681d50f59ec66431`.
+- Gate host `python scripts/test_violet_storage_layout.py` chạy `fat16_init()` +
+  `storage_publish()` thật trên RAM: **27/27 thư mục OK, ALL OK**.
+- Chưa flash ảnh này; cần xác nhận riêng trước khi ghi p77.
