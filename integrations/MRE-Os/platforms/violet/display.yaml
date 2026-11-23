@@ -1,0 +1,17 @@
+schema_version: 1
+resolution_px: [1080, 2340]
+diagonal_inches: 6.3
+interface: MIPI_DSI
+panel:
+  compatible: UNKNOWN
+  vendor: UNKNOWN
+  revision: UNKNOWN
+  command_or_video_mode: UNKNOWN
+  dsi_lane_count: UNKNOWN
+  reset_gpio: UNKNOWN
+  regulator_sequence: UNKNOWN
+upstream_candidates:
+  - arch/arm64/boot/dts/qcom/sm6150-ft8719-i2c_f7b.dtsi
+  - arch/arm64/boot/dts/qcom/sm6150-novatek-i2c_f7b.dtsi
+  note: candidates in generic SM6150 kernel source; not confirmed as the active Violet panel
+status: UNKNOWN

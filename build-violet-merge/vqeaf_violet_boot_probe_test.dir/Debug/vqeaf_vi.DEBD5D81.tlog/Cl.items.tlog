@@ -1,0 +1,12 @@
+D:\QEAFIVELS-Os\tests\vqeaf_violet_boot_probe_test.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\vqeaf_violet_boot_probe_test.obj
+D:\QEAFIVELS-Os\kernel\platform\aarch64\violet_boot_probe.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\violet_boot_probe.obj
+D:\QEAFIVELS-Os\kernel\platform\aarch64\violet_memory.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\violet_memory.obj
+D:\QEAFIVELS-Os\kernel\platform\aarch64\violet_irq_bridge.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\violet_irq_bridge.obj
+D:\QEAFIVELS-Os\kernel\core\memory.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\memory.obj
+D:\QEAFIVELS-Os\integrations\MRE-Os\kernel\core\fdt.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\fdt.obj
+D:\QEAFIVELS-Os\integrations\MRE-Os\kernel\core\violet.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\violet.obj
+D:\QEAFIVELS-Os\integrations\MRE-Os\kernel\core\mmu.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\integrations\MRE-Os\kernel\core\mmu.c.obj
+D:\QEAFIVELS-Os\integrations\MRE-Os\kernel\core\gic.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\gic.obj
+D:\QEAFIVELS-Os\integrations\MRE-Os\kernel\core\timer_math.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\timer_math.obj
+D:\QEAFIVELS-Os\integrations\MRE-Os\kernel\arch\aarch64\mmu.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\integrations\MRE-Os\kernel\arch\aarch64\mmu.c.obj
+D:\QEAFIVELS-Os\integrations\MRE-Os\kernel\arch\aarch64\timer.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_violet_boot_probe_test.dir\Debug\timer.obj

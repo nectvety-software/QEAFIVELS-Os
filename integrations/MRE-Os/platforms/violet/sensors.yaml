@@ -1,0 +1,7 @@
+schema_version: 1
+sensor_inventory: UNKNOWN
+bus_topology: UNKNOWN
+interrupts: UNKNOWN
+calibration_data: UNKNOWN
+sensor_dsp_dependency: UNKNOWN
+status: UNKNOWN

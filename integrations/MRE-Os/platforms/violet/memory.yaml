@@ -1,0 +1,22 @@
+schema_version: 1
+dram_type: LPDDR4X
+market_configurations_gb: [4, 6]
+detected_capacity_bytes: null
+physical_memory_map: UNKNOWN
+reserved_memory_regions: UNKNOWN
+secure_world_carveouts: UNKNOWN
+iommu_domains: UNKNOWN
+notes:
+  - Do not derive physical addresses or carveouts from advertised RAM capacity.
+  - Generic SM6150 SoC DTS is not a substitute for the exact Violet DTB.
+status: UNKNOWN
+
+reference_dtb_audit:
+  root_compatible: qcom,sm6150-idp
+  is_violet_board_dtb: false
+  memory_node_reg: [0, 0]
+  fixed_reserved_regions: 20
+  dynamic_reserved_regions: 7
+  usable_memory_map_verified: false
+  mmu_enable_allowed: false
+  required_source: live_violet_dtb_or_exact_stock_boot_and_dtbo

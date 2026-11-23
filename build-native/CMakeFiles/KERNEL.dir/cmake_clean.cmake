@@ -32,6 +32,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj.d"
   "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.obj"
   "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.obj.d"
+  "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj"
+  "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj.d"
   "CMakeFiles/KERNEL.dir/system/core/block.c.obj"
   "CMakeFiles/KERNEL.dir/system/core/block.c.obj.d"
   "CMakeFiles/KERNEL.dir/system/core/capability.c.obj"

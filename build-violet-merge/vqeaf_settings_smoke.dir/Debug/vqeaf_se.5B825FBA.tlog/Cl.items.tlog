@@ -1,0 +1,8 @@
+D:\QEAFIVELS-Os\tests\vqeaf_settings.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_settings_smoke.dir\Debug\vqeaf_settings.obj
+D:\QEAFIVELS-Os\system\core\settings.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_settings_smoke.dir\Debug\settings.obj
+D:\QEAFIVELS-Os\system\core\settings_fat16.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_settings_smoke.dir\Debug\settings_fat16.obj
+D:\QEAFIVELS-Os\system\core\storage.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_settings_smoke.dir\Debug\storage.obj
+D:\QEAFIVELS-Os\system\core\block.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_settings_smoke.dir\Debug\block.obj
+D:\QEAFIVELS-Os\system\core\fs_fat16.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_settings_smoke.dir\Debug\fs_fat16.obj
+D:\QEAFIVELS-Os\kernel\core\vfs.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_settings_smoke.dir\Debug\vfs.obj
+D:\QEAFIVELS-Os\kernel\core\security.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_settings_smoke.dir\Debug\security.obj

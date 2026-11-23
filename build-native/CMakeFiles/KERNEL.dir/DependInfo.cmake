@@ -39,6 +39,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "D:/QEAFIVELS-Os/kernel/core/vfs.c" "CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj" "gcc" "CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj.d"
   "D:/QEAFIVELS-Os/kernel/drivers/ahci.c" "CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj" "gcc" "CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj.d"
   "D:/QEAFIVELS-Os/kernel/drivers/virtio_blk.c" "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.obj" "gcc" "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.obj.d"
+  "D:/QEAFIVELS-Os/kernel/drivers/virtio_net.c" "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj" "gcc" "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj.d"
   "D:/QEAFIVELS-Os/system/core/block.c" "CMakeFiles/KERNEL.dir/system/core/block.c.obj" "gcc" "CMakeFiles/KERNEL.dir/system/core/block.c.obj.d"
   "D:/QEAFIVELS-Os/system/core/capability.c" "CMakeFiles/KERNEL.dir/system/core/capability.c.obj" "gcc" "CMakeFiles/KERNEL.dir/system/core/capability.c.obj.d"
   "D:/QEAFIVELS-Os/system/core/driver.c" "CMakeFiles/KERNEL.dir/system/core/driver.c.obj" "gcc" "CMakeFiles/KERNEL.dir/system/core/driver.c.obj.d"

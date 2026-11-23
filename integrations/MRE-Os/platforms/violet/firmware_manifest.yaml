@@ -1,0 +1,45 @@
+schema_version: 1
+device_codename: violet
+policy:
+  require_known_origin: true
+  require_sha256: true
+  require_version_match: true
+  require_license_review: true
+  bundle_proprietary_firmware: false
+components:
+  wifi_wcn3990:
+    status: UNKNOWN
+    source: null
+    version: null
+    sha256: null
+    license: null
+  bluetooth:
+    status: UNKNOWN
+    source: null
+    version: null
+    sha256: null
+    license: null
+  adreno_612:
+    status: UNKNOWN
+    source: null
+    version: null
+    sha256: null
+    license: null
+  modem:
+    status: UNKNOWN
+    source: null
+    version: null
+    sha256: null
+    license: null
+  camera:
+    status: UNKNOWN
+    source: null
+    version: null
+    sha256: null
+    license: null
+  audio_dsp:
+    status: UNKNOWN
+    source: null
+    version: null
+    sha256: null
+    license: null

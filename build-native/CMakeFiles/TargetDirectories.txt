@@ -14,6 +14,8 @@ D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_system_v03_smoke.dir
 D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_vfs_mount_smoke.dir
 D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_settings_smoke.dir
 D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_violet_tap_smoke.dir
+D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_violet_boot_probe_test.dir
+D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_qvf_encode_test.dir
 D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_volume_lock_test.dir
 D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_wcn3990_smoke.dir
 D:/QEAFIVELS-Os/build-native/CMakeFiles/vqeaf_wcn3990_phase2_smoke.dir

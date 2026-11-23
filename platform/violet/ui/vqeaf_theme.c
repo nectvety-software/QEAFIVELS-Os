@@ -4,6 +4,7 @@
 #include "wallpaper.h"
 
 #include "vqeaf/settings.h"
+#include <stdio.h>
 
 /* Zero-initialised, filled by vqeaf_theme_set() before anything is drawn. */
 vqeaf_palette_t vqeaf_palette;
@@ -1378,6 +1379,439 @@ lv_obj_t *vqeaf_m3_progress_indeterminate(lv_obj_t *parent)
     lv_anim_set_early_apply(&anim, true);
     lv_anim_start(&anim);
     return bar;
+}
+
+/* ---- Paper Plane --------------------------------------------------------
+ * The SEND glyph (Material's paper plane) is a child of the button, so the
+ * flight is a translation of the glyph; the button itself stays put as the
+ * hit target. The state lives in the button's user data and is freed with it.
+ * LV_EVENT_VALUE_CHANGED is sent when the glyph has landed back, which lets
+ * the caller update a caption without polling the animation. */
+typedef struct {
+    lv_obj_t *glyph;
+    int flying;
+} m3_plane_state_t;
+
+static void m3_plane_translate_x_cb(void *var, int32_t value)
+{
+    lv_obj_set_style_translate_x((lv_obj_t *)var, value, 0);
+}
+
+static void m3_plane_translate_y_cb(void *var, int32_t value)
+{
+    lv_obj_set_style_translate_y((lv_obj_t *)var, value, 0);
+}
+
+static void m3_plane_opa_cb(void *var, int32_t value)
+{
+    lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)value, 0);
+}
+
+static void m3_plane_reset(m3_plane_state_t *state)
+{
+    if(state == NULL || state->glyph == NULL) return;
+    lv_obj_set_style_translate_x(state->glyph, 0, 0);
+    lv_obj_set_style_translate_y(state->glyph, 0, 0);
+    lv_obj_set_style_opa(state->glyph, LV_OPA_COVER, 0);
+    state->flying = 0;
+}
+
+static void m3_plane_done_cb(lv_anim_t *anim)
+{
+    lv_obj_t *glyph = (lv_obj_t *)anim->var;
+    lv_obj_t *button = lv_obj_get_parent(glyph);
+    m3_plane_state_t *state = lv_obj_get_user_data(glyph);
+
+    m3_plane_reset(state);
+    if(button != NULL) lv_obj_send_event(button, LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+static void m3_plane_delete_cb(lv_event_t *event)
+{
+    lv_obj_t *glyph = lv_event_get_target_obj(event);
+    m3_plane_state_t *state = lv_obj_get_user_data(glyph);
+
+    if(state == NULL) return;
+    lv_anim_delete(glyph, NULL);
+    lv_free(state);
+    lv_obj_set_user_data(glyph, NULL);
+}
+
+/* The button's user data belongs to the ripple/state layer (`vqeaf_m3_ripple`
+ * stores its circle there), so the flight state lives on the glyph instead. */
+static m3_plane_state_t *m3_plane_state_of(lv_obj_t *button)
+{
+    uint32_t count, i;
+
+    if(button == NULL) return NULL;
+    count = lv_obj_get_child_count(button);
+    for(i = 0; i < count; i++) {
+        lv_obj_t *child = lv_obj_get_child(button, (int32_t)i);
+        m3_plane_state_t *state = lv_obj_get_user_data(child);
+        if(state != NULL) return state;
+    }
+    return NULL;
+}
+
+static void m3_plane_click_cb(lv_event_t *event)
+{
+    lv_obj_t *button = lv_event_get_target_obj(event);
+    m3_plane_state_t *state = m3_plane_state_of(button);
+    lv_anim_t anim;
+
+    if(state == NULL || state->glyph == NULL || state->flying) return;
+    state->flying = 1;
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, state->glyph);
+    lv_anim_set_exec_cb(&anim, m3_plane_translate_x_cb);
+    lv_anim_set_values(&anim, 0, 96);
+    lv_anim_set_duration(&anim, 480);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_in);
+    lv_anim_set_ready_cb(&anim, m3_plane_done_cb);
+    lv_anim_start(&anim);
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, state->glyph);
+    lv_anim_set_exec_cb(&anim, m3_plane_translate_y_cb);
+    lv_anim_set_values(&anim, 0, -96);
+    lv_anim_set_duration(&anim, 480);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_in);
+    lv_anim_start(&anim);
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, state->glyph);
+    lv_anim_set_exec_cb(&anim, m3_plane_opa_cb);
+    lv_anim_set_values(&anim, LV_OPA_COVER, LV_OPA_TRANSP);
+    lv_anim_set_duration(&anim, 480);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_in);
+    lv_anim_start(&anim);
+}
+
+lv_obj_t *vqeaf_m3_paper_plane(lv_obj_t *parent, lv_event_cb_t cb,
+                               void *user_data)
+{
+    lv_obj_t *button = lv_obj_create(parent);
+    m3_plane_state_t *state = lv_malloc(sizeof(*state));
+
+    lv_obj_remove_style_all(button);
+    lv_obj_set_size(button, 64, 64);
+    lv_obj_set_style_radius(button, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(button, VQEAF_C_PRIMARY, 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(button, LV_OBJ_FLAG_SCROLLABLE);
+    /* The plane must be able to leave the button's box. */
+    lv_obj_add_flag(button, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
+    vqeaf_m3_elevate(button, 1);
+
+    if(state != NULL) {
+        state->flying = 0;
+        state->glyph = vqeaf_glyph(button, VQEAF_SYM_SEND, VQEAF_ICON,
+                                   VQEAF_C_ON_PRIMARY);
+        lv_obj_center(state->glyph);
+        lv_obj_set_user_data(state->glyph, state);
+        lv_obj_add_event_cb(state->glyph, m3_plane_delete_cb, LV_EVENT_DELETE,
+                            NULL);
+    }
+    lv_obj_add_event_cb(button, m3_plane_click_cb, LV_EVENT_CLICKED, NULL);
+    /* No ripple circle here: it would clip the flying glyph to the button. */
+    vqeaf_m3_state_layer_color(button, VQEAF_C_ON_PRIMARY);
+    if(cb != NULL) lv_obj_add_event_cb(button, cb, LV_EVENT_VALUE_CHANGED,
+                                       user_data);
+    return button;
+}
+
+/* ---- Swipe Confirm ------------------------------------------------------ */
+#define M3_SWIPE_KNOB 56
+#define M3_SWIPE_PAD  6
+
+typedef struct {
+    lv_obj_t *knob;
+    lv_obj_t *fill;
+    lv_obj_t *hint;
+    lv_obj_t *mark;
+    const char *label;
+    int done;
+    int dragging;
+} m3_swipe_state_t;
+
+static void m3_swipe_delete_cb(lv_event_t *event)
+{
+    lv_obj_t *track = lv_event_get_target_obj(event);
+    m3_swipe_state_t *state = lv_obj_get_user_data(track);
+
+    if(state == NULL) return;
+    lv_free(state);
+    lv_obj_set_user_data(track, NULL);
+}
+
+static void m3_swipe_apply(lv_obj_t *track, m3_swipe_state_t *state, int done)
+{
+    int32_t w = lv_obj_get_width(track);
+    int32_t max = w - M3_SWIPE_KNOB - M3_SWIPE_PAD * 2;
+
+    if(max < 0) max = 0;
+    state->done = done ? 1 : 0;
+    lv_obj_set_pos(state->knob, done ? max : M3_SWIPE_PAD, M3_SWIPE_PAD);
+    lv_obj_set_width(state->fill, done ? w : M3_SWIPE_KNOB + M3_SWIPE_PAD * 2);
+    lv_label_set_text(state->hint,
+                      done ? "Đã xác nhận"
+                           : (state->label != NULL ? state->label
+                                                   : "Trượt để xác nhận"));
+    lv_obj_set_style_text_color(state->hint,
+        done ? VQEAF_C_ON_PRIMARY_CONTAINER : VQEAF_C_TEXT_DIM, 0);
+    lv_label_set_text(state->mark,
+                      done ? VQEAF_SYM_CHECK : VQEAF_SYM_ARROW_FORWARD);
+}
+
+static void m3_swipe_event_cb(lv_event_t *event)
+{
+    lv_obj_t *track = lv_event_get_target_obj(event);
+    m3_swipe_state_t *state = lv_obj_get_user_data(track);
+    lv_event_code_t code = lv_event_get_code(event);
+    lv_indev_t *indev;
+    lv_point_t point;
+    lv_area_t area;
+    int32_t max, x;
+
+    if(state == NULL) return;
+    if(code == LV_EVENT_PRESSED) {
+        if(state->done) {
+            m3_swipe_apply(track, state, 0);
+            lv_obj_send_event(track, LV_EVENT_VALUE_CHANGED, NULL);
+            return;
+        }
+        state->dragging = 1;
+        return;
+    }
+    if(code == LV_EVENT_PRESSING && state->dragging) {
+        indev = lv_indev_active();
+        if(indev == NULL) return;
+        lv_indev_get_point(indev, &point);
+        lv_obj_get_coords(track, &area);
+        max = (area.x2 - area.x1 + 1) - M3_SWIPE_KNOB - M3_SWIPE_PAD * 2;
+        if(max < 0) max = 0;
+        x = point.x - area.x1 - M3_SWIPE_KNOB / 2;
+        if(x < M3_SWIPE_PAD) x = M3_SWIPE_PAD;
+        if(x > max + M3_SWIPE_PAD) x = max + M3_SWIPE_PAD;
+        lv_obj_set_pos(state->knob, x, M3_SWIPE_PAD);
+        lv_obj_set_width(state->fill, x + M3_SWIPE_KNOB);
+        return;
+    }
+    if(code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        if(!state->dragging) return;
+        state->dragging = 0;
+        lv_obj_update_layout(track);
+        max = lv_obj_get_width(track) - M3_SWIPE_KNOB - M3_SWIPE_PAD * 2;
+        if(max < 0) max = 0;
+        if(lv_obj_get_x(state->knob) >= M3_SWIPE_PAD + max - 2) {
+            m3_swipe_apply(track, state, 1);
+            lv_obj_send_event(track, LV_EVENT_VALUE_CHANGED, NULL);
+        } else {
+            m3_swipe_apply(track, state, 0);
+        }
+    }
+}
+
+lv_obj_t *vqeaf_m3_swipe_confirm(lv_obj_t *parent, const char *label,
+                                 lv_event_cb_t cb, void *user_data)
+{
+    lv_obj_t *track = vqeaf_obj(parent);
+    m3_swipe_state_t *state = lv_malloc(sizeof(*state));
+
+    lv_obj_set_width(track, lv_pct(100));
+    lv_obj_set_height(track, M3_SWIPE_KNOB + M3_SWIPE_PAD * 2);
+    lv_obj_set_style_radius(track, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(track, VQEAF_C_SURFACE_CONTAINER_HIGH, 0);
+    lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(track, 1, 0);
+    lv_obj_set_style_border_color(track, VQEAF_C_OUTLINE_VARIANT, 0);
+    lv_obj_add_flag(track, LV_OBJ_FLAG_CLICKABLE);
+
+    if(state == NULL) return track;
+    state->done = 0;
+    state->dragging = 0;
+    state->label = label;
+
+    state->fill = lv_obj_create(track);
+    lv_obj_remove_style_all(state->fill);
+    lv_obj_set_pos(state->fill, 0, 0);
+    lv_obj_set_size(state->fill, M3_SWIPE_KNOB + M3_SWIPE_PAD * 2,
+                    M3_SWIPE_KNOB + M3_SWIPE_PAD * 2);
+    lv_obj_set_style_radius(state->fill, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(state->fill, VQEAF_C_PRIMARY_CONTAINER, 0);
+    lv_obj_set_style_bg_opa(state->fill, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(state->fill, LV_OBJ_FLAG_CLICKABLE |
+                                   LV_OBJ_FLAG_SCROLLABLE);
+
+    state->hint = vqeaf_label(track, label != NULL ? label : "Trượt để xác nhận",
+                              VQEAF_FONT_BODY, VQEAF_C_TEXT_DIM);
+    lv_obj_set_width(state->hint, lv_pct(100));
+    lv_obj_set_style_text_align(state->hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(state->hint, LV_ALIGN_CENTER, 0, 0);
+
+    state->knob = lv_obj_create(track);
+    lv_obj_remove_style_all(state->knob);
+    lv_obj_set_size(state->knob, M3_SWIPE_KNOB, M3_SWIPE_KNOB);
+    lv_obj_set_style_radius(state->knob, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(state->knob, VQEAF_C_PRIMARY, 0);
+    lv_obj_set_style_bg_opa(state->knob, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(state->knob, LV_OBJ_FLAG_CLICKABLE |
+                                    LV_OBJ_FLAG_SCROLLABLE);
+    vqeaf_m3_elevate(state->knob, 1);
+    state->mark = vqeaf_glyph(state->knob, VQEAF_SYM_ARROW_FORWARD,
+                              VQEAF_ICON_SM, VQEAF_C_ON_PRIMARY);
+    lv_obj_center(state->mark);
+
+    lv_obj_set_user_data(track, state);
+    lv_obj_add_event_cb(track, m3_swipe_event_cb, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(track, m3_swipe_event_cb, LV_EVENT_PRESSING, NULL);
+    lv_obj_add_event_cb(track, m3_swipe_event_cb, LV_EVENT_RELEASED, NULL);
+    lv_obj_add_event_cb(track, m3_swipe_event_cb, LV_EVENT_PRESS_LOST, NULL);
+    lv_obj_add_event_cb(track, m3_swipe_delete_cb, LV_EVENT_DELETE, NULL);
+    if(cb != NULL) lv_obj_add_event_cb(track, cb, LV_EVENT_VALUE_CHANGED,
+                                       user_data);
+    m3_swipe_apply(track, state, 0);
+    return track;
+}
+
+int vqeaf_m3_swipe_confirmed(lv_obj_t *control)
+{
+    m3_swipe_state_t *state;
+
+    if(control == NULL) return 0;
+    state = lv_obj_get_user_data(control);
+    return state != NULL ? state->done : 0;
+}
+
+/* ---- Download Ring ------------------------------------------------------ */
+lv_obj_t *vqeaf_m3_download_ring(lv_obj_t *parent, int32_t size)
+{
+    lv_obj_t *ring = lv_arc_create(parent);
+    lv_obj_t *label;
+
+    if(size < 64) size = 64;
+    lv_obj_set_size(ring, size, size);
+    lv_obj_remove_flag(ring, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(ring, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(ring, 0, 0);
+    lv_obj_set_style_pad_all(ring, 0, 0);
+    lv_arc_set_range(ring, 0, 100);
+    lv_arc_set_bg_angles(ring, 135, 405);
+    lv_arc_set_angles(ring, 135, 135);
+    lv_obj_set_style_arc_width(ring, 14, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(ring, 14, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_rounded(ring, true, LV_PART_MAIN);
+    lv_obj_set_style_arc_rounded(ring, true, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(ring, VQEAF_C_SURFACE_CONTAINER_HIGHEST,
+                               LV_PART_MAIN);
+    lv_obj_set_style_arc_color(ring, VQEAF_C_PRIMARY, LV_PART_INDICATOR);
+    /* A determinate ring has no draggable knob. */
+    lv_obj_set_style_opa(ring, LV_OPA_TRANSP, LV_PART_KNOB);
+
+    label = vqeaf_label(ring, "0%", VQEAF_FONT_TITLE_BOLD, VQEAF_C_TEXT);
+    lv_obj_center(label);
+    lv_obj_set_user_data(ring, label);
+    return ring;
+}
+
+void vqeaf_m3_download_ring_set(lv_obj_t *ring, int value)
+{
+    lv_obj_t *label;
+    int end;
+    char text[8];
+
+    if(ring == NULL) return;
+    value = m3_clamp100(value);
+    end = 135 + value * 270 / 100;
+    if(end > 360) end -= 360;
+    lv_arc_set_angles(ring, 135, end);
+    label = lv_obj_get_user_data(ring);
+    if(label != NULL) {
+        snprintf(text, sizeof(text), "%d%%", value);
+        lv_label_set_text(label, text);
+    }
+}
+
+/* ---- Checklist ---------------------------------------------------------- */
+static void m3_checklist_toggle_cb(lv_event_t *event)
+{
+    lv_obj_t *row = lv_event_get_target_obj(event);
+    int checked = (int)(intptr_t)lv_obj_get_user_data(row);
+    lv_obj_t *box = lv_obj_get_child(row, 0);
+    lv_obj_t *text = lv_obj_get_child(row, 1);
+    lv_obj_t *mark;
+
+    checked = !checked;
+    lv_obj_set_user_data(row, (void *)(intptr_t)checked);
+    if(box == NULL || text == NULL) return;
+    mark = lv_obj_get_child(box, 0);
+
+    lv_obj_set_style_bg_color(box,
+        checked ? VQEAF_C_PRIMARY : VQEAF_C_SURFACE_CONTAINER_LOW, 0);
+    lv_obj_set_style_border_color(box,
+        checked ? VQEAF_C_PRIMARY : VQEAF_C_OUTLINE, 0);
+    if(mark != NULL)
+        lv_obj_set_style_opa(mark, checked ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_text_color(text,
+        checked ? VQEAF_C_TEXT_MUTE : VQEAF_C_TEXT, 0);
+    lv_obj_send_event(lv_obj_get_parent(row), LV_EVENT_VALUE_CHANGED, NULL);
+}
+
+lv_obj_t *vqeaf_m3_checklist(lv_obj_t *parent, const char *const *items,
+                             int count)
+{
+    lv_obj_t *list = vqeaf_column(parent);
+
+    if(items == NULL) count = 0;
+    lv_obj_set_style_pad_row(list, 2, 0);
+    for(int i = 0; i < count; i++) {
+        lv_obj_t *row = vqeaf_row(list);
+        lv_obj_t *box;
+        lv_obj_t *mark;
+        lv_obj_t *label;
+
+        lv_obj_set_height(row, 56);
+        lv_obj_set_style_pad_column(row, 14, 0);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_user_data(row, (void *)(intptr_t)0);
+
+        box = lv_obj_create(row);
+        lv_obj_remove_style_all(box);
+        lv_obj_set_size(box, 30, 30);
+        lv_obj_set_style_radius(box, VQEAF_M3_SHAPE_S, 0);
+        lv_obj_set_style_bg_color(box, VQEAF_C_SURFACE_CONTAINER_LOW, 0);
+        lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(box, 2, 0);
+        lv_obj_set_style_border_color(box, VQEAF_C_OUTLINE, 0);
+        lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE |
+                                LV_OBJ_FLAG_SCROLLABLE);
+        mark = vqeaf_glyph(box, VQEAF_SYM_CHECK, VQEAF_ICON_SM,
+                           VQEAF_C_ON_PRIMARY);
+        lv_obj_center(mark);
+        lv_obj_set_style_opa(mark, LV_OPA_TRANSP, 0);
+
+        label = vqeaf_label(row, items[i], VQEAF_FONT_BODY, VQEAF_C_TEXT);
+        lv_obj_set_flex_grow(label, 1);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_add_event_cb(row, m3_checklist_toggle_cb, LV_EVENT_CLICKED,
+                            NULL);
+    }
+    return list;
+}
+
+int vqeaf_m3_checklist_done(lv_obj_t *list)
+{
+    uint32_t count, done = 0;
+
+    if(list == NULL) return 0;
+    count = lv_obj_get_child_count(list);
+    for(uint32_t i = 0; i < count; i++) {
+        lv_obj_t *row = lv_obj_get_child(list, (int32_t)i);
+        if(row != NULL && lv_obj_get_user_data(row) != NULL) done++;
+    }
+    return (int)done;
 }
 
 int vqeaf_wallpaper_active(void)

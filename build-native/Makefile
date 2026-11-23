@@ -334,6 +334,32 @@ vqeaf_violet_tap_smoke/fast:
 .PHONY : vqeaf_violet_tap_smoke/fast
 
 #=============================================================================
+# Target rules for targets named vqeaf_violet_boot_probe_test
+
+# Build rule for target.
+vqeaf_violet_boot_probe_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 vqeaf_violet_boot_probe_test
+.PHONY : vqeaf_violet_boot_probe_test
+
+# fast build rule for target.
+vqeaf_violet_boot_probe_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/build
+.PHONY : vqeaf_violet_boot_probe_test/fast
+
+#=============================================================================
+# Target rules for targets named vqeaf_qvf_encode_test
+
+# Build rule for target.
+vqeaf_qvf_encode_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 vqeaf_qvf_encode_test
+.PHONY : vqeaf_qvf_encode_test
+
+# fast build rule for target.
+vqeaf_qvf_encode_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_qvf_encode_test.dir\build.make CMakeFiles/vqeaf_qvf_encode_test.dir/build
+.PHONY : vqeaf_qvf_encode_test/fast
+
+#=============================================================================
 # Target rules for targets named vqeaf_volume_lock_test
 
 # Build rule for target.
@@ -476,6 +502,174 @@ framework/core/abi.s: framework/core/abi.c.s
 framework/core/abi.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_framework_abi.dir\build.make CMakeFiles/vqeaf_framework_abi.dir/framework/core/abi.c.s
 .PHONY : framework/core/abi.c.s
+
+integrations/MRE-Os/kernel/arch/aarch64/mmu.obj: integrations/MRE-Os/kernel/arch/aarch64/mmu.c.obj
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/mmu.obj
+
+# target to build an object file
+integrations/MRE-Os/kernel/arch/aarch64/mmu.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/arch/aarch64/mmu.c.obj
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/mmu.c.obj
+
+integrations/MRE-Os/kernel/arch/aarch64/mmu.i: integrations/MRE-Os/kernel/arch/aarch64/mmu.c.i
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/mmu.i
+
+# target to preprocess a source file
+integrations/MRE-Os/kernel/arch/aarch64/mmu.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/arch/aarch64/mmu.c.i
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/mmu.c.i
+
+integrations/MRE-Os/kernel/arch/aarch64/mmu.s: integrations/MRE-Os/kernel/arch/aarch64/mmu.c.s
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/mmu.s
+
+# target to generate assembly for a file
+integrations/MRE-Os/kernel/arch/aarch64/mmu.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/arch/aarch64/mmu.c.s
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/mmu.c.s
+
+integrations/MRE-Os/kernel/arch/aarch64/timer.obj: integrations/MRE-Os/kernel/arch/aarch64/timer.c.obj
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/timer.obj
+
+# target to build an object file
+integrations/MRE-Os/kernel/arch/aarch64/timer.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/arch/aarch64/timer.c.obj
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/timer.c.obj
+
+integrations/MRE-Os/kernel/arch/aarch64/timer.i: integrations/MRE-Os/kernel/arch/aarch64/timer.c.i
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/timer.i
+
+# target to preprocess a source file
+integrations/MRE-Os/kernel/arch/aarch64/timer.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/arch/aarch64/timer.c.i
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/timer.c.i
+
+integrations/MRE-Os/kernel/arch/aarch64/timer.s: integrations/MRE-Os/kernel/arch/aarch64/timer.c.s
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/timer.s
+
+# target to generate assembly for a file
+integrations/MRE-Os/kernel/arch/aarch64/timer.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/arch/aarch64/timer.c.s
+.PHONY : integrations/MRE-Os/kernel/arch/aarch64/timer.c.s
+
+integrations/MRE-Os/kernel/core/fdt.obj: integrations/MRE-Os/kernel/core/fdt.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/fdt.obj
+
+# target to build an object file
+integrations/MRE-Os/kernel/core/fdt.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/fdt.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/fdt.c.obj
+
+integrations/MRE-Os/kernel/core/fdt.i: integrations/MRE-Os/kernel/core/fdt.c.i
+.PHONY : integrations/MRE-Os/kernel/core/fdt.i
+
+# target to preprocess a source file
+integrations/MRE-Os/kernel/core/fdt.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/fdt.c.i
+.PHONY : integrations/MRE-Os/kernel/core/fdt.c.i
+
+integrations/MRE-Os/kernel/core/fdt.s: integrations/MRE-Os/kernel/core/fdt.c.s
+.PHONY : integrations/MRE-Os/kernel/core/fdt.s
+
+# target to generate assembly for a file
+integrations/MRE-Os/kernel/core/fdt.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/fdt.c.s
+.PHONY : integrations/MRE-Os/kernel/core/fdt.c.s
+
+integrations/MRE-Os/kernel/core/gic.obj: integrations/MRE-Os/kernel/core/gic.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/gic.obj
+
+# target to build an object file
+integrations/MRE-Os/kernel/core/gic.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/gic.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/gic.c.obj
+
+integrations/MRE-Os/kernel/core/gic.i: integrations/MRE-Os/kernel/core/gic.c.i
+.PHONY : integrations/MRE-Os/kernel/core/gic.i
+
+# target to preprocess a source file
+integrations/MRE-Os/kernel/core/gic.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/gic.c.i
+.PHONY : integrations/MRE-Os/kernel/core/gic.c.i
+
+integrations/MRE-Os/kernel/core/gic.s: integrations/MRE-Os/kernel/core/gic.c.s
+.PHONY : integrations/MRE-Os/kernel/core/gic.s
+
+# target to generate assembly for a file
+integrations/MRE-Os/kernel/core/gic.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/gic.c.s
+.PHONY : integrations/MRE-Os/kernel/core/gic.c.s
+
+integrations/MRE-Os/kernel/core/mmu.obj: integrations/MRE-Os/kernel/core/mmu.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/mmu.obj
+
+# target to build an object file
+integrations/MRE-Os/kernel/core/mmu.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/mmu.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/mmu.c.obj
+
+integrations/MRE-Os/kernel/core/mmu.i: integrations/MRE-Os/kernel/core/mmu.c.i
+.PHONY : integrations/MRE-Os/kernel/core/mmu.i
+
+# target to preprocess a source file
+integrations/MRE-Os/kernel/core/mmu.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/mmu.c.i
+.PHONY : integrations/MRE-Os/kernel/core/mmu.c.i
+
+integrations/MRE-Os/kernel/core/mmu.s: integrations/MRE-Os/kernel/core/mmu.c.s
+.PHONY : integrations/MRE-Os/kernel/core/mmu.s
+
+# target to generate assembly for a file
+integrations/MRE-Os/kernel/core/mmu.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/mmu.c.s
+.PHONY : integrations/MRE-Os/kernel/core/mmu.c.s
+
+integrations/MRE-Os/kernel/core/timer_math.obj: integrations/MRE-Os/kernel/core/timer_math.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/timer_math.obj
+
+# target to build an object file
+integrations/MRE-Os/kernel/core/timer_math.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/timer_math.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/timer_math.c.obj
+
+integrations/MRE-Os/kernel/core/timer_math.i: integrations/MRE-Os/kernel/core/timer_math.c.i
+.PHONY : integrations/MRE-Os/kernel/core/timer_math.i
+
+# target to preprocess a source file
+integrations/MRE-Os/kernel/core/timer_math.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/timer_math.c.i
+.PHONY : integrations/MRE-Os/kernel/core/timer_math.c.i
+
+integrations/MRE-Os/kernel/core/timer_math.s: integrations/MRE-Os/kernel/core/timer_math.c.s
+.PHONY : integrations/MRE-Os/kernel/core/timer_math.s
+
+# target to generate assembly for a file
+integrations/MRE-Os/kernel/core/timer_math.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/timer_math.c.s
+.PHONY : integrations/MRE-Os/kernel/core/timer_math.c.s
+
+integrations/MRE-Os/kernel/core/violet.obj: integrations/MRE-Os/kernel/core/violet.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/violet.obj
+
+# target to build an object file
+integrations/MRE-Os/kernel/core/violet.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/violet.c.obj
+.PHONY : integrations/MRE-Os/kernel/core/violet.c.obj
+
+integrations/MRE-Os/kernel/core/violet.i: integrations/MRE-Os/kernel/core/violet.c.i
+.PHONY : integrations/MRE-Os/kernel/core/violet.i
+
+# target to preprocess a source file
+integrations/MRE-Os/kernel/core/violet.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/violet.c.i
+.PHONY : integrations/MRE-Os/kernel/core/violet.c.i
+
+integrations/MRE-Os/kernel/core/violet.s: integrations/MRE-Os/kernel/core/violet.c.s
+.PHONY : integrations/MRE-Os/kernel/core/violet.s
+
+# target to generate assembly for a file
+integrations/MRE-Os/kernel/core/violet.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/integrations/MRE-Os/kernel/core/violet.c.s
+.PHONY : integrations/MRE-Os/kernel/core/violet.c.s
 
 kernel/arch/x86_64/arch.obj: kernel/arch/x86_64/arch.c.obj
 .PHONY : kernel/arch/x86_64/arch.obj
@@ -714,6 +908,7 @@ kernel/core/memory.obj: kernel/core/memory.c.obj
 kernel/core/memory.c.obj:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\KERNEL.dir\build.make CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_kernel_core_smoke.dir\build.make CMakeFiles/vqeaf_kernel_core_smoke.dir/kernel/core/memory.c.obj
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/core/memory.c.obj
 .PHONY : kernel/core/memory.c.obj
 
 kernel/core/memory.i: kernel/core/memory.c.i
@@ -723,6 +918,7 @@ kernel/core/memory.i: kernel/core/memory.c.i
 kernel/core/memory.c.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\KERNEL.dir\build.make CMakeFiles/KERNEL.dir/kernel/core/memory.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_kernel_core_smoke.dir\build.make CMakeFiles/vqeaf_kernel_core_smoke.dir/kernel/core/memory.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/core/memory.c.i
 .PHONY : kernel/core/memory.c.i
 
 kernel/core/memory.s: kernel/core/memory.c.s
@@ -732,6 +928,7 @@ kernel/core/memory.s: kernel/core/memory.c.s
 kernel/core/memory.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\KERNEL.dir\build.make CMakeFiles/KERNEL.dir/kernel/core/memory.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_kernel_core_smoke.dir\build.make CMakeFiles/vqeaf_kernel_core_smoke.dir/kernel/core/memory.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/core/memory.c.s
 .PHONY : kernel/core/memory.c.s
 
 kernel/core/scheduler.obj: kernel/core/scheduler.c.obj
@@ -887,6 +1084,30 @@ kernel/drivers/virtio_blk.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\KERNEL.dir\build.make CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.s
 .PHONY : kernel/drivers/virtio_blk.c.s
 
+kernel/drivers/virtio_net.obj: kernel/drivers/virtio_net.c.obj
+.PHONY : kernel/drivers/virtio_net.obj
+
+# target to build an object file
+kernel/drivers/virtio_net.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\KERNEL.dir\build.make CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj
+.PHONY : kernel/drivers/virtio_net.c.obj
+
+kernel/drivers/virtio_net.i: kernel/drivers/virtio_net.c.i
+.PHONY : kernel/drivers/virtio_net.i
+
+# target to preprocess a source file
+kernel/drivers/virtio_net.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\KERNEL.dir\build.make CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.i
+.PHONY : kernel/drivers/virtio_net.c.i
+
+kernel/drivers/virtio_net.s: kernel/drivers/virtio_net.c.s
+.PHONY : kernel/drivers/virtio_net.s
+
+# target to generate assembly for a file
+kernel/drivers/virtio_net.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\KERNEL.dir\build.make CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.s
+.PHONY : kernel/drivers/virtio_net.c.s
+
 kernel/drivers/wcn3990_phase2.obj: kernel/drivers/wcn3990_phase2.c.obj
 .PHONY : kernel/drivers/wcn3990_phase2.obj
 
@@ -934,6 +1155,126 @@ kernel/drivers/wcn3990_snoc.s: kernel/drivers/wcn3990_snoc.c.s
 kernel/drivers/wcn3990_snoc.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_wcn3990_smoke.dir\build.make CMakeFiles/vqeaf_wcn3990_smoke.dir/kernel/drivers/wcn3990_snoc.c.s
 .PHONY : kernel/drivers/wcn3990_snoc.c.s
+
+kernel/platform/aarch64/violet_boot_probe.obj: kernel/platform/aarch64/violet_boot_probe.c.obj
+.PHONY : kernel/platform/aarch64/violet_boot_probe.obj
+
+# target to build an object file
+kernel/platform/aarch64/violet_boot_probe.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_boot_probe.c.obj
+.PHONY : kernel/platform/aarch64/violet_boot_probe.c.obj
+
+kernel/platform/aarch64/violet_boot_probe.i: kernel/platform/aarch64/violet_boot_probe.c.i
+.PHONY : kernel/platform/aarch64/violet_boot_probe.i
+
+# target to preprocess a source file
+kernel/platform/aarch64/violet_boot_probe.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_boot_probe.c.i
+.PHONY : kernel/platform/aarch64/violet_boot_probe.c.i
+
+kernel/platform/aarch64/violet_boot_probe.s: kernel/platform/aarch64/violet_boot_probe.c.s
+.PHONY : kernel/platform/aarch64/violet_boot_probe.s
+
+# target to generate assembly for a file
+kernel/platform/aarch64/violet_boot_probe.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_boot_probe.c.s
+.PHONY : kernel/platform/aarch64/violet_boot_probe.c.s
+
+kernel/platform/aarch64/violet_bootstrap.obj: kernel/platform/aarch64/violet_bootstrap.c.obj
+.PHONY : kernel/platform/aarch64/violet_bootstrap.obj
+
+# target to build an object file
+kernel/platform/aarch64/violet_bootstrap.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_bootstrap.c.obj
+.PHONY : kernel/platform/aarch64/violet_bootstrap.c.obj
+
+kernel/platform/aarch64/violet_bootstrap.i: kernel/platform/aarch64/violet_bootstrap.c.i
+.PHONY : kernel/platform/aarch64/violet_bootstrap.i
+
+# target to preprocess a source file
+kernel/platform/aarch64/violet_bootstrap.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_bootstrap.c.i
+.PHONY : kernel/platform/aarch64/violet_bootstrap.c.i
+
+kernel/platform/aarch64/violet_bootstrap.s: kernel/platform/aarch64/violet_bootstrap.c.s
+.PHONY : kernel/platform/aarch64/violet_bootstrap.s
+
+# target to generate assembly for a file
+kernel/platform/aarch64/violet_bootstrap.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_bootstrap.c.s
+.PHONY : kernel/platform/aarch64/violet_bootstrap.c.s
+
+kernel/platform/aarch64/violet_irq_bridge.obj: kernel/platform/aarch64/violet_irq_bridge.c.obj
+.PHONY : kernel/platform/aarch64/violet_irq_bridge.obj
+
+# target to build an object file
+kernel/platform/aarch64/violet_irq_bridge.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_irq_bridge.c.obj
+.PHONY : kernel/platform/aarch64/violet_irq_bridge.c.obj
+
+kernel/platform/aarch64/violet_irq_bridge.i: kernel/platform/aarch64/violet_irq_bridge.c.i
+.PHONY : kernel/platform/aarch64/violet_irq_bridge.i
+
+# target to preprocess a source file
+kernel/platform/aarch64/violet_irq_bridge.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_irq_bridge.c.i
+.PHONY : kernel/platform/aarch64/violet_irq_bridge.c.i
+
+kernel/platform/aarch64/violet_irq_bridge.s: kernel/platform/aarch64/violet_irq_bridge.c.s
+.PHONY : kernel/platform/aarch64/violet_irq_bridge.s
+
+# target to generate assembly for a file
+kernel/platform/aarch64/violet_irq_bridge.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_irq_bridge.c.s
+.PHONY : kernel/platform/aarch64/violet_irq_bridge.c.s
+
+kernel/platform/aarch64/violet_memory.obj: kernel/platform/aarch64/violet_memory.c.obj
+.PHONY : kernel/platform/aarch64/violet_memory.obj
+
+# target to build an object file
+kernel/platform/aarch64/violet_memory.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_memory.c.obj
+.PHONY : kernel/platform/aarch64/violet_memory.c.obj
+
+kernel/platform/aarch64/violet_memory.i: kernel/platform/aarch64/violet_memory.c.i
+.PHONY : kernel/platform/aarch64/violet_memory.i
+
+# target to preprocess a source file
+kernel/platform/aarch64/violet_memory.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_memory.c.i
+.PHONY : kernel/platform/aarch64/violet_memory.c.i
+
+kernel/platform/aarch64/violet_memory.s: kernel/platform/aarch64/violet_memory.c.s
+.PHONY : kernel/platform/aarch64/violet_memory.s
+
+# target to generate assembly for a file
+kernel/platform/aarch64/violet_memory.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/kernel/platform/aarch64/violet_memory.c.s
+.PHONY : kernel/platform/aarch64/violet_memory.c.s
+
+platform/violet/qvf_encode.obj: platform/violet/qvf_encode.c.obj
+.PHONY : platform/violet/qvf_encode.obj
+
+# target to build an object file
+platform/violet/qvf_encode.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_qvf_encode_test.dir\build.make CMakeFiles/vqeaf_qvf_encode_test.dir/platform/violet/qvf_encode.c.obj
+.PHONY : platform/violet/qvf_encode.c.obj
+
+platform/violet/qvf_encode.i: platform/violet/qvf_encode.c.i
+.PHONY : platform/violet/qvf_encode.i
+
+# target to preprocess a source file
+platform/violet/qvf_encode.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_qvf_encode_test.dir\build.make CMakeFiles/vqeaf_qvf_encode_test.dir/platform/violet/qvf_encode.c.i
+.PHONY : platform/violet/qvf_encode.c.i
+
+platform/violet/qvf_encode.s: platform/violet/qvf_encode.c.s
+.PHONY : platform/violet/qvf_encode.s
+
+# target to generate assembly for a file
+platform/violet/qvf_encode.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_qvf_encode_test.dir\build.make CMakeFiles/vqeaf_qvf_encode_test.dir/platform/violet/qvf_encode.c.s
+.PHONY : platform/violet/qvf_encode.c.s
 
 recovery/core/recovery_main.obj: recovery/core/recovery_main.c.obj
 .PHONY : recovery/core/recovery_main.obj
@@ -1901,6 +2242,30 @@ tests/violet_tap_smoke.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_tap_smoke.dir\build.make CMakeFiles/vqeaf_violet_tap_smoke.dir/tests/violet_tap_smoke.c.s
 .PHONY : tests/violet_tap_smoke.c.s
 
+tests/vqeaf_qvf_encode.obj: tests/vqeaf_qvf_encode.c.obj
+.PHONY : tests/vqeaf_qvf_encode.obj
+
+# target to build an object file
+tests/vqeaf_qvf_encode.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_qvf_encode_test.dir\build.make CMakeFiles/vqeaf_qvf_encode_test.dir/tests/vqeaf_qvf_encode.c.obj
+.PHONY : tests/vqeaf_qvf_encode.c.obj
+
+tests/vqeaf_qvf_encode.i: tests/vqeaf_qvf_encode.c.i
+.PHONY : tests/vqeaf_qvf_encode.i
+
+# target to preprocess a source file
+tests/vqeaf_qvf_encode.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_qvf_encode_test.dir\build.make CMakeFiles/vqeaf_qvf_encode_test.dir/tests/vqeaf_qvf_encode.c.i
+.PHONY : tests/vqeaf_qvf_encode.c.i
+
+tests/vqeaf_qvf_encode.s: tests/vqeaf_qvf_encode.c.s
+.PHONY : tests/vqeaf_qvf_encode.s
+
+# target to generate assembly for a file
+tests/vqeaf_qvf_encode.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_qvf_encode_test.dir\build.make CMakeFiles/vqeaf_qvf_encode_test.dir/tests/vqeaf_qvf_encode.c.s
+.PHONY : tests/vqeaf_qvf_encode.c.s
+
 tests/vqeaf_settings.obj: tests/vqeaf_settings.c.obj
 .PHONY : tests/vqeaf_settings.obj
 
@@ -1924,6 +2289,30 @@ tests/vqeaf_settings.s: tests/vqeaf_settings.c.s
 tests/vqeaf_settings.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_settings_smoke.dir\build.make CMakeFiles/vqeaf_settings_smoke.dir/tests/vqeaf_settings.c.s
 .PHONY : tests/vqeaf_settings.c.s
+
+tests/vqeaf_violet_boot_probe_test.obj: tests/vqeaf_violet_boot_probe_test.c.obj
+.PHONY : tests/vqeaf_violet_boot_probe_test.obj
+
+# target to build an object file
+tests/vqeaf_violet_boot_probe_test.c.obj:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/tests/vqeaf_violet_boot_probe_test.c.obj
+.PHONY : tests/vqeaf_violet_boot_probe_test.c.obj
+
+tests/vqeaf_violet_boot_probe_test.i: tests/vqeaf_violet_boot_probe_test.c.i
+.PHONY : tests/vqeaf_violet_boot_probe_test.i
+
+# target to preprocess a source file
+tests/vqeaf_violet_boot_probe_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/tests/vqeaf_violet_boot_probe_test.c.i
+.PHONY : tests/vqeaf_violet_boot_probe_test.c.i
+
+tests/vqeaf_violet_boot_probe_test.s: tests/vqeaf_violet_boot_probe_test.c.s
+.PHONY : tests/vqeaf_violet_boot_probe_test.s
+
+# target to generate assembly for a file
+tests/vqeaf_violet_boot_probe_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\vqeaf_violet_boot_probe_test.dir\build.make CMakeFiles/vqeaf_violet_boot_probe_test.dir/tests/vqeaf_violet_boot_probe_test.c.s
+.PHONY : tests/vqeaf_violet_boot_probe_test.c.s
 
 tests/vqeaf_volume_lock_test.obj: tests/vqeaf_volume_lock_test.c.obj
 .PHONY : tests/vqeaf_volume_lock_test.obj
@@ -2014,6 +2403,7 @@ help:
 	@echo ... vqeaf_framework_abi
 	@echo ... vqeaf_kernel_core_smoke
 	@echo ... vqeaf_phone_shell_smoke
+	@echo ... vqeaf_qvf_encode_test
 	@echo ... vqeaf_screens_smoke
 	@echo ... vqeaf_settings_smoke
 	@echo ... vqeaf_system_init
@@ -2021,6 +2411,7 @@ help:
 	@echo ... vqeaf_ui_font_smoke
 	@echo ... vqeaf_update_screen_smoke
 	@echo ... vqeaf_vfs_mount_smoke
+	@echo ... vqeaf_violet_boot_probe_test
 	@echo ... vqeaf_violet_tap_smoke
 	@echo ... vqeaf_volume_lock_test
 	@echo ... vqeaf_wcn3990_phase2_smoke
@@ -2037,6 +2428,27 @@ help:
 	@echo ... framework/core/abi.obj
 	@echo ... framework/core/abi.i
 	@echo ... framework/core/abi.s
+	@echo ... integrations/MRE-Os/kernel/arch/aarch64/mmu.obj
+	@echo ... integrations/MRE-Os/kernel/arch/aarch64/mmu.i
+	@echo ... integrations/MRE-Os/kernel/arch/aarch64/mmu.s
+	@echo ... integrations/MRE-Os/kernel/arch/aarch64/timer.obj
+	@echo ... integrations/MRE-Os/kernel/arch/aarch64/timer.i
+	@echo ... integrations/MRE-Os/kernel/arch/aarch64/timer.s
+	@echo ... integrations/MRE-Os/kernel/core/fdt.obj
+	@echo ... integrations/MRE-Os/kernel/core/fdt.i
+	@echo ... integrations/MRE-Os/kernel/core/fdt.s
+	@echo ... integrations/MRE-Os/kernel/core/gic.obj
+	@echo ... integrations/MRE-Os/kernel/core/gic.i
+	@echo ... integrations/MRE-Os/kernel/core/gic.s
+	@echo ... integrations/MRE-Os/kernel/core/mmu.obj
+	@echo ... integrations/MRE-Os/kernel/core/mmu.i
+	@echo ... integrations/MRE-Os/kernel/core/mmu.s
+	@echo ... integrations/MRE-Os/kernel/core/timer_math.obj
+	@echo ... integrations/MRE-Os/kernel/core/timer_math.i
+	@echo ... integrations/MRE-Os/kernel/core/timer_math.s
+	@echo ... integrations/MRE-Os/kernel/core/violet.obj
+	@echo ... integrations/MRE-Os/kernel/core/violet.i
+	@echo ... integrations/MRE-Os/kernel/core/violet.s
 	@echo ... kernel/arch/x86_64/arch.obj
 	@echo ... kernel/arch/x86_64/arch.i
 	@echo ... kernel/arch/x86_64/arch.s
@@ -2083,12 +2495,30 @@ help:
 	@echo ... kernel/drivers/virtio_blk.obj
 	@echo ... kernel/drivers/virtio_blk.i
 	@echo ... kernel/drivers/virtio_blk.s
+	@echo ... kernel/drivers/virtio_net.obj
+	@echo ... kernel/drivers/virtio_net.i
+	@echo ... kernel/drivers/virtio_net.s
 	@echo ... kernel/drivers/wcn3990_phase2.obj
 	@echo ... kernel/drivers/wcn3990_phase2.i
 	@echo ... kernel/drivers/wcn3990_phase2.s
 	@echo ... kernel/drivers/wcn3990_snoc.obj
 	@echo ... kernel/drivers/wcn3990_snoc.i
 	@echo ... kernel/drivers/wcn3990_snoc.s
+	@echo ... kernel/platform/aarch64/violet_boot_probe.obj
+	@echo ... kernel/platform/aarch64/violet_boot_probe.i
+	@echo ... kernel/platform/aarch64/violet_boot_probe.s
+	@echo ... kernel/platform/aarch64/violet_bootstrap.obj
+	@echo ... kernel/platform/aarch64/violet_bootstrap.i
+	@echo ... kernel/platform/aarch64/violet_bootstrap.s
+	@echo ... kernel/platform/aarch64/violet_irq_bridge.obj
+	@echo ... kernel/platform/aarch64/violet_irq_bridge.i
+	@echo ... kernel/platform/aarch64/violet_irq_bridge.s
+	@echo ... kernel/platform/aarch64/violet_memory.obj
+	@echo ... kernel/platform/aarch64/violet_memory.i
+	@echo ... kernel/platform/aarch64/violet_memory.s
+	@echo ... platform/violet/qvf_encode.obj
+	@echo ... platform/violet/qvf_encode.i
+	@echo ... platform/violet/qvf_encode.s
 	@echo ... recovery/core/recovery_main.obj
 	@echo ... recovery/core/recovery_main.i
 	@echo ... recovery/core/recovery_main.s
@@ -2194,9 +2624,15 @@ help:
 	@echo ... tests/violet_tap_smoke.obj
 	@echo ... tests/violet_tap_smoke.i
 	@echo ... tests/violet_tap_smoke.s
+	@echo ... tests/vqeaf_qvf_encode.obj
+	@echo ... tests/vqeaf_qvf_encode.i
+	@echo ... tests/vqeaf_qvf_encode.s
 	@echo ... tests/vqeaf_settings.obj
 	@echo ... tests/vqeaf_settings.i
 	@echo ... tests/vqeaf_settings.s
+	@echo ... tests/vqeaf_violet_boot_probe_test.obj
+	@echo ... tests/vqeaf_violet_boot_probe_test.i
+	@echo ... tests/vqeaf_violet_boot_probe_test.s
 	@echo ... tests/vqeaf_volume_lock_test.obj
 	@echo ... tests/vqeaf_volume_lock_test.i
 	@echo ... tests/vqeaf_volume_lock_test.s

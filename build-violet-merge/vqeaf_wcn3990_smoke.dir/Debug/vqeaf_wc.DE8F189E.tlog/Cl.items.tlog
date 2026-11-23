@@ -1,0 +1,4 @@
+D:\QEAFIVELS-Os\tests\wcn3990_driver_smoke.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_wcn3990_smoke.dir\Debug\wcn3990_driver_smoke.obj
+D:\QEAFIVELS-Os\kernel\drivers\wcn3990_snoc.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_wcn3990_smoke.dir\Debug\wcn3990_snoc.obj
+D:\QEAFIVELS-Os\system\core\driver.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_wcn3990_smoke.dir\Debug\driver.obj
+D:\QEAFIVELS-Os\system\core\capability.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_wcn3990_smoke.dir\Debug\capability.obj

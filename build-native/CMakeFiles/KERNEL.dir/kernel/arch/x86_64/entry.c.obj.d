@@ -39,6 +39,7 @@ CMakeFiles/KERNEL.dir/kernel/arch/x86_64/entry.c.obj: \
  D:/QEAFIVELS-Os/system/ui/include/vqeaf/phone_shell.h \
  D:/QEAFIVELS-Os/system/ui/include/vqeaf/recovery_screen.h \
  D:/QEAFIVELS-Os/kernel/include/vqeaf/virtio_blk.h \
+ D:/QEAFIVELS-Os/kernel/include/vqeaf/virtio_net.h \
  D:/QEAFIVELS-Os/kernel/include/vqeaf/ahci.h \
  D:/QEAFIVELS-Os/kernel/include/vqeaf/vfs.h \
  D:/QEAFIVELS-Os/system/core/include/vqeaf/partition.h \

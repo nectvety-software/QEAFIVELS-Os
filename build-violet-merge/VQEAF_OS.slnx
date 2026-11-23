@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Solution>
+	<Configurations>
+		<BuildType Name="Debug"/>
+		<BuildType Name="Release"/>
+		<BuildType Name="MinSizeRel"/>
+		<BuildType Name="RelWithDebInfo"/>
+		<Platform Name="x64"/>
+	</Configurations>
+	<Project Path="ALL_BUILD.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="42967934-4770-3077-9dfd-f9fc625aaed7" DefaultStartup="true">
+		<BuildDependency Project="BOOTX64.vcxproj"/>
+		<BuildDependency Project="KERNEL.vcxproj"/>
+		<BuildDependency Project="RECOVERY.vcxproj"/>
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="vqeaf_core_services_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_core_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_framework_abi.vcxproj"/>
+		<BuildDependency Project="vqeaf_kernel_core_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_phone_shell_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_qvf_encode_test.vcxproj"/>
+		<BuildDependency Project="vqeaf_screens_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_settings_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_system_init.vcxproj"/>
+		<BuildDependency Project="vqeaf_system_v03_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_ui_font_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_update_screen_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_vfs_mount_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_violet_boot_probe_test.vcxproj"/>
+		<BuildDependency Project="vqeaf_violet_tap_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_volume_lock_test.vcxproj"/>
+		<BuildDependency Project="vqeaf_wcn3990_phase2_smoke.vcxproj"/>
+		<BuildDependency Project="vqeaf_wcn3990_smoke.vcxproj"/>
+		<Build Solution="Debug|*" Project="false"/>
+		<Build Solution="Release|*" Project="false"/>
+		<Build Solution="MinSizeRel|*" Project="false"/>
+		<Build Solution="RelWithDebInfo|*" Project="false"/>
+	</Project>
+	<Project Path="BOOTX64.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="3457a162-ec69-3d62-bf4a-26b761b78409">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="KERNEL.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="b79c6e4d-b544-38a4-a8ed-521527d2d7ae">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="RECOVERY.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="59e4ccf9-b5f0-3b6d-9586-9447f4a837f4">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="RUN_TESTS.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="a5b1a821-dd91-3c17-b4a0-755927b4a02a">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<Build Solution="Debug|*" Project="false"/>
+		<Build Solution="Release|*" Project="false"/>
+		<Build Solution="MinSizeRel|*" Project="false"/>
+		<Build Solution="RelWithDebInfo|*" Project="false"/>
+	</Project>
+	<Project Path="ZERO_CHECK.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="13c676ac-403e-3ef5-a423-2adaa0bd00bf"/>
+	<Project Path="vqeaf_core_services_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="d136610e-741b-32f7-9f88-05bc0d10adeb">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_core_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="09563db3-bd5c-334e-b319-ed95f2b93b50">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="vqeaf_framework_abi.vcxproj"/>
+		<BuildDependency Project="vqeaf_system_init.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_framework_abi.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="e1e373c2-13a0-3593-b3eb-e82b376a3670">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_kernel_core_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="89f3b93a-eeb3-30f9-be2a-c8e86d28df65">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_phone_shell_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="7ff375b9-4232-3c06-812c-e7295e9dad17">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_qvf_encode_test.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="bbae9358-b10a-3e21-beb7-b709ecb85fd4">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_screens_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="162afda5-095a-38b4-a3bc-09045f5331de">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_settings_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="5b825fba-29d1-3994-ae13-c23459f790f6">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_system_init.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="9d2efcb4-6fd4-3850-9b69-744ff39ae14a">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_system_v03_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="d6d94918-e954-3e9e-a2e5-1db643c1f4bf">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_ui_font_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="fce8cfe7-0b03-362d-9a26-5b2f4a25df85">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_update_screen_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="761ad463-ee20-3fd2-be0c-6d92ea45d5be">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_vfs_mount_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="79b6850c-5cea-37ca-b8e5-e787d8f03167">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_violet_boot_probe_test.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="debd5d81-0b12-3612-844c-5dfffdaf4c54">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_violet_tap_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="404e5ea9-a478-3769-b2bf-ce6e73d257b5">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_volume_lock_test.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="17162e6b-2010-3972-9060-10b862c02907">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_wcn3990_phase2_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="83aa86cf-63d2-365e-8359-2bd9337d9c5f">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="vqeaf_wcn3990_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="de8f189e-302b-3bcb-a7c6-c8da4c605e9c">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+</Solution>

@@ -1,0 +1,9 @@
+schema_version: 1
+pmic_model: UNKNOWN
+charger_model: UNKNOWN
+fuel_gauge_model: UNKNOWN
+battery_nominal_capacity_mah: 4000
+thermal_sensor_inventory: UNKNOWN
+regulator_graph: UNKNOWN
+clock_power_dependencies: UNKNOWN
+status: UNKNOWN

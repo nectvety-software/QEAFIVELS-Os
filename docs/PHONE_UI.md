@@ -184,6 +184,29 @@ với Liquid Glass — bật cái này sẽ tắt cái kia, vì hai bề mặt k
 - Ảnh đối chiếu: `scripts/render_phone_ui.py` render thêm bốn khung
   `*-fluent` (`lock`, `home`, `apps`, `settings`) cạnh bản gốc.
 
+## Bộ thành phần tương tác (2026-11-23)
+
+Cài đặt → **Bộ thành phần QEAF** có thêm bốn thành phần nằm dưới danh sách M3.
+Chúng là demo thành phần trên trang tham chiếu, nên nhãn ghi rõ "demo" và không
+ngụ ý có dịch vụ mạng hay tệp phía sau.
+
+- **Paper Plane** — nút gửi 64 px dùng glyph SEND; chạm để chạy hoạt cảnh bay
+  lên phải, mờ dần rồi trả glyph về chỗ cũ. Chỉ là chuyển động, không gửi dữ
+  liệu đi đâu.
+- **Swipe Confirm** — kéo núm tròn hết sang phải để xác nhận; trạng thái xác
+  nhận là state thật của widget, chạm lại để đặt lại. Không gắn với hành động
+  phá huỷ nào.
+- **Download Ring** — vòng cung 270° với nhãn phần trăm; nút **Chạy** mô phỏng
+  0 → 100% trong 2,6 giây. Không tải tệp.
+- **Checklist** — bốn mục bấm được với checkbox vuông; bộ đếm cập nhật theo
+  state trong phiên.
+
+API dùng lại được nằm trong `vqeaf_theme.h`: `vqeaf_m3_paper_plane`,
+`vqeaf_m3_swipe_confirm`/`vqeaf_m3_swipe_confirmed`,
+`vqeaf_m3_download_ring`/`vqeaf_m3_download_ring_set`, và
+`vqeaf_m3_checklist`/`vqeaf_m3_checklist_done`. Mọi trạng thái chỉ sống trong
+RAM initramfs và mất khi khởi động lại.
+
 ## Khởi động lại / Tắt nguồn (2026-11-12)
 
 Menu nguồn (nhấn giữ phím nguồn) có ba hành động: **Khởi động lại**,

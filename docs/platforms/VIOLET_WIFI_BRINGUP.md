@@ -4,6 +4,27 @@ Trạng thái: **chưa có `wlan0`**. Modem boot thật, nhưng dịch vụ WLFW
 không đăng ký nên firmware WLAN chưa sẵn sàng. Không có dòng nào báo "đã kết
 nối" khi chưa có bằng chứng.
 
+## Binder: đã chứng minh dùng được (2026-11-23)
+
+Report `hostsvc binder:` trước đây in `absent` trơn vì `ensure_binder_node()` chỉ chạy
+trong đường WLAN — mà đường WLAN `return` sớm ở cổng MAC p74, nên chưa ai probe binder.
+Hiện `hostsvc binder:` in kèm lý do, lấy từ `binder_diagnose()` (chỉ đọc: kiểm
+`/proc/filesystems`, `/proc/mounts`, `stat`/`open`, **không** mount hay mknod trong lúc
+query) khi `binder_note` còn rỗng.
+
+Bằng chứng trên máy (ảnh sha256 `02c1e888…`, nạp chỉ p77, đủ 2 proof):
+
+| Verb | Kết quả |
+| --- | --- |
+| `wifi up` | `wifi bring: stage=1 ... persist=1 links=234 wlan=0 modem_started=0`, `wifi modem: fd=-1 rc=0` |
+| `wifi state` | `hostsvc binder: absent (binderfs advertised but not mounted; /dev/binderfs No such file or directory)` |
+| `wifi vendor` | `hostsvc binder: present (binderfs /dev/binderfs)`, `hostsvc cnss-daemon: running pid=542` |
+
+Tức kernel 4.14 của violet **có** binderfs dùng được: mount + `BINDER_CTL_ADD` thành công
+và `cnss-daemon` sống. Chặn còn lại không phải binder mà là (a) `wlan_mac.bin` không có
+trên p74 (symlink `/vendor/firmware/wlan/qca_cld/wlan_mac.bin` hỏng), (b) WLFW `0x45`
+chưa publish, (c) modem OFFLINING sau ~30 s.
+
 ## Các thành phần thật được tích hợp
 
 Ramdisk của `dist/boot-vqeaf-violet.img` chứa 4 daemon tĩnh `aarch64-linux-musl`,

@@ -1,0 +1,18 @@
+schema_version: 1
+compatible_candidates:
+  - qcom,sm6150
+soc_family: SM6150
+marketing_name: Snapdragon 675
+cpu:
+  architecture: AArch64
+  family: Kryo 460
+  core_count: 8
+  exact_cluster_frequencies: UNKNOWN
+gpu:
+  model: Adreno 612
+  interface_reference: KGSL in upstream Linux tree
+  MRE_driver_status: UNKNOWN
+source_evidence:
+  kernel_commit: 54dd13a140754a865867b38000ae7ae96fc43ce4
+  kernel_dts: arch/arm64/boot/dts/qcom/sm6150.dtsi
+  board_config: TARGET_BOARD_PLATFORM=sm6150

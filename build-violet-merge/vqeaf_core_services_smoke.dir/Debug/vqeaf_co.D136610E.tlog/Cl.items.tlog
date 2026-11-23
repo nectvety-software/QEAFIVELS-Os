@@ -1,0 +1,9 @@
+D:\QEAFIVELS-Os\tests\core_services_smoke.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\core_services_smoke.obj
+D:\QEAFIVELS-Os\system\core\driver.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\driver.obj
+D:\QEAFIVELS-Os\system\core\capability.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\capability.obj
+D:\QEAFIVELS-Os\system\core\storage.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\storage.obj
+D:\QEAFIVELS-Os\system\core\power.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\power.obj
+D:\QEAFIVELS-Os\system\core\block.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\block.obj
+D:\QEAFIVELS-Os\system\core\fs_fat16.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\fs_fat16.obj
+D:\QEAFIVELS-Os\kernel\core\vfs.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\vfs.obj
+D:\QEAFIVELS-Os\kernel\core\security.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_core_services_smoke.dir\Debug\security.obj

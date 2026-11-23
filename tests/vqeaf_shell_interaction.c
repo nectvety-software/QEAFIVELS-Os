@@ -28,6 +28,42 @@
 int vio_haptics_available(void) { return 0; }
 int vio_haptic_pulse(int ms) { (void)ms; return 0; }
 
+/* Capture and camera are Linux device paths (DRM scanout / V4L2), so the host
+ * gate reports "not available" exactly like vqeaf_ui_host.c does. */
+int vio_rec_start(int fps, int seconds)
+{
+    (void)fps;
+    (void)seconds;
+    return -1;
+}
+
+int vio_rec_stop(void) { return -1; }
+int vio_rec_active(void) { return 0; }
+const char *vio_rec_status(void) { return "host renderer: no DRM scanout"; }
+int vio_screenshot_now(void) { return -1; }
+
+int vqeaf_camera_query_caps(char *buf, int cap)
+{
+    if(buf != NULL && cap > 0)
+        snprintf(buf, (size_t)cap, "host renderer: no V4L2 nodes");
+    return -1;
+}
+
+int vqeaf_camera_create_session(int32_t *session_handle, char *err, int err_cap)
+{
+    if(session_handle != NULL) *session_handle = -1;
+    if(err != NULL && err_cap > 0)
+        snprintf(err, (size_t)err_cap, "host renderer: no cam-req-mgr");
+    return -1;
+}
+
+int vqeaf_camera_probe(char *buf, int cap)
+{
+    if(buf != NULL && cap > 0)
+        snprintf(buf, (size_t)cap, "host renderer: no V4L2 nodes");
+    return -1;
+}
+
 vqeaf_state_t vqeaf_state = {
     .clock_text = "09:41",
     .date_text = "Thứ 3, 10 Tháng 11, 2026",
@@ -1586,6 +1622,14 @@ int main(int argc, char **argv)
         CHECK(find_label(lv_screen_active(),
                          "Thẻ elevated · elevation 1 · 1 dp", 0) != NULL,
               "cards are labelled with their elevation level");
+        CHECK(find_label(lv_screen_active(), "Paper Plane", 0) != NULL,
+              "the paper-plane component is on the design page");
+        CHECK(find_label(lv_screen_active(), "Swipe Confirm", 0) != NULL,
+              "the swipe-confirm component is on the design page");
+        CHECK(find_label(lv_screen_active(), "Download Ring", 0) != NULL,
+              "the download-ring component is on the design page");
+        CHECK(find_label(lv_screen_active(), "Checklist", 0) != NULL,
+              "the checklist component is on the design page");
 
         label = find_label(lv_screen_active(), "Tạo", 0);
         CHECK(label != NULL, "the extended FAB is on the page");

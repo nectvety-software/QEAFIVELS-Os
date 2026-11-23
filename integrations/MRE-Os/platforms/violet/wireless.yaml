@@ -1,0 +1,22 @@
+schema_version: 1
+wifi:
+  android_board_config_driver_family: qcwcn
+  referenced_driver_family: qca_cld3
+  config_reference: third_party/reference/device_xiaomi_violet_xiaomi/wifi/WCNSS_qcom_cfg.ini
+  bus_and_transport: UNKNOWN
+  firmware_version: UNKNOWN
+  calibration_data: UNKNOWN
+  qmi_or_native_control_protocol: TO_BE_ANALYZED
+  status: UNKNOWN
+bluetooth:
+  controller: UNKNOWN
+  transport: UNKNOWN
+  firmware: UNKNOWN
+  coexistence_configuration: UNKNOWN
+  status: UNKNOWN
+modem:
+  subsystem: Qualcomm
+  ipc_transport: UNKNOWN
+  qmi_protocol_version: UNKNOWN
+  firmware: UNKNOWN
+  status: UNKNOWN

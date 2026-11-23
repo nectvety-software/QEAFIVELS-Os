@@ -1,0 +1,3 @@
+"C:\Program Files\CMake\bin\cmake.exe" -E rm -f CMakeFiles\vqeaf_violet_boot_probe_test.dir/objects.a
+C:\msys64\mingw64\bin\ar.exe qc CMakeFiles\vqeaf_violet_boot_probe_test.dir/objects.a @CMakeFiles\vqeaf_violet_boot_probe_test.dir\objects1.rsp
+C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe -ffreestanding -fno-stack-protector -fno-stack-check -fshort-wchar -mno-red-zone -fno-builtin -Wall -Wextra -mgeneral-regs-only -mno-stack-arg-probe -std=c11 -g -Wl,--whole-archive CMakeFiles\vqeaf_violet_boot_probe_test.dir/objects.a -Wl,--no-whole-archive -o vqeaf_violet_boot_probe_test.exe -Wl,--out-implib,libvqeaf_violet_boot_probe_test.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\vqeaf_violet_boot_probe_test.dir\linkLibs.rsp

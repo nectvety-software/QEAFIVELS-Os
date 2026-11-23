@@ -18,6 +18,7 @@
 #include "vqeaf/ams.h"
 #include "vqeaf/security.h"
 #include "vqeaf/vfs.h"
+#include "vqeaf/violet_boot.h"
 
 #define GICD_BASE 0x08000000ull
 #define GICC_BASE 0x08010000ull
@@ -133,8 +134,21 @@ void vqeaf_a64_timer_init(void)
 
 uint64_t vqeaf_a64_timer_ticks(void) { return ticks; }
 
+/* The Violet GIC/timer bridge owns the physical interrupt acknowledgement.
+ * It calls this once per confirmed Generic Timer IRQ so the scheduler and
+ * existing time consumers keep using the QEAF tick counter. */
+void vqeaf_a64_timer_external_tick(void) { ticks++; }
+
 uint64_t vqeaf_a64_irq_preempt(uint64_t frame_base)
 {
+    if(vqeaf_violet_platform_mode()) {
+        /* Never fall through to the QEMU GICv2 addresses on a Violet boot,
+         * even when its DTB fails identity validation. */
+        if(vqeaf_violet_is_target() && vqeaf_violet_irq_is_active())
+            return vqeaf_violet_irq_dispatch(frame_base);
+        return frame_base;
+    }
+
     uint32_t iar = GICC_IAR;
     uint32_t id = iar & 0x3FFu;
     uint64_t resume = frame_base;

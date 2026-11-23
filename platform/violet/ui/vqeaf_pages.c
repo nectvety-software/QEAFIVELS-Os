@@ -4002,6 +4002,29 @@ static void control_power_cb(lv_event_t *event)
     vqeaf_ui_power_menu_show();
 }
 
+/* Control-centre customisation: these callbacks drive the same real,
+ * session-only theme state the Settings page uses. No preview is reported as
+ * an applied system change it cannot perform. */
+/* Defined later in this file; declared here because the control page is built
+ * before the Settings page callbacks appear. */
+static void liquid_glass_toggle_cb(lv_event_t *event);
+static void dynamic_color_cb(lv_event_t *event);
+static void control_glass_style_cb(lv_event_t *event)
+{
+    int on = (int)(intptr_t)lv_event_get_user_data(event);
+    vqeaf_theme_set_fluent(0);
+    vqeaf_theme_set_liquid_glass(on);
+    vqeaf_ui_show(vqeaf_ui_page());
+}
+
+static void control_app_style_cb(lv_event_t *event)
+{
+    vqeaf_theme_mode_t mode =
+        (vqeaf_theme_mode_t)(intptr_t)lv_event_get_user_data(event);
+    vqeaf_theme_set(mode);
+    vqeaf_ui_show(vqeaf_ui_page());
+}
+
 static void build_control(lv_obj_t *content)
 {
     lv_obj_t *root = page_root(content);
@@ -4178,6 +4201,130 @@ static void build_control(lv_obj_t *content)
     vqeaf_label(media_text, "Không có nhạc đang phát", VQEAF_FONT_BODY,
                 VQEAF_C_TEXT);
     vqeaf_glyph(media, VQEAF_SYM_PAUSE, VQEAF_ICON, VQEAF_C_TEXT_MUTE);
+
+    /* ---- Customise -------------------------------------------------------
+     * Controls mirror the familiar Customise layout, but every switch below
+     * writes real session state: Liquid Glass, dynamic-colour seed and
+     * dark/light mode. The three progress previews use the real brightness
+     * value and only differ in tint - there is no separate progress engine. */
+    lv_obj_t *custom_head = vqeaf_row(root);
+    vqeaf_label(custom_head, "Tùy chỉnh", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    vqeaf_label(custom_head, "Áp dụng ngay · chỉ trong phiên này",
+                VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+
+    {
+        lv_obj_t *trailing = NULL;
+        lv_obj_t *glass = vqeaf_m3_list_item(root, VQEAF_SYM_WATER_DROP,
+            "Liquid Glass", "Kính trong mờ cho thẻ và thanh điều khiển",
+            &trailing);
+        vqeaf_m3_switch(trailing, vqeaf_theme_liquid_glass());
+        lv_obj_add_event_cb(glass, liquid_glass_toggle_cb,
+                            LV_EVENT_CLICKED, NULL);
+
+        lv_obj_t *chips = vqeaf_row(root);
+        lv_obj_set_style_pad_column(chips, 14, 0);
+        static const char *glass_names[2] = { "Classic", "New" };
+        for(int i = 0; i < 2; i++) {
+            int active = (i == 1) ? vqeaf_theme_liquid_glass()
+                                  : !vqeaf_theme_liquid_glass();
+            lv_obj_t *chip = vqeaf_label(chips, glass_names[i],
+                VQEAF_FONT_BODY, active ? VQEAF_C_ACCENT : VQEAF_C_TEXT_MUTE);
+            lv_obj_add_flag(chip, LV_OBJ_FLAG_CLICKABLE);
+            vqeaf_on_click(chip, control_glass_style_cb,
+                           (void *)(intptr_t)i);
+        }
+        vqeaf_label(root,
+            "Renderer không có backdrop blur; lớp trong mờ là alpha thật.",
+            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    }
+
+    {
+        lv_obj_t *icons = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(icons, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(icons, 10, 0);
+        vqeaf_label(icons, "App icons · màu chủ đạo", VQEAF_FONT_BODY,
+                    VQEAF_C_TEXT);
+        lv_obj_t *row = vqeaf_row(icons);
+        lv_obj_set_style_pad_column(row, 14, 0);
+        static const uint32_t seeds[4] = {
+            0xE85252u, 0x3D6BD2u, 0x31B45Cu, 0xE88FB4u
+        };
+        static const char *seed_names[4] = { "Red", "Blue", "Green", "Pink" };
+        for(int i = 0; i < 4; i++) {
+            lv_obj_t *cell = vqeaf_column(row);
+            lv_obj_set_style_pad_row(cell, 4, 0);
+            lv_obj_t *sw = vqeaf_obj(cell);
+            lv_obj_set_size(sw, 64, 64);
+            lv_obj_set_style_bg_color(sw, lv_color_hex(seeds[i]), 0);
+            lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(sw, 18, 0);
+            if(!vqeaf_theme_auto() && vqeaf_theme_seed() == seeds[i])
+                vqeaf_label(sw, VQEAF_SYM_CHECK, VQEAF_ICON, VQEAF_C_BG);
+            lv_obj_add_flag(sw, LV_OBJ_FLAG_CLICKABLE);
+            vqeaf_on_click(sw, dynamic_color_cb,
+                           (void *)(uintptr_t)seeds[i]);
+            vqeaf_label(cell, seed_names[i], VQEAF_FONT_CAPTION,
+                        VQEAF_C_TEXT_DIM);
+        }
+        vqeaf_label(icons,
+            "Chạm một ô để tạo lại bảng màu từ màu đó (Material You).",
+            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    }
+
+    {
+        lv_obj_t *bar_card = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(bar_card, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(bar_card, 8, 0);
+        vqeaf_label(bar_card, "Progress bar", VQEAF_FONT_BODY, VQEAF_C_TEXT);
+        static const char *bar_names[3] = { "Glow", "Wave", "Plain" };
+        for(int i = 0; i < 3; i++) {
+            lv_obj_t *line = vqeaf_row(bar_card);
+            vqeaf_label(line, bar_names[i], VQEAF_FONT_CAPTION,
+                        VQEAF_C_TEXT_DIM);
+            lv_obj_t *bar = vqeaf_m3_progress_linear(line,
+                                                     vqeaf_state.brightness);
+            lv_obj_set_flex_grow(bar, 1);
+            lv_color_t tint = i == 0 ? VQEAF_C_ACCENT :
+                              i == 1 ? lv_color_mix(VQEAF_C_ACCENT,
+                                          lv_color_hex(0x38C8E8), 50) :
+                                       VQEAF_C_TEXT_DIM;
+            lv_obj_set_style_bg_color(bar, tint, LV_PART_INDICATOR);
+        }
+        char bar_note[96];
+        snprintf(bar_note, sizeof(bar_note),
+                 "Cùng giá trị độ sáng thật %d%% · ba sắc thái xem trước.",
+                 vqeaf_state.brightness);
+        vqeaf_label(bar_card, bar_note, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    }
+
+    {
+        lv_obj_t *style = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(style, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(style, 10, 0);
+        vqeaf_label(style, "App style · sáng / tối", VQEAF_FONT_BODY,
+                    VQEAF_C_TEXT);
+        lv_obj_t *row = vqeaf_row(style);
+        lv_obj_set_style_pad_column(row, 14, 0);
+        for(int i = 0; i < 2; i++) {
+            vqeaf_theme_mode_t mode = i == 0 ? VQEAF_THEME_DARK
+                                             : VQEAF_THEME_LIGHT;
+            int active = vqeaf_theme_get() == mode;
+            lv_obj_t *card = vqeaf_obj(row);
+            lv_obj_set_size(card, 150, 96);
+            lv_obj_set_style_bg_color(card,
+                lv_color_hex(i == 0 ? 0x1C1C22 : 0xF2F2F6), 0);
+            lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(card, 20, 0);
+            lv_obj_set_style_border_width(card, active ? 3 : 1, 0);
+            lv_obj_set_style_border_color(card,
+                active ? VQEAF_C_ACCENT : VQEAF_C_LINE, 0);
+            vqeaf_label(card, i == 0 ? "Tối" : "Sáng", VQEAF_FONT_BODY,
+                        lv_color_hex(i == 0 ? 0xFFFFFF : 0x222222));
+            lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+            vqeaf_on_click(card, control_app_style_cb,
+                           (void *)(intptr_t)mode);
+        }
+    }
 
     /* Notification log: real events only, newest first. */
     lv_obj_t *note_head = vqeaf_row(root);
@@ -4478,6 +4625,81 @@ static void m3_layout_card(lv_obj_t *parent, const char *tag,
     lv_obj_set_width(body, lv_pct(100));
 }
 
+/* ---- interactive component demos ---------------------------------------- */
+/* The design page is a reference surface, so these four cards demonstrate the
+ * components rather than claiming a service behind them. Their captions say so
+ * and the widgets only carry their own in-session state. */
+static lv_obj_t *m3_plane_status;
+static lv_obj_t *m3_swipe_status;
+static lv_obj_t *m3_ring_status;
+static lv_obj_t *m3_check_status;
+static lv_obj_t *m3_ring;
+
+static void m3_plane_event_cb(lv_event_t *event)
+{
+    (void)event;
+    if(m3_plane_status != NULL)
+        lv_label_set_text(m3_plane_status,
+                          "Hoạt cảnh gửi đã chạy · demo thành phần");
+}
+
+static void m3_swipe_event_cb(lv_event_t *event)
+{
+    lv_obj_t *track = lv_event_get_target_obj(event);
+
+    if(m3_swipe_status == NULL) return;
+    lv_label_set_text(m3_swipe_status,
+        vqeaf_m3_swipe_confirmed(track)
+            ? "Đã xác nhận · chạm để đặt lại"
+            : "Trượt hết sang phải để xác nhận");
+}
+
+static void m3_ring_anim_cb(void *var, int32_t value)
+{
+    vqeaf_m3_download_ring_set((lv_obj_t *)var, (int)value);
+}
+
+static void m3_ring_done_cb(lv_anim_t *anim)
+{
+    (void)anim;
+    if(m3_ring_status != NULL)
+        lv_label_set_text(m3_ring_status,
+                          "100% · mô phỏng xong, không tải tệp nào");
+}
+
+static void m3_ring_run_cb(lv_event_t *event)
+{
+    lv_anim_t anim;
+
+    (void)event;
+    if(m3_ring == NULL) return;
+    lv_anim_delete(m3_ring, NULL);
+    vqeaf_m3_download_ring_set(m3_ring, 0);
+    if(m3_ring_status != NULL)
+        lv_label_set_text(m3_ring_status,
+                          "Đang chạy mô phỏng 0 → 100% · không có tệp");
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, m3_ring);
+    lv_anim_set_exec_cb(&anim, m3_ring_anim_cb);
+    lv_anim_set_values(&anim, 0, 100);
+    lv_anim_set_duration(&anim, 2600);
+    lv_anim_set_path_cb(&anim, lv_anim_path_linear);
+    lv_anim_set_ready_cb(&anim, m3_ring_done_cb);
+    lv_anim_start(&anim);
+}
+
+static void m3_check_event_cb(lv_event_t *event)
+{
+    lv_obj_t *list = lv_event_get_target_obj(event);
+    int total = (int)(intptr_t)lv_event_get_user_data(event);
+    char text[48];
+
+    if(m3_check_status == NULL) return;
+    snprintf(text, sizeof(text), "%d/%d mục đã kiểm · trạng thái trong phiên",
+             vqeaf_m3_checklist_done(list), total);
+    lv_label_set_text(m3_check_status, text);
+}
+
 static void build_m3_layout(lv_obj_t *content)
 {
     int32_t body_h;
@@ -4557,6 +4779,92 @@ static void build_m3_layout(lv_obj_t *content)
     if(trailing != NULL)
         vqeaf_m3_switch(trailing, vqeaf_theme_get() == VQEAF_THEME_DARK);
     lv_obj_add_event_cb(switch_item, theme_toggle_cb, LV_EVENT_CLICKED, NULL);
+
+    vqeaf_label(body, "Thành phần tương tác · demo", VQEAF_FONT_CAPTION,
+                VQEAF_C_TEXT_MUTE);
+
+    {
+        lv_obj_t *paper = vqeaf_m3_card(body, lv_pct(100), LV_SIZE_CONTENT,
+                                        VQEAF_M3_CARD_ELEVATED);
+        lv_obj_t *text;
+
+        lv_obj_set_flex_flow(paper, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(paper, LV_FLEX_ALIGN_START,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_column(paper, 16, 0);
+        text = vqeaf_column(paper);
+        lv_obj_set_flex_grow(text, 1);
+        lv_obj_set_style_pad_row(text, 4, 0);
+        vqeaf_label(text, "Paper Plane", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+        m3_plane_status = vqeaf_label(text,
+            "Chạm nút gửi để chạy hoạt cảnh · demo thành phần",
+            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+        lv_obj_set_width(m3_plane_status, lv_pct(100));
+        vqeaf_m3_paper_plane(paper, m3_plane_event_cb, NULL);
+    }
+
+    {
+        lv_obj_t *swipe = vqeaf_m3_card(body, lv_pct(100), LV_SIZE_CONTENT,
+                                        VQEAF_M3_CARD_OUTLINED);
+
+        lv_obj_set_flex_flow(swipe, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(swipe, 10, 0);
+        vqeaf_label(swipe, "Swipe Confirm", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+        m3_swipe_status = vqeaf_label(swipe,
+            "Trượt hết sang phải để xác nhận · demo thành phần",
+            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+        lv_obj_set_width(m3_swipe_status, lv_pct(100));
+        vqeaf_m3_swipe_confirm(swipe, "Trượt để xác nhận",
+                               m3_swipe_event_cb, NULL);
+    }
+
+    {
+        lv_obj_t *ring_card = vqeaf_m3_card(body, lv_pct(100),
+                                            LV_SIZE_CONTENT,
+                                            VQEAF_M3_CARD_FILLED);
+        lv_obj_t *text;
+        lv_obj_t *run;
+
+        lv_obj_set_flex_flow(ring_card, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(ring_card, LV_FLEX_ALIGN_START,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_column(ring_card, 18, 0);
+        m3_ring = vqeaf_m3_download_ring(ring_card, 132);
+        text = vqeaf_column(ring_card);
+        lv_obj_set_flex_grow(text, 1);
+        lv_obj_set_style_pad_row(text, 6, 0);
+        vqeaf_label(text, "Download Ring", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+        m3_ring_status = vqeaf_label(text,
+            "0% · mô phỏng, không tải tệp", VQEAF_FONT_CAPTION,
+            VQEAF_C_TEXT_DIM);
+        lv_obj_set_width(m3_ring_status, lv_pct(100));
+        run = vqeaf_m3_button(text, "Chạy", VQEAF_M3_TONAL);
+        lv_obj_add_event_cb(run, m3_ring_run_cb, LV_EVENT_CLICKED, NULL);
+    }
+
+    {
+        static const char *const items[] = {
+            "Đọc trạng thái thiết bị",
+            "Kiểm tra kết nối mạng",
+            "Sao lưu ghi chú trong phiên",
+            "Xem lại quyền ứng dụng",
+        };
+        lv_obj_t *check_card = vqeaf_m3_card(body, lv_pct(100),
+                                             LV_SIZE_CONTENT,
+                                             VQEAF_M3_CARD_OUTLINED);
+        lv_obj_t *list;
+
+        lv_obj_set_flex_flow(check_card, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(check_card, 8, 0);
+        vqeaf_label(check_card, "Checklist", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+        m3_check_status = vqeaf_label(check_card,
+            "0/4 mục đã kiểm · trạng thái trong phiên",
+            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+        lv_obj_set_width(m3_check_status, lv_pct(100));
+        list = vqeaf_m3_checklist(check_card, items, 4);
+        lv_obj_add_event_cb(list, m3_check_event_cb, LV_EVENT_VALUE_CHANGED,
+                            (void *)(intptr_t)4);
+    }
 
     /* The FAB is created after the body, so it paints above it: level 3 over a
      * level 0..1 surface is the whole point of the elevation scale. */

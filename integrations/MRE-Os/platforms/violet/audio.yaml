@@ -1,0 +1,14 @@
+schema_version: 1
+soc_audio_platform: Qualcomm SM6150
+kernel_reference:
+  - arch/arm64/boot/dts/qcom/sm6150-audio.dtsi
+  - arch/arm64/boot/dts/qcom/sm6150-wcd.dtsi
+codec_model: UNKNOWN
+amplifier_model: UNKNOWN
+dsp_topology: UNKNOWN
+firmware_candidates:
+  - vendor/firmware/tas2563_uCDSP.bin
+  - vendor/etc/acdbdata/*
+status: UNKNOWN
+notes:
+  - Candidate files are listed in Android proprietary-files manifests; do not bundle or execute them.

@@ -1,0 +1,25 @@
+schema_version: 1
+device_codename: violet
+os_name: MRE OS
+architecture: aarch64
+compatibility:
+  android_framework_required: false
+  android_runtime_required: false
+  linux_kernel_required_at_runtime: false
+  linux_sources_are_reference_only: true
+  proprietary_firmware_bundled: false
+driver_status_vocabulary:
+  - UNKNOWN
+  - DISCOVERED
+  - ANALYZED
+  - PORTING
+  - BUILDABLE
+  - BOOT_TESTED
+  - HARDWARE_TESTED
+  - STABLE
+  - BLOCKED
+safety:
+  automatic_device_flash: false
+  bootloader_modification: false
+  modem_partition_write: false
+  persist_or_efs_write: false

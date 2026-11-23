@@ -47,6 +47,29 @@ add_executable(vqeaf_settings_smoke tests/vqeaf_settings.c system/core/settings.
 target_include_directories(vqeaf_settings_smoke PRIVATE kernel/include system/core system/core/include)
 add_executable(vqeaf_violet_tap_smoke tests/violet_tap_smoke.c)
 target_include_directories(vqeaf_violet_tap_smoke PRIVATE platform/violet)
+
+# MRE FDT/Violet discovery, MMU planning, GIC and Generic Timer are integrated
+# behind an explicit Violet bootstrap gate; QEMU-virt remains a separate path.
+set(MRE_AARCH64_ROOT integrations/MRE-Os)
+add_executable(vqeaf_violet_boot_probe_test
+  tests/vqeaf_violet_boot_probe_test.c
+  kernel/platform/aarch64/violet_boot_probe.c
+  kernel/platform/aarch64/violet_bootstrap.c
+  kernel/platform/aarch64/violet_memory.c
+  kernel/platform/aarch64/violet_irq_bridge.c
+  kernel/core/memory.c
+  ${MRE_AARCH64_ROOT}/kernel/core/fdt.c
+  ${MRE_AARCH64_ROOT}/kernel/core/violet.c
+  ${MRE_AARCH64_ROOT}/kernel/core/mmu.c
+  ${MRE_AARCH64_ROOT}/kernel/core/gic.c
+  ${MRE_AARCH64_ROOT}/kernel/core/timer_math.c
+  ${MRE_AARCH64_ROOT}/kernel/arch/aarch64/mmu.c
+  ${MRE_AARCH64_ROOT}/kernel/arch/aarch64/timer.c)
+target_include_directories(vqeaf_violet_boot_probe_test PRIVATE
+  kernel/include
+  ${MRE_AARCH64_ROOT}/kernel/include/mre)
+target_compile_definitions(vqeaf_violet_boot_probe_test PRIVATE
+  VQEAF_REFERENCE_DTB_PATH="${CMAKE_CURRENT_SOURCE_DIR}/platform/violet/device-tree/build/violet-reference.dtb")
 add_executable(vqeaf_qvf_encode_test tests/vqeaf_qvf_encode.c platform/violet/qvf_encode.c)
 target_include_directories(vqeaf_qvf_encode_test PRIVATE platform/violet)
 add_executable(vqeaf_volume_lock_test tests/vqeaf_volume_lock_test.c)
@@ -62,7 +85,8 @@ set(VQEAF_TEST_TARGETS vqeaf_ui_font_smoke vqeaf_update_screen_smoke
     vqeaf_screens_smoke vqeaf_phone_shell_smoke vqeaf_core_smoke
     vqeaf_kernel_core_smoke
     vqeaf_core_services_smoke vqeaf_system_v03_smoke vqeaf_vfs_mount_smoke
-    vqeaf_settings_smoke vqeaf_violet_tap_smoke vqeaf_volume_lock_test
+    vqeaf_settings_smoke vqeaf_violet_tap_smoke
+    vqeaf_violet_boot_probe_test vqeaf_volume_lock_test
     vqeaf_qvf_encode_test
     vqeaf_wcn3990_smoke vqeaf_wcn3990_phase2_smoke)
 foreach(t ${VQEAF_TEST_TARGETS})
@@ -80,6 +104,10 @@ add_test(NAME vqeaf_system_v03_smoke COMMAND vqeaf_system_v03_smoke)
 add_test(NAME vqeaf_vfs_mount_smoke COMMAND vqeaf_vfs_mount_smoke)
 add_test(NAME vqeaf_settings_smoke COMMAND vqeaf_settings_smoke)
 add_test(NAME vqeaf_violet_tap_smoke COMMAND vqeaf_violet_tap_smoke)
+add_test(NAME vqeaf_violet_boot_probe_test COMMAND vqeaf_violet_boot_probe_test)
+add_test(NAME vqeaf_violet_abl_dtb_probe_test
+  COMMAND vqeaf_violet_boot_probe_test
+  ${CMAKE_CURRENT_SOURCE_DIR}/build/violet/violet-sm6150-abl.dtb)
 add_test(NAME vqeaf_volume_lock_test COMMAND vqeaf_volume_lock_test)
 add_test(NAME vqeaf_qvf_encode_test COMMAND vqeaf_qvf_encode_test)
 add_test(NAME vqeaf_wcn3990_smoke COMMAND vqeaf_wcn3990_smoke)

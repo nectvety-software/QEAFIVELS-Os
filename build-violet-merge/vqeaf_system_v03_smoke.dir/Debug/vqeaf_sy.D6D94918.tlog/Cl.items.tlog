@@ -1,0 +1,15 @@
+D:\QEAFIVELS-Os\tests\system_v03_smoke.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\system_v03_smoke.obj
+D:\QEAFIVELS-Os\system\core\driver.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\driver.obj
+D:\QEAFIVELS-Os\system\core\capability.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\capability.obj
+D:\QEAFIVELS-Os\system\core\storage.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\storage.obj
+D:\QEAFIVELS-Os\system\core\power.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\power.obj
+D:\QEAFIVELS-Os\system\core\block.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\block.obj
+D:\QEAFIVELS-Os\system\core\partition.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\partition.obj
+D:\QEAFIVELS-Os\system\core\fs_fat16.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\fs_fat16.obj
+D:\QEAFIVELS-Os\system\core\discovery.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\discovery.obj
+D:\QEAFIVELS-Os\system\core\text.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\text.obj
+D:\QEAFIVELS-Os\system\core\service_manager.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\service_manager.obj
+D:\QEAFIVELS-Os\system\core\input.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\input.obj
+D:\QEAFIVELS-Os\system\core\power_menu.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\power_menu.obj
+D:\QEAFIVELS-Os\kernel\core\vfs.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\vfs.obj
+D:\QEAFIVELS-Os\kernel\core\security.c;D:\QEAFIVELS-Os\build-violet-merge\vqeaf_system_v03_smoke.dir\Debug\security.obj

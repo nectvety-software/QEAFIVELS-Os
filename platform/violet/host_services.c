@@ -66,6 +66,10 @@ static struct host_service *svc_pd, *svc_pd_listen, *svc_tftp, *svc_rmtfs,
 
 static int services_started;
 static int wlan_started;
+/* Why /dev/binder is missing when it is. The report line is the only place
+ * this reaches the host: HOMOLOG.TXT is captured once at boot, so a bare
+ * "absent" hides the errno the mount/mknod actually returned. */
+static char binder_note[192];
 static int wlan_on;
 static int wlan_on_errno;
 static char wlan_note[192] = "not started";
@@ -291,6 +295,8 @@ static int ensure_binderfs_nodes(void)
 
     if(stat(BINDERFS_DIR, &st) != 0 &&
        vio_mkdir_p(BINDERFS_DIR, 0755) != 0) {
+        snprintf(binder_note, sizeof(binder_note),
+                 "absent (mkdir %s: %s)", BINDERFS_DIR, strerror(errno));
         vio_log("hostsvc: cannot create %s: %s", BINDERFS_DIR, strerror(errno));
         return -1;
     }
@@ -298,11 +304,15 @@ static int ensure_binderfs_nodes(void)
     snprintf(control, sizeof(control), "%s/binder-control", BINDERFS_DIR);
     if(stat(control, &st) != 0) {
         if(mount("binder", BINDERFS_DIR, "binder", 0, NULL) != 0) {
+            snprintf(binder_note, sizeof(binder_note),
+                     "absent (mount binderfs: %s)", strerror(errno));
             vio_log("hostsvc: mount binderfs failed: %s", strerror(errno));
             return -1;
         }
     }
     if(stat(control, &st) != 0 || !S_ISCHR(st.st_mode)) {
+        snprintf(binder_note, sizeof(binder_note),
+                 "absent (%s is not a binderfs control device)", control);
         vio_log("hostsvc: %s is not the binderfs control device", control);
         return -1;
     }
@@ -325,6 +335,9 @@ static int ensure_binderfs_nodes(void)
             snprintf(req.name, sizeof(req.name), "%s", names[i]);
             if(ioctl(ctl, VIO_BINDER_CTL_ADD, &req) != 0) {
                 if(errno != EEXIST) {
+                    snprintf(binder_note, sizeof(binder_note),
+                             "absent (BINDER_CTL_ADD %s: %s)", names[i],
+                             strerror(errno));
                     vio_log("hostsvc: BINDER_CTL_ADD %s failed: %s",
                             names[i], strerror(errno));
                     continue;
@@ -357,14 +370,26 @@ static int ensure_binderfs_nodes(void)
     }
 
     close(ctl);
-    return binder_open_works("/dev/binder") ? 0 : -1;
+    if(binder_open_works("/dev/binder")) {
+        snprintf(binder_note, sizeof(binder_note),
+                 "present (binderfs %s)", BINDERFS_DIR);
+        return 0;
+    }
+    if(binder_note[0] == '\0')
+        snprintf(binder_note, sizeof(binder_note),
+                 "absent (binderfs published no openable /dev/binder)");
+    return -1;
 }
 
 /* Never guess a binder major/minor. Prefer binderfs; for a legacy
  * misc-device binder build, use the exact kernel-published sysfs dev number. */
 static int ensure_binder_node(void)
 {
-    if(binder_open_works("/dev/binder")) return 0;
+    if(binder_open_works("/dev/binder")) {
+        if(binder_note[0] == '\0')
+            snprintf(binder_note, sizeof(binder_note), "present (/dev/binder)");
+        return 0;
+    }
 
     if(binderfs_supported()) {
         if(ensure_binderfs_nodes() == 0) return 0;
@@ -374,10 +399,14 @@ static int ensure_binder_node(void)
 
     if(mknod_from_sys("/sys/class/misc", "binder") == 0 &&
        binder_open_works("/dev/binder")) {
+        snprintf(binder_note, sizeof(binder_note),
+                 "present (legacy misc binder from sysfs dev)");
         vio_log("hostsvc: legacy binder node created from sysfs dev attribute");
         return 0;
     }
 
+    snprintf(binder_note, sizeof(binder_note),
+             "absent (no usable binderfs and no /sys/class/misc/binder/dev)");
     vio_log("hostsvc: kernel exposes neither usable binderfs nor "
             "/sys/class/misc/binder/dev");
     return -1;
@@ -389,6 +418,55 @@ static int binder_node_present(void)
 
     return stat("/dev/binder", &st) == 0 && S_ISCHR(st.st_mode) &&
            binder_open_works("/dev/binder");
+}
+
+/* Read-only answer for the status report when no start-up path has run
+ * ensure_binder_node() yet. WLAN is gated on the p74 MAC before it ever
+ * probes binder, so without this the report says a bare "absent" and hides
+ * the kernel fact behind it. Nothing here mounts, mknods or writes. */
+static const char *binder_diagnose(void)
+{
+    static char note[192];
+    struct stat st;
+    FILE *fp;
+    char line[160];
+    int mounted = 0;
+
+    if(!binderfs_supported())
+        return "absent (kernel lists no binder filesystem in /proc/filesystems)";
+
+    fp = fopen("/proc/mounts", "r");
+    if(fp != NULL) {
+        while(fgets(line, sizeof(line), fp) != NULL)
+            if(strstr(line, BINDERFS_DIR " ") != NULL) {
+                mounted = 1;
+                break;
+            }
+        fclose(fp);
+    }
+    if(!mounted) {
+        int err = 0;
+
+        errno = 0;
+        (void)stat(BINDERFS_DIR, &st);
+        err = errno;
+        snprintf(note, sizeof(note),
+                 "absent (binderfs advertised but not mounted; %s %s)",
+                 BINDERFS_DIR,
+                 err == 0 ? "exists, not a mount point" : strerror(err));
+        return note;
+    }
+
+    errno = 0;
+    if(binder_open_works("/dev/binder")) {
+        snprintf(note, sizeof(note),
+                 "present (binderfs %s, /dev/binder openable)", BINDERFS_DIR);
+        return note;
+    }
+    snprintf(note, sizeof(note),
+             "absent (binderfs %s mounted, open /dev/binder: %s)",
+             BINDERFS_DIR, errno ? strerror(errno) : "no char node");
+    return note;
 }
 
 /* Publish only real modem NV partitions to upstream rmtfs.  The daemon
@@ -1488,7 +1566,9 @@ void vio_host_services_report(char *out, int cap)
     if(used < (size_t)cap)
         snprintf(out + used, (size_t)cap - used,
                  "hostsvc binder: %s\n",
-                 binder_node_present() ? "present" : "absent");
+                 binder_note[0] != '\0'
+                     ? binder_note
+                     : (binder_node_present() ? "present" : binder_diagnose()));
     if(used < (size_t)cap) used += strlen(out + used);
     if(used < (size_t)cap)
         snprintf(out + used, (size_t)cap - used,

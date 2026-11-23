@@ -48,6 +48,7 @@ CMakeFiles/KERNEL.dir/kernel/arch/x86_64/entry.c.obj: D:/QEAFIVELS-Os/kernel/arc
   D:/QEAFIVELS-Os/kernel/include/vqeaf/serial.h \
   D:/QEAFIVELS-Os/kernel/include/vqeaf/vfs.h \
   D:/QEAFIVELS-Os/kernel/include/vqeaf/virtio_blk.h \
+  D:/QEAFIVELS-Os/kernel/include/vqeaf/virtio_net.h \
   D:/QEAFIVELS-Os/kernel/include/vqeaf/vm.h \
   D:/QEAFIVELS-Os/system/core/include/vqeaf/block.h \
   D:/QEAFIVELS-Os/system/core/include/vqeaf/capability.h \
@@ -172,6 +173,22 @@ CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.obj: D:/QEAFIVELS-Os/kernel/dr
   D:/QEAFIVELS-Os/system/core/include/vqeaf/block.h \
   D:/QEAFIVELS-Os/system/core/include/vqeaf/capability.h \
   D:/QEAFIVELS-Os/system/core/include/vqeaf/driver.h
+
+CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj: D:/QEAFIVELS-Os/kernel/drivers/virtio_net.c \
+  C:/msys64/mingw64/include/_mingw.h \
+  C:/msys64/mingw64/include/_mingw_mac.h \
+  C:/msys64/mingw64/include/_mingw_secapi.h \
+  C:/msys64/mingw64/include/corecrt.h \
+  C:/msys64/mingw64/include/corecrt_memory.h \
+  C:/msys64/mingw64/include/crtdefs.h \
+  C:/msys64/mingw64/include/sec_api/string_s.h \
+  C:/msys64/mingw64/include/string.h \
+  C:/msys64/mingw64/include/vadefs.h \
+  C:/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include/stdint-gcc.h \
+  C:/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include/stdint.h \
+  D:/QEAFIVELS-Os/kernel/include/vqeaf/pci.h \
+  D:/QEAFIVELS-Os/kernel/include/vqeaf/serial.h \
+  D:/QEAFIVELS-Os/kernel/include/vqeaf/virtio_net.h
 
 CMakeFiles/KERNEL.dir/system/core/block.c.obj: D:/QEAFIVELS-Os/system/core/block.c \
   C:/msys64/mingw64/include/_mingw.h \
@@ -426,8 +443,6 @@ D:/QEAFIVELS-Os/system/ui/include/vqeaf/phone_shell.h:
 
 C:/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0/include/stdint-gcc.h:
 
-C:/msys64/mingw64/include/string.h:
-
 D:/QEAFIVELS-Os/kernel/arch/x86_64/vm.c:
 
 D:/QEAFIVELS-Os/system/core/input.c:
@@ -474,6 +489,8 @@ D:/QEAFIVELS-Os/kernel/include/vqeaf/vfs.h:
 
 D:/QEAFIVELS-Os/kernel/include/vqeaf/virtio_blk.h:
 
+D:/QEAFIVELS-Os/kernel/include/vqeaf/virtio_net.h:
+
 D:/QEAFIVELS-Os/kernel/core/memory.c:
 
 D:/QEAFIVELS-Os/system/core/include/vqeaf/block.h:
@@ -514,9 +531,13 @@ D:/QEAFIVELS-Os/kernel/core/security.c:
 
 D:/QEAFIVELS-Os/kernel/drivers/ahci.c:
 
-D:/QEAFIVELS-Os/system/core/block.c:
+D:/QEAFIVELS-Os/kernel/drivers/virtio_net.c:
 
 C:/msys64/mingw64/include/sec_api/string_s.h:
+
+C:/msys64/mingw64/include/string.h:
+
+D:/QEAFIVELS-Os/system/core/block.c:
 
 D:/QEAFIVELS-Os/system/core/capability.c:
 

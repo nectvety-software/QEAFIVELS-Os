@@ -1,0 +1,46 @@
+schema_version: 1
+platform:
+  name: Xiaomi Redmi Note 7 Pro
+  codename: violet
+  status: BLOCKED_PENDING_LIVE_DTB
+  reference_dtb_root_compatible: qcom,sm6150-idp
+  reference_dtb_is_violet_board: false
+  expected_root_compatible_candidate: "xiaomi,violet (unverified; confirm from live DTB)"
+  board_identity_verified: false
+soc:
+  vendor: Qualcomm
+  model: SM6150
+  marketing_name: Snapdragon 675
+  status: DISCOVERED
+cpu:
+  architecture: AArch64
+  cores: 8
+  microarchitecture: Kryo 460
+  status: DISCOVERED
+memory:
+  type: LPDDR4X
+  supported_configurations_gb: [4, 6]
+  detected_size: null
+  status: UNKNOWN
+display:
+  resolution: [1080, 2340]
+  diagonal_inches: 6.3
+  panel_id: null
+  dsi_lanes: null
+  status: UNKNOWN
+storage:
+  type: eMMC
+  specification: "5.1"
+  capacity: null
+  status: UNKNOWN
+gpu:
+  model: Adreno 612
+  firmware: UNKNOWN
+  status: UNKNOWN
+battery:
+  nominal_capacity_mah: 4000
+  exact_pack_id: null
+  status: UNKNOWN
+notes:
+  - Values above are target-family specifications, not live measurements from a handset.
+  - Probe SoC ID, DTB, memory map, panel ID and controller IDs at runtime before enabling drivers.

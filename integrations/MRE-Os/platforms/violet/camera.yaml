@@ -1,0 +1,10 @@
+schema_version: 1
+isp_platform: Qualcomm
+sensor_inventory: UNKNOWN
+eeprom_model: UNKNOWN
+actuator_models: UNKNOWN
+calibration_sources: UNKNOWN
+firmware_and_tuning:
+  status: UNKNOWN
+  source_note: Android proprietary-files manifests list multiple vendor sensor modules; they are not confirmed physical inventory.
+status: UNKNOWN

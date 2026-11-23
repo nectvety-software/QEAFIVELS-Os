@@ -1,0 +1,16 @@
+schema_version: 1
+device_specification:
+  media: eMMC
+  standard: "5.1"
+  marketed_capacities_gb: [64, 128]
+  detected_capacity_bytes: null
+controller:
+  compatible: UNKNOWN
+  bus: UNKNOWN
+  mmio: UNKNOWN
+partition_layout: UNKNOWN
+boot_partition_policy: read_only_until_validated
+status: UNKNOWN
+notes:
+  - Generic SM6150 DTS contains references to an embedded UFS slot; do not apply that generic SoC node to Violet without its exact DTB.
+  - Device-specific README identifies eMMC 5.1.

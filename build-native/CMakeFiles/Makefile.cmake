@@ -81,6 +81,8 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/vqeaf_vfs_mount_smoke.dir/DependInfo.cmake"
   "CMakeFiles/vqeaf_settings_smoke.dir/DependInfo.cmake"
   "CMakeFiles/vqeaf_violet_tap_smoke.dir/DependInfo.cmake"
+  "CMakeFiles/vqeaf_violet_boot_probe_test.dir/DependInfo.cmake"
+  "CMakeFiles/vqeaf_qvf_encode_test.dir/DependInfo.cmake"
   "CMakeFiles/vqeaf_volume_lock_test.dir/DependInfo.cmake"
   "CMakeFiles/vqeaf_wcn3990_smoke.dir/DependInfo.cmake"
   "CMakeFiles/vqeaf_wcn3990_phase2_smoke.dir/DependInfo.cmake"

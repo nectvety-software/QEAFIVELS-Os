@@ -103,6 +103,12 @@ nên `wlan0` absent. cnss-daemon đã chạy (sau khi mount binderfs `/dev/binde
 nhưng im lặng; GNSS không có device node. Toàn bộ HAL/.so thật đã trích từ ROM
 gốc (`/opt/bionic-cnss` trong WSL). Không mock QMI, không báo kết nối giả.
 
+## MRE-Os AArch64 integration
+
+The standalone MRE-Os source is preserved under `integrations/MRE-Os/`. FDT/Violet discovery, MMU page-table construction, GICv2/v3 and Generic Timer are now integrated into the QEAF AArch64 build through an explicit Violet bootstrap/IRQ bridge under `kernel/platform/aarch64/violet_*`.
+
+The QEMU-virt kernel path remains separate and unchanged. Violet hardware activation is gated on a verified board DTB, complete RAM/reserved-memory map, correct PMM, MMU build and boot handoff. The current reference DTB is not a Violet board DTB; no firmware has been flashed. See `docs/platforms/VIOLET_NATIVE_BOOT_INTEGRATION.md` and `integrations/MRE-Os/INTEGRATION.md`.
+
 ## Deployment boundary
 
 Đây là một dự án x86_64 UEFI **tham chiếu** chỉ được kiểm chứng trong QEMU,

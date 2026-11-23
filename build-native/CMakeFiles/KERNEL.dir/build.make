@@ -190,11 +190,26 @@ CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.s"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S D:\QEAFIVELS-Os\kernel\drivers\virtio_blk.c -o CMakeFiles\KERNEL.dir\kernel\drivers\virtio_blk.c.s
 
+CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj: CMakeFiles/KERNEL.dir/flags.make
+CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
+CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj: D:/QEAFIVELS-Os/kernel/drivers/virtio_net.c
+CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building C object CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj"
+	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj -MF CMakeFiles\KERNEL.dir\kernel\drivers\virtio_net.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\drivers\virtio_net.c.obj -c D:\QEAFIVELS-Os\kernel\drivers\virtio_net.c
+
+CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.i"
+	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E D:\QEAFIVELS-Os\kernel\drivers\virtio_net.c > CMakeFiles\KERNEL.dir\kernel\drivers\virtio_net.c.i
+
+CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.s"
+	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S D:\QEAFIVELS-Os\kernel\drivers\virtio_net.c -o CMakeFiles\KERNEL.dir\kernel\drivers\virtio_net.c.s
+
 CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj: D:/QEAFIVELS-Os/kernel/drivers/ahci.c
 CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building C object CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj -MF CMakeFiles\KERNEL.dir\kernel\drivers\ahci.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\drivers\ahci.c.obj -c D:\QEAFIVELS-Os\kernel\drivers\ahci.c
 
 CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.i: cmake_force
@@ -209,7 +224,7 @@ CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj: D:/QEAFIVELS-Os/kernel/core/memory.c
 CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building C object CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj -MF CMakeFiles\KERNEL.dir\kernel\core\memory.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\core\memory.c.obj -c D:\QEAFIVELS-Os\kernel\core\memory.c
 
 CMakeFiles/KERNEL.dir/kernel/core/memory.c.i: cmake_force
@@ -224,7 +239,7 @@ CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj: CMakeFiles/KERNEL.dir/flags.m
 CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj: D:/QEAFIVELS-Os/kernel/core/scheduler.c
 CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building C object CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building C object CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj -MF CMakeFiles\KERNEL.dir\kernel\core\scheduler.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\core\scheduler.c.obj -c D:\QEAFIVELS-Os\kernel\core\scheduler.c
 
 CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.i: cmake_force
@@ -239,7 +254,7 @@ CMakeFiles/KERNEL.dir/kernel/core/kheap.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/kernel/core/kheap.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/core/kheap.c.obj: D:/QEAFIVELS-Os/kernel/core/kheap.c
 CMakeFiles/KERNEL.dir/kernel/core/kheap.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building C object CMakeFiles/KERNEL.dir/kernel/core/kheap.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building C object CMakeFiles/KERNEL.dir/kernel/core/kheap.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/core/kheap.c.obj -MF CMakeFiles\KERNEL.dir\kernel\core\kheap.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\core\kheap.c.obj -c D:\QEAFIVELS-Os\kernel\core\kheap.c
 
 CMakeFiles/KERNEL.dir/kernel/core/kheap.c.i: cmake_force
@@ -254,7 +269,7 @@ CMakeFiles/KERNEL.dir/kernel/core/elf.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/kernel/core/elf.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/core/elf.c.obj: D:/QEAFIVELS-Os/kernel/core/elf.c
 CMakeFiles/KERNEL.dir/kernel/core/elf.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building C object CMakeFiles/KERNEL.dir/kernel/core/elf.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building C object CMakeFiles/KERNEL.dir/kernel/core/elf.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/core/elf.c.obj -MF CMakeFiles\KERNEL.dir\kernel\core\elf.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\core\elf.c.obj -c D:\QEAFIVELS-Os\kernel\core\elf.c
 
 CMakeFiles/KERNEL.dir/kernel/core/elf.c.i: cmake_force
@@ -269,7 +284,7 @@ CMakeFiles/KERNEL.dir/kernel/core/ipc.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/kernel/core/ipc.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/core/ipc.c.obj: D:/QEAFIVELS-Os/kernel/core/ipc.c
 CMakeFiles/KERNEL.dir/kernel/core/ipc.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building C object CMakeFiles/KERNEL.dir/kernel/core/ipc.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building C object CMakeFiles/KERNEL.dir/kernel/core/ipc.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/core/ipc.c.obj -MF CMakeFiles\KERNEL.dir\kernel\core\ipc.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\core\ipc.c.obj -c D:\QEAFIVELS-Os\kernel\core\ipc.c
 
 CMakeFiles/KERNEL.dir/kernel/core/ipc.c.i: cmake_force
@@ -284,7 +299,7 @@ CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj: D:/QEAFIVELS-Os/kernel/core/vfs.c
 CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building C object CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building C object CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/core/vfs.c.obj -MF CMakeFiles\KERNEL.dir\kernel\core\vfs.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\core\vfs.c.obj -c D:\QEAFIVELS-Os\kernel\core\vfs.c
 
 CMakeFiles/KERNEL.dir/kernel/core/vfs.c.i: cmake_force
@@ -299,7 +314,7 @@ CMakeFiles/KERNEL.dir/kernel/core/security.c.obj: CMakeFiles/KERNEL.dir/flags.ma
 CMakeFiles/KERNEL.dir/kernel/core/security.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/core/security.c.obj: D:/QEAFIVELS-Os/kernel/core/security.c
 CMakeFiles/KERNEL.dir/kernel/core/security.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building C object CMakeFiles/KERNEL.dir/kernel/core/security.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building C object CMakeFiles/KERNEL.dir/kernel/core/security.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/core/security.c.obj -MF CMakeFiles\KERNEL.dir\kernel\core\security.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\core\security.c.obj -c D:\QEAFIVELS-Os\kernel\core\security.c
 
 CMakeFiles/KERNEL.dir/kernel/core/security.c.i: cmake_force
@@ -314,7 +329,7 @@ CMakeFiles/KERNEL.dir/kernel/core/freestanding.c.obj: CMakeFiles/KERNEL.dir/flag
 CMakeFiles/KERNEL.dir/kernel/core/freestanding.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/kernel/core/freestanding.c.obj: D:/QEAFIVELS-Os/kernel/core/freestanding.c
 CMakeFiles/KERNEL.dir/kernel/core/freestanding.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building C object CMakeFiles/KERNEL.dir/kernel/core/freestanding.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building C object CMakeFiles/KERNEL.dir/kernel/core/freestanding.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/kernel/core/freestanding.c.obj -MF CMakeFiles\KERNEL.dir\kernel\core\freestanding.c.obj.d -o CMakeFiles\KERNEL.dir\kernel\core\freestanding.c.obj -c D:\QEAFIVELS-Os\kernel\core\freestanding.c
 
 CMakeFiles/KERNEL.dir/kernel/core/freestanding.c.i: cmake_force
@@ -329,7 +344,7 @@ CMakeFiles/KERNEL.dir/system/core/input.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/system/core/input.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/input.c.obj: D:/QEAFIVELS-Os/system/core/input.c
 CMakeFiles/KERNEL.dir/system/core/input.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building C object CMakeFiles/KERNEL.dir/system/core/input.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building C object CMakeFiles/KERNEL.dir/system/core/input.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/input.c.obj -MF CMakeFiles\KERNEL.dir\system\core\input.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\input.c.obj -c D:\QEAFIVELS-Os\system\core\input.c
 
 CMakeFiles/KERNEL.dir/system/core/input.c.i: cmake_force
@@ -344,7 +359,7 @@ CMakeFiles/KERNEL.dir/system/core/power_menu.c.obj: CMakeFiles/KERNEL.dir/flags.
 CMakeFiles/KERNEL.dir/system/core/power_menu.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/power_menu.c.obj: D:/QEAFIVELS-Os/system/core/power_menu.c
 CMakeFiles/KERNEL.dir/system/core/power_menu.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building C object CMakeFiles/KERNEL.dir/system/core/power_menu.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building C object CMakeFiles/KERNEL.dir/system/core/power_menu.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/power_menu.c.obj -MF CMakeFiles\KERNEL.dir\system\core\power_menu.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\power_menu.c.obj -c D:\QEAFIVELS-Os\system\core\power_menu.c
 
 CMakeFiles/KERNEL.dir/system/core/power_menu.c.i: cmake_force
@@ -359,7 +374,7 @@ CMakeFiles/KERNEL.dir/system/core/driver.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/system/core/driver.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/driver.c.obj: D:/QEAFIVELS-Os/system/core/driver.c
 CMakeFiles/KERNEL.dir/system/core/driver.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building C object CMakeFiles/KERNEL.dir/system/core/driver.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_21) "Building C object CMakeFiles/KERNEL.dir/system/core/driver.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/driver.c.obj -MF CMakeFiles\KERNEL.dir\system\core\driver.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\driver.c.obj -c D:\QEAFIVELS-Os\system\core\driver.c
 
 CMakeFiles/KERNEL.dir/system/core/driver.c.i: cmake_force
@@ -374,7 +389,7 @@ CMakeFiles/KERNEL.dir/system/core/capability.c.obj: CMakeFiles/KERNEL.dir/flags.
 CMakeFiles/KERNEL.dir/system/core/capability.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/capability.c.obj: D:/QEAFIVELS-Os/system/core/capability.c
 CMakeFiles/KERNEL.dir/system/core/capability.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_21) "Building C object CMakeFiles/KERNEL.dir/system/core/capability.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_22) "Building C object CMakeFiles/KERNEL.dir/system/core/capability.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/capability.c.obj -MF CMakeFiles\KERNEL.dir\system\core\capability.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\capability.c.obj -c D:\QEAFIVELS-Os\system\core\capability.c
 
 CMakeFiles/KERNEL.dir/system/core/capability.c.i: cmake_force
@@ -389,7 +404,7 @@ CMakeFiles/KERNEL.dir/system/core/storage.c.obj: CMakeFiles/KERNEL.dir/flags.mak
 CMakeFiles/KERNEL.dir/system/core/storage.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/storage.c.obj: D:/QEAFIVELS-Os/system/core/storage.c
 CMakeFiles/KERNEL.dir/system/core/storage.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_22) "Building C object CMakeFiles/KERNEL.dir/system/core/storage.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_23) "Building C object CMakeFiles/KERNEL.dir/system/core/storage.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/storage.c.obj -MF CMakeFiles\KERNEL.dir\system\core\storage.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\storage.c.obj -c D:\QEAFIVELS-Os\system\core\storage.c
 
 CMakeFiles/KERNEL.dir/system/core/storage.c.i: cmake_force
@@ -404,7 +419,7 @@ CMakeFiles/KERNEL.dir/system/core/storage_layout.c.obj: CMakeFiles/KERNEL.dir/fl
 CMakeFiles/KERNEL.dir/system/core/storage_layout.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/storage_layout.c.obj: D:/QEAFIVELS-Os/system/core/storage_layout.c
 CMakeFiles/KERNEL.dir/system/core/storage_layout.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_23) "Building C object CMakeFiles/KERNEL.dir/system/core/storage_layout.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_24) "Building C object CMakeFiles/KERNEL.dir/system/core/storage_layout.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/storage_layout.c.obj -MF CMakeFiles\KERNEL.dir\system\core\storage_layout.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\storage_layout.c.obj -c D:\QEAFIVELS-Os\system\core\storage_layout.c
 
 CMakeFiles/KERNEL.dir/system/core/storage_layout.c.i: cmake_force
@@ -419,7 +434,7 @@ CMakeFiles/KERNEL.dir/system/core/rescue.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/system/core/rescue.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/rescue.c.obj: D:/QEAFIVELS-Os/system/core/rescue.c
 CMakeFiles/KERNEL.dir/system/core/rescue.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_24) "Building C object CMakeFiles/KERNEL.dir/system/core/rescue.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_25) "Building C object CMakeFiles/KERNEL.dir/system/core/rescue.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/rescue.c.obj -MF CMakeFiles\KERNEL.dir\system\core\rescue.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\rescue.c.obj -c D:\QEAFIVELS-Os\system\core\rescue.c
 
 CMakeFiles/KERNEL.dir/system/core/rescue.c.i: cmake_force
@@ -434,7 +449,7 @@ CMakeFiles/KERNEL.dir/system/core/power.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/system/core/power.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/power.c.obj: D:/QEAFIVELS-Os/system/core/power.c
 CMakeFiles/KERNEL.dir/system/core/power.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_25) "Building C object CMakeFiles/KERNEL.dir/system/core/power.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_26) "Building C object CMakeFiles/KERNEL.dir/system/core/power.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/power.c.obj -MF CMakeFiles\KERNEL.dir\system\core\power.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\power.c.obj -c D:\QEAFIVELS-Os\system\core\power.c
 
 CMakeFiles/KERNEL.dir/system/core/power.c.i: cmake_force
@@ -449,7 +464,7 @@ CMakeFiles/KERNEL.dir/system/core/block.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/system/core/block.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/block.c.obj: D:/QEAFIVELS-Os/system/core/block.c
 CMakeFiles/KERNEL.dir/system/core/block.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_26) "Building C object CMakeFiles/KERNEL.dir/system/core/block.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_27) "Building C object CMakeFiles/KERNEL.dir/system/core/block.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/block.c.obj -MF CMakeFiles\KERNEL.dir\system\core\block.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\block.c.obj -c D:\QEAFIVELS-Os\system\core\block.c
 
 CMakeFiles/KERNEL.dir/system/core/block.c.i: cmake_force
@@ -464,7 +479,7 @@ CMakeFiles/KERNEL.dir/system/core/partition.c.obj: CMakeFiles/KERNEL.dir/flags.m
 CMakeFiles/KERNEL.dir/system/core/partition.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/partition.c.obj: D:/QEAFIVELS-Os/system/core/partition.c
 CMakeFiles/KERNEL.dir/system/core/partition.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_27) "Building C object CMakeFiles/KERNEL.dir/system/core/partition.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_28) "Building C object CMakeFiles/KERNEL.dir/system/core/partition.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/partition.c.obj -MF CMakeFiles\KERNEL.dir\system\core\partition.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\partition.c.obj -c D:\QEAFIVELS-Os\system\core\partition.c
 
 CMakeFiles/KERNEL.dir/system/core/partition.c.i: cmake_force
@@ -479,7 +494,7 @@ CMakeFiles/KERNEL.dir/system/core/fs_fat16.c.obj: CMakeFiles/KERNEL.dir/flags.ma
 CMakeFiles/KERNEL.dir/system/core/fs_fat16.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/core/fs_fat16.c.obj: D:/QEAFIVELS-Os/system/core/fs_fat16.c
 CMakeFiles/KERNEL.dir/system/core/fs_fat16.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_28) "Building C object CMakeFiles/KERNEL.dir/system/core/fs_fat16.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_29) "Building C object CMakeFiles/KERNEL.dir/system/core/fs_fat16.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/core/fs_fat16.c.obj -MF CMakeFiles\KERNEL.dir\system\core\fs_fat16.c.obj.d -o CMakeFiles\KERNEL.dir\system\core\fs_fat16.c.obj -c D:\QEAFIVELS-Os\system\core\fs_fat16.c
 
 CMakeFiles/KERNEL.dir/system/core/fs_fat16.c.i: cmake_force
@@ -494,7 +509,7 @@ CMakeFiles/KERNEL.dir/system/ui/gfx.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/system/ui/gfx.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/ui/gfx.c.obj: D:/QEAFIVELS-Os/system/ui/gfx.c
 CMakeFiles/KERNEL.dir/system/ui/gfx.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_29) "Building C object CMakeFiles/KERNEL.dir/system/ui/gfx.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_30) "Building C object CMakeFiles/KERNEL.dir/system/ui/gfx.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/ui/gfx.c.obj -MF CMakeFiles\KERNEL.dir\system\ui\gfx.c.obj.d -o CMakeFiles\KERNEL.dir\system\ui\gfx.c.obj -c D:\QEAFIVELS-Os\system\ui\gfx.c
 
 CMakeFiles/KERNEL.dir/system/ui/gfx.c.i: cmake_force
@@ -509,7 +524,7 @@ CMakeFiles/KERNEL.dir/system/ui/screen_common.c.obj: CMakeFiles/KERNEL.dir/flags
 CMakeFiles/KERNEL.dir/system/ui/screen_common.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/ui/screen_common.c.obj: D:/QEAFIVELS-Os/system/ui/screen_common.c
 CMakeFiles/KERNEL.dir/system/ui/screen_common.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_30) "Building C object CMakeFiles/KERNEL.dir/system/ui/screen_common.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_31) "Building C object CMakeFiles/KERNEL.dir/system/ui/screen_common.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/ui/screen_common.c.obj -MF CMakeFiles\KERNEL.dir\system\ui\screen_common.c.obj.d -o CMakeFiles\KERNEL.dir\system\ui\screen_common.c.obj -c D:\QEAFIVELS-Os\system\ui\screen_common.c
 
 CMakeFiles/KERNEL.dir/system/ui/screen_common.c.i: cmake_force
@@ -524,7 +539,7 @@ CMakeFiles/KERNEL.dir/system/ui/recovery_screen.c.obj: CMakeFiles/KERNEL.dir/fla
 CMakeFiles/KERNEL.dir/system/ui/recovery_screen.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/ui/recovery_screen.c.obj: D:/QEAFIVELS-Os/system/ui/recovery_screen.c
 CMakeFiles/KERNEL.dir/system/ui/recovery_screen.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_31) "Building C object CMakeFiles/KERNEL.dir/system/ui/recovery_screen.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_32) "Building C object CMakeFiles/KERNEL.dir/system/ui/recovery_screen.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/ui/recovery_screen.c.obj -MF CMakeFiles\KERNEL.dir\system\ui\recovery_screen.c.obj.d -o CMakeFiles\KERNEL.dir\system\ui\recovery_screen.c.obj -c D:\QEAFIVELS-Os\system\ui\recovery_screen.c
 
 CMakeFiles/KERNEL.dir/system/ui/recovery_screen.c.i: cmake_force
@@ -539,7 +554,7 @@ CMakeFiles/KERNEL.dir/system/ui/phone_shell.c.obj: CMakeFiles/KERNEL.dir/flags.m
 CMakeFiles/KERNEL.dir/system/ui/phone_shell.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/ui/phone_shell.c.obj: D:/QEAFIVELS-Os/system/ui/phone_shell.c
 CMakeFiles/KERNEL.dir/system/ui/phone_shell.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_32) "Building C object CMakeFiles/KERNEL.dir/system/ui/phone_shell.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_33) "Building C object CMakeFiles/KERNEL.dir/system/ui/phone_shell.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/ui/phone_shell.c.obj -MF CMakeFiles\KERNEL.dir\system\ui\phone_shell.c.obj.d -o CMakeFiles\KERNEL.dir\system\ui\phone_shell.c.obj -c D:\QEAFIVELS-Os\system\ui\phone_shell.c
 
 CMakeFiles/KERNEL.dir/system/ui/phone_shell.c.i: cmake_force
@@ -554,7 +569,7 @@ CMakeFiles/KERNEL.dir/system/ui/ui.c.obj: CMakeFiles/KERNEL.dir/flags.make
 CMakeFiles/KERNEL.dir/system/ui/ui.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/ui/ui.c.obj: D:/QEAFIVELS-Os/system/ui/ui.c
 CMakeFiles/KERNEL.dir/system/ui/ui.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_33) "Building C object CMakeFiles/KERNEL.dir/system/ui/ui.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_34) "Building C object CMakeFiles/KERNEL.dir/system/ui/ui.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/ui/ui.c.obj -MF CMakeFiles\KERNEL.dir\system\ui\ui.c.obj.d -o CMakeFiles\KERNEL.dir\system\ui\ui.c.obj -c D:\QEAFIVELS-Os\system\ui\ui.c
 
 CMakeFiles/KERNEL.dir/system/ui/ui.c.i: cmake_force
@@ -569,7 +584,7 @@ CMakeFiles/KERNEL.dir/system/ui/update_screen.c.obj: CMakeFiles/KERNEL.dir/flags
 CMakeFiles/KERNEL.dir/system/ui/update_screen.c.obj: CMakeFiles/KERNEL.dir/includes_C.rsp
 CMakeFiles/KERNEL.dir/system/ui/update_screen.c.obj: D:/QEAFIVELS-Os/system/ui/update_screen.c
 CMakeFiles/KERNEL.dir/system/ui/update_screen.c.obj: CMakeFiles/KERNEL.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_34) "Building C object CMakeFiles/KERNEL.dir/system/ui/update_screen.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_35) "Building C object CMakeFiles/KERNEL.dir/system/ui/update_screen.c.obj"
 	C:\msys64\mingw64\bin\x86_64-w64-mingw32-gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/KERNEL.dir/system/ui/update_screen.c.obj -MF CMakeFiles\KERNEL.dir\system\ui\update_screen.c.obj.d -o CMakeFiles\KERNEL.dir\system\ui\update_screen.c.obj -c D:\QEAFIVELS-Os\system\ui\update_screen.c
 
 CMakeFiles/KERNEL.dir/system/ui/update_screen.c.i: cmake_force
@@ -590,6 +605,7 @@ KERNEL_OBJECTS = \
 "CMakeFiles/KERNEL.dir/kernel/arch/x86_64/pci.c.obj" \
 "CMakeFiles/KERNEL.dir/kernel/arch/x86_64/rtc.c.obj" \
 "CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.obj" \
+"CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj" \
 "CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj" \
 "CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj" \
 "CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj" \
@@ -628,6 +644,7 @@ KERNEL.EFI: CMakeFiles/KERNEL.dir/kernel/arch/x86_64/vm.c.obj
 KERNEL.EFI: CMakeFiles/KERNEL.dir/kernel/arch/x86_64/pci.c.obj
 KERNEL.EFI: CMakeFiles/KERNEL.dir/kernel/arch/x86_64/rtc.c.obj
 KERNEL.EFI: CMakeFiles/KERNEL.dir/kernel/drivers/virtio_blk.c.obj
+KERNEL.EFI: CMakeFiles/KERNEL.dir/kernel/drivers/virtio_net.c.obj
 KERNEL.EFI: CMakeFiles/KERNEL.dir/kernel/drivers/ahci.c.obj
 KERNEL.EFI: CMakeFiles/KERNEL.dir/kernel/core/memory.c.obj
 KERNEL.EFI: CMakeFiles/KERNEL.dir/kernel/core/scheduler.c.obj
@@ -658,7 +675,7 @@ KERNEL.EFI: CMakeFiles/KERNEL.dir/build.make
 KERNEL.EFI: CMakeFiles/KERNEL.dir/linkLibs.rsp
 KERNEL.EFI: CMakeFiles/KERNEL.dir/objects1.rsp
 KERNEL.EFI: CMakeFiles/KERNEL.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_35) "Linking C executable KERNEL.EFI"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=D:\QEAFIVELS-Os\build-native\CMakeFiles --progress-num=$(CMAKE_PROGRESS_36) "Linking C executable KERNEL.EFI"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles\KERNEL.dir\link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

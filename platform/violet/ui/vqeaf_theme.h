@@ -287,6 +287,35 @@ void vqeaf_m3_progress_set(lv_obj_t *bar, int value);
 /* Indeterminate linear progress: a sweeping primary indicator, no percentage
  * (for atomic operations where a honest percent does not exist). */
 lv_obj_t *vqeaf_m3_progress_indeterminate(lv_obj_t *parent);
+
+/* --- interactive components ---------------------------------------------- */
+/* Paper Plane: a 64 px send button with the SEND glyph (Material's paper
+ * plane). A tap flies the glyph out along an ease-in path, fades it and then
+ * restores it; LV_EVENT_VALUE_CHANGED marks the end of the flight. The control
+ * runs motion only: it never claims a message was delivered. */
+lv_obj_t *vqeaf_m3_paper_plane(lv_obj_t *parent, lv_event_cb_t cb,
+                               void *user_data);
+
+/* Swipe Confirm: a track whose knob must be dragged to the right edge. The
+ * confirmed state is real widget state; tapping a confirmed control resets it.
+ * LV_EVENT_VALUE_CHANGED fires on both transitions; read it with
+ * vqeaf_m3_swipe_confirmed(). */
+lv_obj_t *vqeaf_m3_swipe_confirm(lv_obj_t *parent, const char *label,
+                                 lv_event_cb_t cb, void *user_data);
+int vqeaf_m3_swipe_confirmed(lv_obj_t *control);
+
+/* Download Ring: a 270-degree arc (gap at the bottom) with a percentage label
+ * in the middle. `size` is the square edge; values are 0..100. Nothing is
+ * downloaded by the component, the caller owns the value. */
+lv_obj_t *vqeaf_m3_download_ring(lv_obj_t *parent, int32_t size);
+void vqeaf_m3_download_ring_set(lv_obj_t *ring, int value);
+
+/* Checklist: one tappable row per item with a square M3 checkbox. Check state
+ * is per row and lives for the widget's lifetime; the container emits
+ * LV_EVENT_VALUE_CHANGED after a toggle. */
+lv_obj_t *vqeaf_m3_checklist(lv_obj_t *parent, const char *const *items,
+                             int count);
+int vqeaf_m3_checklist_done(lv_obj_t *list);
 /* The mountain-lake gradient used by the lock screen and home header. */
 void vqeaf_wallpaper(lv_obj_t *parent);
 /* Text colour for labels drawn directly over the photo wallpaper. Returns a
