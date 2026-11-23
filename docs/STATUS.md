@@ -1,5 +1,44 @@
 # Milestone status
 
+## Wi-Fi: nạp p77 lấy đủ 2 proof + `wifi state` in đúng lý do binder (2026-11-23)
+
+- Nạp **chỉ p77** qua QEAFRESCUE (`temp/flash_capture.py`, không fastboot). Lần đầu nạp
+  ảnh `8b942bc0…` chỉ giữ được **proof 1** (`flash: written and verified byte for byte`):
+  `scripts/device_check.py --flash` reboot ngay sau khi ghi nên boot mới ghi đè
+  `QEAFBOOT.LOG` và dòng `lun: verified` bị mất. Ghi lại đây là **thiếu proof 2**, không
+  nhận là đã có.
+- Lần nạp thứ hai chụp cả hai file **trước khi reboot** → đủ 2 proof, lưu tại
+  `build/screens/device/flash-proof-binder-note-20261123/`:
+  `RESPONSE.TXT`: `flash: written and verified byte for byte`;
+  `QEAFBOOT.LOG`: `lun: verified - recovery and BOOTIMG.BIN agree byte for byte over
+  51310592 bytes in 1 cluster runs`.
+- Ảnh lần nạp thứ hai: `dist/boot-vqeaf-violet.img` 51.310.592 B, sha256 thật
+  `02c1e888cf1bd0b09e33fa36da3d287c32573aa76fbe4fa8681d50f59ec66431` (trùng
+  `build/violet/boot-vqeaf-violet-pre.img`); `validate_bootimg` + `audit_rescue_channel`
+  PASS. Lưu ý: dòng `sha256` mà `package_violet.py` in ra là digest rút gọn nội bộ
+  (16 hex, không phải SHA-256) — phải kiểm bằng `sha256sum`.
+- **Phát hiện quan trọng:** dòng `hostsvc binder: absent` ở boot trước là *hiện tượng
+  báo cáo*, không phải binder hỏng. `ensure_binder_node()` chỉ chạy trong đường WLAN
+  (`vio_host_services_start_wlan`) và `vio_host_vendor_wifi`, mà đường WLAN return sớm
+  ở cổng MAC p74 → chưa ai probe binder nên `binder_note` rỗng và report in "absent" trơn.
+  Đã sửa: thêm `binder_diagnose()` **chỉ đọc** (không mount/mknod trong lúc query) và
+  report dùng nó khi chưa có note.
+- Bằng chứng trên máy sau reboot (ảnh `02c1e888…`):
+  - `wifi up` → `wifi bring: stage=1 vendor=1 modem=1 mounted=1 persist=1 links=234
+    wlan=0 modem_started=0`, `wifi modem: fd=-1 rc=0 thread_done=0`.
+  - `wifi state` → `hostsvc binder: absent (binderfs advertised but not mounted;
+    /dev/binderfs No such file or directory)` — **đúng yêu cầu: lý do thật, không còn
+    "absent" trơn**.
+  - `wifi vendor` → `hostsvc binder: present (binderfs /dev/binderfs)` và
+    `hostsvc cnss-daemon: running pid=542`. Tức kernel 4.14 này **có** binderfs dùng
+    được; khi được probe thì binderfs mount + `BINDER_CTL_ADD` thành công và
+    cnss-daemon sống (khác các boot trước, daemon abort vì thiếu `/dev/binder`).
+    `hostsvc wlan` vẫn `not started (on=0 errno=0)` vì cổng MAC persist chưa mở; `wlan0`
+    vẫn chưa có.
+- Kết luận: hạ tầng binder không còn là chặn cứng. Chặn còn lại vẫn là (a) `wlan_mac.bin`
+  không có trên p74 và symlink `/vendor/firmware/wlan/qca_cld/wlan_mac.bin` hỏng, (b) WLFW
+  `0x45` chưa publish, (c) modem nhả sau ~30 s.
+
 ## Wi-Fi: bằng chứng máy thật cho chuỗi chặn wlan0 + báo lý do binder bị thiếu (2026-11-22)
 
 - Máy đang kết nối lại (volume `F:` sống, `status` trả `QEAFIVELS OS 0.3.0; device violet;
@@ -16,20 +55,19 @@
   (`display bluetooth vpp misc ... qti_fp hlos_rfs`), **không có** `wlan_mac.bin`;
   `wifi find wlan_mac.bin` → `not found`; `/vendor/firmware/wlan/qca_cld/wlan_mac.bin`
   tồn tại nhưng là **symlink hỏng** (`wifi cat` → `unreadable (errno 2)`).
-- Binder cũng thiếu ngay lúc chạy: `hostsvc binder: absent`, dù kernel đang chạy có
-  `nodev binder` trong `/proc/filesystems` và `/dev/binderfs` không tồn tại trên
-  `/proc/mounts`. `wifi vendor` (đường bỏ qua cổng MAC) trả `wifi vendor: started`
-  nhưng ngay sau đó `hostsvc cnss-daemon: not started` — daemon thoát vì không có
-  `/dev/binder`.
+- Binder lúc đó in `hostsvc binder: absent` trơn, dù kernel có `nodev binder` trong
+  `/proc/filesystems` và `/dev/binderfs` không có trên `/proc/mounts`. Lượt 2026-11-23
+  chứng minh đây là hiện tượng **chưa probe**, không phải binder hỏng: `wifi vendor`
+  cho `present (binderfs /dev/binderfs)` + `cnss-daemon: running pid=542`.
 - Vì `HOMOLOG.TXT` chỉ được chụp một lần lúc boot (tail kết thúc ở mốc ~62 s), lý do
-  mount binderfs thất bại không tới được host. Đã sửa để `wifi state` in lý do thật:
-  `binder_note` trong `platform/violet/host_services.c` ghi lại mkdir/mount/
-  `BINDER_CTL_ADD`/fallback đã trả gì, report in `hostsvc binder: present|absent (<lý do>)`.
-  Chuỗi `binder: present` giữ nguyên nên `wifi bring` STEP3 vẫn đọc được.
-- Kiểm chứng: `scripts/package_violet.py` PASS (build + validate_bootimg +
+  mount binderfs thất bại không tới được host. Sửa bước 1: `binder_note` trong
+  `platform/violet/host_services.c` ghi lại mkdir/mount/`BINDER_CTL_ADD`/fallback đã trả gì.
+  Sửa bước 2 (2026-11-23): report dùng thêm `binder_diagnose()` chỉ-đọc, vì note vẫn rỗng
+  khi cổng MAC p74 chặn trước khi binder được probe.
+- Kiểm chứng lúc build: `scripts/package_violet.py` PASS (build + validate_bootimg +
   audit_rescue_channel), ảnh `dist/boot-vqeaf-violet.img` 51.310.592 B, sha256
-  `8b942bc0c307001c1d846becf35cea6427a8f5b0028fcac32b1260f15f0a5c74`. **Chưa flash**
-  (cần user xác nhận); chưa có kết quả `wifi state` mới trên máy.
+  `8b942bc0c307001c1d846becf35cea6427a8f5b0028fcac32b1260f15f0a5c74`.
+  (Đã nạp về sau trong lượt 2026-11-23 — xem mục đầu file.)
 
 ## Wi-Fi: driver kiểm tra container firmware WCN3990 trước khi giao cho icnss (2026-11-22)
 
@@ -3568,3 +3606,14 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Gate host `python scripts/test_violet_storage_layout.py` chạy `fat16_init()` +
   `storage_publish()` thật trên RAM: **27/27 thư mục OK, ALL OK**.
 - Chưa flash ảnh này; cần xác nhận riêng trước khi ghi p77.
+
+
+## Tên thiết bị USB theo OS (2026-11-23)
+- Làm rõ: `OPPO A37fw` trong ảnh chỉ là ví dụ về cây thư mục, không phải tên
+  thiết bị violet. Không đặt tên vendor cho máy.
+- `vio_lun_start_gadget()` giờ đặt `product = QEAF_OS_NAME " violet"`
+  (`QEAFIVELS OS violet`), manufacturer vẫn `QEAFIVELS OS`, serial
+  `vqeaf-os-violet`. Nhãn ổ rescue vẫn `QEAFRESCUE` để gate/rescue không hỏng.
+- Test `tests.test_qeaf_usb_identity` 2 tests OK; build OK (11.484.448 B);
+  package OK, ảnh sha `0aec4c7c6fbf6f2eaa7bcd90d600df66f94212ccf0fbd68d4d0456e376b58b55`.
+- Chưa flash; chờ xác nhận p77 riêng.

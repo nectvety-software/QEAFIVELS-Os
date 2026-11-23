@@ -272,7 +272,10 @@ int vio_lun_start_gadget(struct vio_lun *lun)
     make_dir(strings);
     write_attr(strings, "serialnumber", "vqeaf-os-violet");
     write_attr(strings, "manufacturer", QEAF_OS_NAME);
-    write_attr(strings, "product", "QEAFRESCUE");
+    /* Windows "This PC" shows this string as the phone's device name. Keep the
+     * QEAFRESCUE volume label for the rescue drive; the device itself is the
+     * OS, not a vendor handset name. */
+    write_attr(strings, "product", QEAF_OS_NAME " violet");
 
     snprintf(config, sizeof(config), "%s/configs/c.1", GADGET_DIR);
     make_dir(config);
