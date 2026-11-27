@@ -7,6 +7,7 @@ rescue; Linux owns the kernel and hardware drivers. The freestanding kernels
 under `kernel/arch` are retained reference tracks, not this production path.
 """
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
@@ -209,6 +210,35 @@ _extra = os.environ.get("VQEAF_EXTRA_CFLAGS")
 if _extra:
     CFLAGS += [f for f in _extra.split() if f]
 
+BUILD_CONFIG = os.path.join(ROOT, "build", "violet", "compile-config.sha256")
+
+
+def build_config_digest():
+    digest = hashlib.sha256()
+    compiler = (ZIG, os.path.getmtime(ZIG), os.path.getsize(ZIG))
+    for item in compiler + tuple(CFLAGS) + tuple(INCLUDES) + tuple(DRIVES_INCLUDES):
+        digest.update(str(item).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def prepare_build(config):
+    os.makedirs(os.path.dirname(BUILD_CONFIG), exist_ok=True)
+    previous = None
+    if os.path.isfile(BUILD_CONFIG):
+        with open(BUILD_CONFIG, "r", encoding="ascii") as handle:
+            previous = handle.read().strip()
+    if previous != config:
+        if previous is not None:
+            print("build_violet: compiler flags changed; rebuilding every object")
+        shutil.rmtree(OBJDIR, ignore_errors=True)
+        shutil.rmtree(DRIVES_OBJDIR, ignore_errors=True)
+        for path in (TARGET, DRIVES_ARCHIVE):
+            if os.path.isfile(path):
+                os.remove(path)
+        with open(BUILD_CONFIG, "w", encoding="ascii") as handle:
+            handle.write(config + "\n")
+
 
 def newest_header_mtime():
     """Newest mtime among all headers reachable from the include dirs, so an
@@ -241,6 +271,8 @@ def compile_one(src, verbose, header_mtime):
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace")
     if proc.returncode != 0:
+        if os.path.isfile(obj):
+            os.remove(obj)
         return src, proc.stderr or proc.stdout
     return obj, None
 
@@ -260,6 +292,8 @@ def compile_drive(src, verbose, header_mtime):
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace")
     if proc.returncode != 0:
+        if os.path.isfile(obj):
+            os.remove(obj)
         return src, proc.stderr or proc.stdout
     return obj, None
 
@@ -324,6 +358,7 @@ def main(argv=None):
             if os.path.isfile(path):
                 os.remove(path)
 
+    prepare_build(build_config_digest())
     os.makedirs(OBJDIR, exist_ok=True)
     failures = []
     objects = []

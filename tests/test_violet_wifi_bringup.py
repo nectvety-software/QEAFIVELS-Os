@@ -7,12 +7,16 @@ RMTFS = ROOT / "platform/violet/hosttools/src/rmtfs"
 PD_LISTEN = ROOT / "platform/violet/hosttools/src/wlfwd/pd-listen.c"
 BUILD = ROOT / "scripts/build_violet_hosttools.py"
 DEVNODES = ROOT / "platform/violet/devnodes.c"
+WIFI_BRINGUP = ROOT / "platform/violet/wifi_bringup.c"
+RESCUE = ROOT / "platform/violet/channel/fs/rescue.c"
 
 
 class VioletWifiBringupContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.host = HOST.read_text(encoding="utf-8")
+        cls.wifi_bringup = WIFI_BRINGUP.read_text(encoding="utf-8")
+        cls.rescue = RESCUE.read_text(encoding="utf-8")
         cls.sharedmem = (RMTFS / "sharedmem.c").read_text(encoding="utf-8")
         cls.storage = (RMTFS / "storage.c").read_text(encoding="utf-8")
         cls.listener = PD_LISTEN.read_text(encoding="utf-8")
@@ -117,6 +121,69 @@ class VioletWifiBringupContractTests(unittest.TestCase):
 
     def test_pd_listen_links_real_qrtr_library(self):
         self.assertIn('"pd-listen": [os.path.join(SRC, "wlfwd", "pd-listen.c")] + QRTR_LIB', self.builder)
+
+    @staticmethod
+    def function_block(source, signature):
+        start = source.index(signature)
+        brace = source.index("{", start)
+        depth = 0
+        for pos in range(brace, len(source)):
+            if source[pos] == "{":
+                depth += 1
+            elif source[pos] == "}":
+                depth -= 1
+                if depth == 0:
+                    return source[start:pos + 1]
+        raise AssertionError("unterminated function: " + signature)
+
+    def test_wlan_pd_requires_marker_and_exact_stock_kernel_release(self):
+        self.assertIn('WLAN_POLICY_MARKER "/etc/qeaf/wlan-pd-provider-verified"', self.host)
+        self.assertIn('WLAN_POLICY_KERNEL "4.14.215-azure-Pixel+"', self.host)
+        self.assertIn('strcmp(release, WLAN_POLICY_KERNEL) != 0', self.host)
+        self.assertNotIn("VIO_WIFI_KERNEL_RELEASE_PREFIX", self.wifi_bringup)
+        start = self.wifi_bringup.index("void vio_wifi_modem_start(void)\n{")
+        end = self.wifi_bringup.index("void vio_wifi_modem_stop(void)", start)
+        block = self.wifi_bringup[start:end]
+        guard = block.index("if(!vio_host_wlan_policy_ready())")
+        self.assertLess(guard, block.index("vio_journal_trace_arm(1);"))
+        self.assertLess(guard, block.index("wifi_modem_opt_in = 1;"))
+        self.assertIn("WLAN-PD blocked: provider verification marker absent", self.host)
+
+    def test_every_host_wlan_mutation_entrypoint_checks_the_gate(self):
+        signatures = (
+            "int vio_host_wlan_on(void)",
+            "int vio_host_pd_restart(",
+            "int vio_host_pd_listen(",
+            "int vio_host_wlfw_native(void)",
+            "int vio_host_cnss_trace(",
+            "int vio_host_vendor_wifi(void)",
+        )
+        for signature in signatures:
+            with self.subTest(signature=signature):
+                block = self.function_block(self.host, signature)
+                self.assertIn("if(!wlan_policy_gate_ready())", block)
+        wlan_start = self.function_block(self.host, "void vio_host_services_start_wlan(void)\n{")
+        self.assertLess(wlan_start.index("if(!wlan_policy_gate_ready())"),
+                        wlan_start.index("if(wlan_started)"))
+
+    def test_rescue_wlan_mutations_cannot_bypass_the_gate(self):
+        gate = self.rescue.index("!vio_host_wlan_policy_ready()")
+        condition = self.rescue.rfind("if((", 0, gate)
+        for sub in (6, 15, 16, 17, 19, 20, 21, 24, 27, 28):
+            self.assertIn("sub == %d" % sub,
+                          self.rescue[condition:gate])
+        self.assertIn("g_result = -EACCES", self.rescue[gate:gate + 400])
+        rproc = self.rescue.index('if (sub == 20)')
+        self.assertLess(gate, rproc)
+        self.assertLess(gate, self.rescue.index('if (sub == 21)'))
+
+    def test_boot_holds_wlan_remoteproc_and_pd_listener_until_gate(self):
+        coprocessors = self.function_block(self.host, "static void boot_coprocessors(")
+        self.assertIn('strstr(name, "wlan")', coprocessors)
+        self.assertIn("!wlan_policy_gate_ready()", coprocessors)
+        services = self.function_block(self.host, "int vio_host_services_start(void)")
+        watcher = services.index("launch(svc_pd_listen, kPdListenArgs)")
+        self.assertIn("if(wlan_policy_gate_ready())", services[:watcher])
 
     def test_v4l_subdev_nodes_survive_the_drm_connector_filter(self):
         self.assertIn('strcmp(sysdir, "/sys/class/drm") == 0', self.devnodes)

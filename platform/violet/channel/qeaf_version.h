@@ -9,7 +9,7 @@
  * x86_64 reference still carries "VQEAF OS" in system/core/include/vqeaf/
  * version.h until its own rebrand sweep. */
 #define QEAF_OS_NAME    "QEAFIVELS OS"
-#define QEAF_OS_VERSION "0.3.0"
+#define QEAF_OS_VERSION "0.3.1"
 #define QEAF_OS_STRING  QEAF_OS_NAME " " QEAF_OS_VERSION
 
 #endif

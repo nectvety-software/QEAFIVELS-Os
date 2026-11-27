@@ -503,9 +503,20 @@ static int bind_platform_device(const char *match, const char *driver_match)
 
 void vio_wifi_modem_start(void)
 {
-    /* Arm the p77 live trace before the modem runs: this is the path where
-     * the SoC resets 14-16 s after ONLINE with no signal handler and no
-     * pstore, so the only record left is the one written to flash here. */
+    if(!vio_host_wlan_policy_ready()) {
+        snprintf(wifi_note, sizeof(wifi_note), "%s",
+                 vio_host_wlan_policy_note());
+        wifi_modem_hold = 1;
+        wifi_modem_opt_in = 0;
+        wifi_modem_thread_started = 0;
+        wifi_modem_thread_done = 0;
+        wifi_modem_open_rc = 0;
+        vio_log("wifi: %s", wifi_note);
+        return;
+    }
+
+    /* Arm the RAM-only live trace before the modem runs. UART/kmsg remains
+     * available if the SoC resets before the trace can be collected. */
     vio_journal_trace_arm(1);
     wifi_modem_hold = 0;
     wifi_modem_opt_in = 1;

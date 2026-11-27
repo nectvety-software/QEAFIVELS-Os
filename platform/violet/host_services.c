@@ -40,6 +40,8 @@
 #define SERVICE_DIR  "/sbin/qeaf"
 #define WLFW_DIR     "/tmp/wlfw"
 #define PERSIST_DIR  "/mnt/vendor/persist"
+#define WLAN_POLICY_MARKER "/etc/qeaf/wlan-pd-provider-verified"
+#define WLAN_POLICY_KERNEL "4.14.215-azure-Pixel+"
 
 /* Start the WLFW stack after a mainline remoteproc bring-up. */
 void vio_host_services_start_wlan(void);
@@ -140,6 +142,36 @@ static int read_text(const char *path, char *buf, size_t cap)
     while(n > 0 && (buf[n - 1] == '\n' || buf[n - 1] == '\r'))
         buf[--n] = '\0';
     return (int)n;
+}
+
+/* WLAN-PD can reset the SoC when the verified provider stack is absent.
+ * Require both an explicit release marker and the exact stock kernel ABI. */
+static int wlan_policy_gate_ready(void)
+{
+    char release[128] = "";
+
+    if(!path_exists(WLAN_POLICY_MARKER)) {
+        snprintf(wlan_note, sizeof(wlan_note),
+                 "WLAN-PD blocked: provider verification marker absent");
+        return 0;
+    }
+    if(read_text("/proc/sys/kernel/osrelease", release, sizeof(release)) <= 0 ||
+       strcmp(release, WLAN_POLICY_KERNEL) != 0) {
+        snprintf(wlan_note, sizeof(wlan_note),
+                 "WLAN-PD blocked: unverified kernel release '%s'", release);
+        return 0;
+    }
+    return 1;
+}
+
+int vio_host_wlan_policy_ready(void)
+{
+    return wlan_policy_gate_ready();
+}
+
+const char *vio_host_wlan_policy_note(void)
+{
+    return wlan_note;
 }
 
 /* Create a character node from a sysfs `dev` file, the same way the modem
@@ -610,6 +642,11 @@ static void boot_coprocessors(int rmtfs_started)
                     i, name);
             continue;
         }
+        if((strstr(name, "wlan") != NULL || strstr(name, "wifi") != NULL ||
+            strstr(name, "pronto") != NULL) && !wlan_policy_gate_ready()) {
+            vio_log("hostsvc: remoteproc%u %s held: %s", i, name, wlan_note);
+            continue;
+        }
         snprintf(path, sizeof(path), "%s/state", base);
         if(read_text(path, state, sizeof(state)) < 0 ||
            strcmp(state, "offline") != 0) continue;
@@ -878,10 +915,14 @@ int vio_host_services_start(void)
     vio_mkdir_p(SERVICE_DIR, 0755);
     prepare_mainline_firmware();
     (void)launch(svc_pd, kPdArgs);
-    /* Subscribe to the actual SERVREG service; pd-listen only sends QMI
-     * registration after QRTR reports a real 0x42 server endpoint. */
-    (void)launch(svc_pd_listen, kPdListenArgs);
-    start_servreg_watch();
+    /* Subscribe to the actual SERVREG service only after the WLAN-PD release
+     * gate passes; pd-listen otherwise has no verified provider stack. */
+    if(wlan_policy_gate_ready()) {
+        (void)launch(svc_pd_listen, kPdListenArgs);
+        start_servreg_watch();
+    } else {
+        vio_log("hostsvc: pd-listen held: %s", wlan_note);
+    }
     (void)launch(svc_tftp, kTftpArgs);
     if(prepare_rmtfs_partitions() == 0)
         rmtfs_started = launch(svc_rmtfs, kRmtfsArgs) == 0;
@@ -1245,6 +1286,10 @@ int vio_host_wlan_on(void)
     static const char on_nl[3] = { 'O', 'N', '\n' };
     int rc;
 
+    if(!wlan_policy_gate_ready()) {
+        vio_log("hostsvc: %s", wlan_note);
+        return -EACCES;
+    }
     rc = write_exact("/dev/wlan", on_nul, sizeof(on_nul));
     if(rc != 0) {
         vio_log("hostsvc: wlan ON 'ON\\0' refused: %s", strerror(-rc));
@@ -1307,6 +1352,10 @@ static int write_wpa_runtime_config(void)
 static void *wpa_start_worker(void *arg)
 {
     (void)arg;
+    if(!wlan_policy_gate_ready()) {
+        wpa_thread_started = 0;
+        return NULL;
+    }
     for(unsigned wait = 0; wait < 60; wait++) {
         if(path_exists("/sys/class/net/wlan0")) break;
         sleep(1);
@@ -1350,6 +1399,10 @@ static void *wpa_start_worker(void *arg)
 static void start_wpa_worker(void)
 {
     if(wpa_thread_started || svc_wpa == NULL) return;
+    if(!wlan_policy_gate_ready()) {
+        vio_log("hostsvc: WPA held: %s", wlan_note);
+        return;
+    }
     wpa_thread_started = 1;
     if(pthread_create(&wpa_thread, NULL, wpa_start_worker, NULL) == 0)
         pthread_detach(wpa_thread);
@@ -1367,6 +1420,10 @@ void vio_host_services_start_wlan(void)
     static char *const wlfw_args[] = { "wlfwd", WLFW_DIR, wlfw_mac,
                                        "/tmp/wlfw-state", NULL };
 
+    if(!wlan_policy_gate_ready()) {
+        vio_log("hostsvc: WLAN start held: %s", wlan_note);
+        return;
+    }
     if(wlan_started) {
         /* A later explicit wifi up may retry WPA after the first probe
          * timed out waiting for the driver-created netdev. */
@@ -1466,6 +1523,7 @@ int vio_host_pd_restart(const char *node, const char *port, const char *name)
     char path[160];
     pid_t pid;
 
+    if(!wlan_policy_gate_ready()) return -EACCES;
     snprintf(path, sizeof(path), "%s/pdr-restart", SERVICE_DIR);
     if(!path_exists(path)) return -1;
     pid = fork();
@@ -1486,6 +1544,7 @@ int vio_host_pd_listen(const char *node, const char *port, const char *name)
     char path[160];
     pid_t pid;
 
+    if(!wlan_policy_gate_ready()) return -EACCES;
     snprintf(path, sizeof(path), "%s/pd-listen", SERVICE_DIR);
     if(!path_exists(path)) return -1;
     pid = fork();
@@ -1563,6 +1622,7 @@ void vio_host_qrtr_lookup(void) { launch_qrtr_lookup(); }
 int vio_host_wlfw_native(void)
 {
     static char *const args[] = { "qwlfgw", NULL };
+    if(!wlan_policy_gate_ready()) return -EACCES;
     if(svc_qwlfgw == NULL) svc_qwlfgw = find_svc("qwlfgw");
     if(svc_qwlfgw == NULL || !svc_qwlfgw->binary_present) return -1;
     return launch(svc_qwlfgw, args);
@@ -1580,6 +1640,10 @@ int vio_host_cnss_trace(char *out, int cap)
 
     if(out == NULL || cap <= 0) return -EINVAL;
     out[0] = '\0';
+    if(!wlan_policy_gate_ready()) {
+        snprintf(out, cap, "%s\n", wlan_note);
+        return -EACCES;
+    }
     if(svc_cnss == NULL) svc_cnss = find_svc("cnss-daemon");
     if(svc_cnss == NULL || !svc_cnss->binary_present) return -ENOENT;
 
@@ -1643,6 +1707,7 @@ int vio_host_vendor_wifi(void)
 {
     pid_t pid;
 
+    if(!wlan_policy_gate_ready()) return -EACCES;
     /* cnss-daemon aborts on a missing binder node before it reaches QRTR,
      * so publish the real kernel char device first. This is a /dev node only:
      * no partition, no firmware and no persistent state is written. */

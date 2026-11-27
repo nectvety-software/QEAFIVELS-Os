@@ -27,7 +27,11 @@
 #include <unistd.h>
 
 #ifndef APPSTORE_PATH
+#ifdef VQEAF_RAM_ONLY_DIAGNOSTICS
+#define APPSTORE_PATH "/tmp/qeaf-appstore.bin"
+#else
 #define APPSTORE_PATH "/dev/mmcblk0p77"
+#endif
 #endif
 #define APPSTORE_MAGIC "QEAFAPP4"
 #define APPSTORE_VERSION 4u
@@ -36,8 +40,13 @@
 /* v2/v3 catalogs remain readable and are migrated on the next save. */
 #define APPSTORE_MAGIC_V2 "QEAFAPP2"
 #define APPSTORE_VERSION_V2 2u
+#ifdef VQEAF_RAM_ONLY_DIAGNOSTICS
+#define APPSTORE_BASE 0u
+#define APPSTORE_END (16u * 1024u * 1024u)
+#else
 #define APPSTORE_BASE (32u * 1024u * 1024u)
 #define APPSTORE_END (64u * 1024u * 1024u)
+#endif
 #define APPSTORE_HDR_A APPSTORE_BASE
 #define APPSTORE_HDR_B (APPSTORE_BASE + 128u)
 #define APPSTORE_DATA (APPSTORE_BASE + 256u)
@@ -245,6 +254,7 @@ static int write_slot(int fd, uint32_t header_off, uint32_t payload_off,
 int appstore_save(const appstore_entry_t *entries, int count)
 {
     int fd;
+    int open_flags = O_RDWR | O_CLOEXEC | O_SYNC | O_NOFOLLOW;
     appstore_hdr_t a, b, current, header;
     uint8_t *payload = NULL;
     size_t capacity = 0, used = 0;
@@ -325,7 +335,10 @@ int appstore_save(const appstore_entry_t *entries, int count)
         if(owned) free(package);
     }
 
-    fd = open(APPSTORE_PATH, O_RDWR | O_CLOEXEC | O_SYNC);
+#ifdef VQEAF_RAM_ONLY_DIAGNOSTICS
+    open_flags |= O_CREAT;
+#endif
+    fd = open(APPSTORE_PATH, open_flags, 0600);
     if(fd < 0) {
         vio_log("appstore: cannot open %s for save\n", APPSTORE_PATH);
         goto fail;
@@ -400,7 +413,7 @@ int appstore_info(uint32_t *seq, uint32_t *count, uint32_t *bytes, int *slot)
 
     if(seq == NULL || count == NULL || bytes == NULL || slot == NULL)
         return -1;
-    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC);
+    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if(fd < 0) return -1;
     have_a = read_header(fd, APPSTORE_HDR_A, &a) == 0;
     have_b = read_header(fd, APPSTORE_HDR_B, &b) == 0;
@@ -458,7 +471,7 @@ int appstore_restore(char names[][APPSTORE_NAME], int max)
     size_t pos = 0;
 
     if(names == NULL || max <= 0) return -1;
-    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC);
+    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if(fd < 0) {
         vio_log("appstore: %s missing; nothing to restore\n", APPSTORE_PATH);
         return -1;
@@ -495,7 +508,7 @@ int appstore_read(const char *name, uint8_t **out, size_t *size)
     *out = NULL;
     *size = 0;
     if(name[0] == '/') base = name + 1;
-    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC);
+    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if(fd < 0) return -1;
     if(load_latest(fd, &chosen, &payload) != 0) {
         close(fd);
@@ -535,7 +548,7 @@ int appstore_read_data(const char *name, uint8_t **out, size_t *size)
     *out = NULL;
     *size = 0;
     if(name[0] == '/') base = name + 1;
-    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC);
+    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if(fd < 0) return -1;
     if(load_latest(fd, &chosen, &payload) != 0) {
         close(fd);
@@ -579,7 +592,7 @@ int appstore_read_grants(const char *name, uint32_t *grants)
     if(name == NULL || grants == NULL) return -1;
     *grants = 0u;
     if(name[0] == '/') base = name + 1;
-    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC);
+    fd = open(APPSTORE_PATH, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if(fd < 0) return -1;
     if(load_latest(fd, &chosen, &payload) != 0) {
         close(fd);

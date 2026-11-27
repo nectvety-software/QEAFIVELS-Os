@@ -3,6 +3,7 @@
 #define _GNU_SOURCE
 
 #include "vqeaf_files.h"
+#include "qeaf_version.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -151,7 +152,7 @@ int vqeaf_files_read(const char *path, uint8_t *out, size_t cap)
             return (int)length;
         }
     }
-    if(strcmp(path, "/VERSION") == 0) sample = "VQEAFIVELS OS 0.3.0\n";
+    if(strcmp(path, "/VERSION") == 0) sample = QEAF_OS_STRING "\n";
     else if(strcmp(path, "/etc/hostname") == 0) sample = "violet\n";
     else if(strcmp(path, "/etc/qeaf/radio-firmware-status.txt") == 0)
         sample = "WCN3990 firmware: absent\n/blobs not shipped.\n";

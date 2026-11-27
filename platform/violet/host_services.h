@@ -16,6 +16,10 @@ extern "C" {
  * never invents a service when the binary is missing. */
 int vio_host_services_start(void);
 
+/* Fail-closed WLAN-PD policy. The marker is a release gate, not a credential. */
+int vio_host_wlan_policy_ready(void);
+const char *vio_host_wlan_policy_note(void);
+
 /* Called once the modem subsystem is online: copies the per-unit board files
  * from persist, starts wlfwd and drives /dev/wlan. Idempotent. */
 void vio_host_services_start_wlan(void);

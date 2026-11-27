@@ -1463,6 +1463,15 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 else { cat(resp, cap, "wifi: unknown sub (net|dmesg|sdio|mod|fw|up|state|modem|host|log|find NAME|ls DIR|link PATH|cat FILE|on|pd NODE PORT PD|listen NODE PORT PATH|svc|vendor|rproc N)\n"); }
             }
 #ifdef __linux__
+            if((sub == 6 || sub == 15 || sub == 16 || sub == 17 ||
+                sub == 19 || sub == 20 || sub == 21 || sub == 24 ||
+                sub == 27 || sub == 28) &&
+               !vio_host_wlan_policy_ready()) {
+                cat(resp, cap, vio_host_wlan_policy_note());
+                cat(resp, cap, "\n");
+                g_result = -EACCES;
+                return;
+            }
             if (sub == 19) {
                 int rc = vio_host_vendor_wifi();
                 cat(resp, cap, "wifi vendor: ");

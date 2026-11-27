@@ -1,0 +1,43 @@
+diff --git a/init/initramfs.c b/init/initramfs.c
+index 5ea7f1b5e..ab3e07fce 100644
+--- a/init/initramfs.c
++++ b/init/initramfs.c
+@@ -608,6 +608,21 @@ static void __init clean_rootfs(void)
+ }
+ #endif
+ 
++/*
++ * A fastboot RAM boot on Violet receives a board/bootloader-added
++ * skip_initramfs argument. Only the explicitly tagged QEAF diagnostic
++ * image may override it; ordinary Android boots retain stock behavior.
++ */
++static int __initdata qeaf_ramboot_probe;
++
++static int __init qeaf_ramboot_probe_param(char *str)
++{
++	if (str && !strcmp(str, "violet-source-4.14.215"))
++		qeaf_ramboot_probe = 1;
++	return 1;
++}
++__setup("qeaf_ramboot_probe=", qeaf_ramboot_probe_param);
++
+ static int __initdata do_skip_initramfs;
+ 
+ static int __init skip_initramfs_param(char *str)
+@@ -623,12 +638,15 @@ static int __init populate_rootfs(void)
+ {
+ 	char *err;
+ 
+-	if (do_skip_initramfs) {
++	if (do_skip_initramfs && !qeaf_ramboot_probe) {
+ 		if (initrd_start)
+ 			free_initrd();
+ 		return default_rootfs();
+ 	}
+ 
++	if (do_skip_initramfs && qeaf_ramboot_probe)
++		pr_info("QEAF: tagged Violet RAM boot overrides skip_initramfs; unpacking supplied initrd\n");
++
+ 	/* Load the built in initramfs */
+ 	err = unpack_to_rootfs(__initramfs_start, __initramfs_size);
+ 	if (err)

@@ -55,6 +55,13 @@ static int journal_open(int writable)
 {
     int fd;
 
+#ifdef VQEAF_RAM_ONLY_DIAGNOSTICS
+    /* Diagnostic RAM boots must never write the p77 boot journal. */
+    if(writable) {
+        errno = EROFS;
+        return -1;
+    }
+#endif
     if(journal_disabled) return -1;
     fd = open(VIO_JOURNAL_DEVICE, writable ? (O_RDWR | O_CLOEXEC)
                                            : (O_RDONLY | O_CLOEXEC));
@@ -294,14 +301,21 @@ static void trace_flush(void)
     memset(snapshot + used, 0, sizeof(snapshot) - used);
     journal_live = 1;
     journal_header_build();
-    fd = journal_open(1);
+    /*
+     * WLAN live trace is RAM-only. /tmp is part of QEAF's RAM rootfs;
+     * never route this diagnostic heartbeat through the p77 journal.
+     * The UART/kmsg path remains available through vio_log/vio_kernel_tail.
+     */
+    fd = open("/tmp/qeaf-wifi-trace.log",
+              O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
     if(fd >= 0) {
-        (void)journal_write(fd, VIO_JOURNAL_OFFSET, journal_header,
-                            sizeof(journal_header));
-        (void)journal_write(fd, VIO_JOURNAL_OFFSET + VIO_JOURNAL_HEADER,
-                            snapshot, sizeof(snapshot));
+        (void)journal_write(fd, 0, journal_header, sizeof(journal_header));
+        (void)journal_write(fd, sizeof(journal_header), snapshot,
+                            sizeof(snapshot));
         close(fd);
         trace_dirty = 0;
+    } else {
+        vio_log("journal: cannot write RAM Wi-Fi trace: %s", strerror(errno));
     }
     pthread_mutex_unlock(&flush_mutex);
 }
@@ -333,8 +347,8 @@ void vio_journal_trace_arm(int on)
         if(!trace_armed) {
             trace_armed = 1;
             journal_live = 1;
-            vio_journal_trace("journal: live trace armed; this slot is the "
-                              "record if the SoC resets");
+            vio_journal_trace("journal: RAM live trace armed; UART/kmsg "
+                              "remains reset evidence");
             trace_dirty = 1;
             trace_flush();
         }
@@ -344,9 +358,8 @@ void vio_journal_trace_arm(int on)
         trace_armed = 0;
         vio_journal_trace("journal: live trace disarmed (modem released)");
         trace_flush();
-        /* A clean end: the next boot can tell this record was not a reset. */
+        /* A clean end is recorded in RAM only; do not commit to p77. */
         journal_live = 0;
-        journal_commit();
     }
 }
 

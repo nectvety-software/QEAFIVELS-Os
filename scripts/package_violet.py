@@ -104,6 +104,24 @@ def check_init():
         return elf_identity(handle.read(), INIT)
 
 
+def release_builder():
+    import build_violet
+
+    if "-DVQEAF_RAM_ONLY_DIAGNOSTICS" in build_violet.CFLAGS:
+        fail("standard Violet packaging refuses VQEAF_RAM_ONLY_DIAGNOSTICS")
+    return build_violet
+
+
+def check_build_config(builder):
+    expected = builder.build_config_digest()
+    actual = ""
+    if os.path.isfile(builder.BUILD_CONFIG):
+        with open(builder.BUILD_CONFIG, "r", encoding="ascii") as handle:
+            actual = handle.read().strip()
+    if actual != expected:
+        fail("vqeaf-init build flags do not match this package; rebuild without --skip-build")
+
+
 def neutralise_bionic_names():
     """Publish the staged Bionic libs under QEAF names.
 
@@ -597,11 +615,13 @@ def main(argv=None):
         print(json.dumps(manifest, indent=2, sort_keys=True))
         return 0
 
+    builder = release_builder()
     if not args.skip_build:
         cmd = [sys.executable, os.path.join(ROOT, "scripts", "build_violet.py")]
         if args.clean:
             cmd.append("--clean")
         run(cmd, "build_violet")
+    check_build_config(builder)
     check_init()
 
     stage_root()
