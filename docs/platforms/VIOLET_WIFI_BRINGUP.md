@@ -1284,3 +1284,37 @@ Dù đã trích và stage firmware ROM thật, blocker vẫn là modem/WLAN PD
 (`result=1 error=45`) — cùng trạng thái trước khi stage. Firmware WLAN trong
 ROM này đồng hash với bản đã dùng, nên kết quả nhất quán: **không phải firmware
 bị thiếu/cũ**. Không mock QMI, không server giả, không partition write.
+
+## Cập nhật ICNSS native backend (2026-11-27)
+
+### Kết quả code mới - phân biệt rõ prototype và production
+
+Đã thêm một prototype QEAF-native trong nhánh freestanding AArch64/reference và bộ host tests:
+
+- FDT resource discovery cho `qcom,icnss`, tách SNOC MMIO khỏi IOVA/IPA aperture, kiểm tra MSA/regulator/IOMMU và inherited interrupt parent.
+- Parser chuyển SPI cell 414-425 thành các giá trị GIC INTID 446-457 để kiểm tra cấu trúc DT; đây là kết quả parser host, **không** phải xác minh IRQ dispatch PDC/GICv3 trên chip.
+- GIC handler disable/unregister, Phase-2 ABI v5 với teardown có báo lỗi, callback contract cho regulators/clocks/WLAN power/MSA/DMA/CE IRQ.
+- WLFW session coordinator cho QRTR/QMI, MSA, CAP, BDF/REGDB, calibration report/download, factory MAC và FW_READY; test hiện cố tình trả timeout từ mock transport để xác minh fail-closed.
+- UI Wi-Fi nâng cao có backend policy và lưu đường dẫn firmware/calibration ở staging. Không có thao tác ghi firmware hoặc persist.
+
+**Phân loại:** prototype/reference + host tests; không phải driver production trên Violet. `scripts/build_kernel_aarch64.py` tạo ELF QEMU `virt` link tại `0x40000000`, dùng PL011/ramfb/virtio; không phải boot image điện thoại. `scripts/build_violet.py` build PID 1 AArch64-musl nhưng không tự chứng minh kernel backend Wi-Fi đã hoạt động.
+
+### Kết quả kiểm thử ngày 2026-11-27
+
+- CTest Wi-Fi/WCN: 9/9 PASS; WLFW session smoke: 1/1 PASS.
+- `tests.test_violet_wifi_bringup`: 15/15 PASS.
+- `tests.wifi.test_qrtr_qmi`: 4/4 PASS; `tests.wifi.test_wlfw_client`: 2/2 PASS.
+- `scripts/build_violet.py`: PASS; `scripts/build_kernel_aarch64.py`: PASS; `scripts/test_kernel_aarch64.py`: PASS chỉ trên QEMU `virt`.
+
+### Blocker chưa được giải quyết
+
+1. Provider PM6150/RPMh cho bốn regulator, clock/XO, reset/PD lifecycle và rollback chưa có.
+2. Chưa có SMMU context/stream map thực và DMA coherent allocator cho WCN3990.
+3. Chưa xác minh IRQ vật lý/PDC/GICv3/CE acknowledgement trên SM6150.
+4. Chưa có backup calibration và factory MAC hợp lệ, read-only verified từ đúng máy.
+5. WLFW QMI service `0x45` chưa được quan sát publish trong bằng chứng thiết bị trước đó; `wlan0` vẫn chưa được xác nhận xuất hiện.
+6. WSL source tree đang audit là kernel thử nghiệm 4.14.117, không phải source production 4.14.215.
+
+Production Violet vẫn dùng Linux vendor 4.14.215; Linux phải sở hữu probe/IRQ/DMA/clock/regulator. Port production cần patch Linux có source/config/DT provenance chính xác, không thay bằng freestanding MMIO code. Không bật WLAN-PD trong phiên này vì các lần thử trước có nguy cơ reset máy. Không phát lệnh `fastboot boot`, flash, erase hoặc ghi p74/p76/p77 trong phiên này.
+
+Chi tiết triển khai, hashes artifact và gate tiếp theo: `docs/wifi/ICNSS_NATIVE_BACKEND_PHASE_2026-11-27.md`.

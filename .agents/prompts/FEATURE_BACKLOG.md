@@ -15,7 +15,7 @@ Priorities: P0 foundation, P1 essential user experience, P2 hardware integration
 | Storage/File Manager | volumes, folders, MIME, copy/move/search/trash | P1 | Permission/path traversal tests |
 | Clock | RTC, timezone, alarms, stopwatch, timer | P1 | DST, reboot and scheduling tests |
 | Audio | speaker, earpiece, microphone, routes, volume | P1 | Loopback and hardware route tests |
-| Wi-Fi | scan/connect, saved networks, airplane mode | P2 | Real driver/firmware integration |
+| Wi-Fi | scan/connect, saved networks, airplane mode; ICNSS research substrate and advanced settings policy | P2 - PARTIAL / HARDWARE BLOCKED | Host parser/policy/session tests pass; production Linux 4.14.215 provider integration and physical WLFW/wlan0/scan evidence required |
 | Bluetooth | discovery, pairing, audio profiles | P2 | Real controller and stack tests |
 | Telephony | SIM, registration, calls, emergency routing | P2 | Supported modem integration only |
 | Biometrics | fingerprint; secure face with liveness | P2 | TEE-backed security evaluation |
@@ -31,3 +31,10 @@ Priorities: P0 foundation, P1 essential user experience, P2 hardware integration
 - Partial: code exists but missing integration or test.
 - Not implemented: no code; never imply support.
 - Hardware blocked: implementation waits for exact driver, firmware, modem or secure hardware.
+
+
+## Wi-Fi status (2026-11-27)
+
+- Prototype: ICNSS FDT parser, GIC handler lifecycle contract, Phase-2 ABI v5, WLFW session coordinator, CNSS2 policy and advanced settings UI exist in the reference/host-tested code.
+- Production: NOT READY. PM6150/RPMh, clock/XO, WLAN-PD, SMMU context and coherent DMA providers are missing. WLFW `0x45`, `wlan0`, RF scan, association and DHCP have not been validated on the phone.
+- Do not mark Wi-Fi READY because of a build, UI field, host test or QEMU `virt` log. Acceptance requires exact 4.14.215 production integration and physical Violet evidence.

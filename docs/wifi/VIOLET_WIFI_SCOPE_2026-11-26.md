@@ -143,3 +143,9 @@ wifi cat /vendor/firmware/wlan/qca_cld/wlan_mac.bin
 wifi link /vendor/firmware/wlan/qca_cld/wlan_mac.bin
 diag
 ```
+
+## Cập nhật phạm vi 2026-11-27
+
+Prototype ICNSS mới được phát triển/test ở nhánh freestanding AArch64 + host, không làm thay đổi kết luận phần cứng của báo cáo ngày 2026-11-26. Không có bằng chứng mới cho thấy WLFW `0x45` đã publish, `wlan0` đã tồn tại hoặc Wi-Fi scan/association/DHCP hoạt động. Chưa bật WLAN-PD và chưa làm RAM boot trên Violet ở phiên này.
+
+Chi tiết parser/IRQ/WLFW/UI, test counts và việc phân biệt prototype với production xem `docs/wifi/ICNSS_NATIVE_BACKEND_PHASE_2026-11-27.md` và `docs/wifi/ICNSS_TO_QEAF_PORT_MAP.md`.

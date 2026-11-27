@@ -48,3 +48,13 @@ Architecture decision approved 2026-11-25.
   and tampered package. Logs are under `build/linux-x86_64/negative-qemu/`.
 - This is emulator evidence only. No physical x86_64 or Violet test, flash,
   partition write or commit was performed.
+
+## Wi-Fi / ICNSS next milestone (2026-11-27)
+
+1. Pin the exact Violet Linux 4.14.215 source, config and board DTS; do not use the experimental 4.14.117 worktree as the production baseline.
+2. Reconcile ICNSS resources against the board DT; implement/review PM6150/RPMh regulator, XO/clock, reset/PD and SSR lifecycle using Linux APIs.
+3. Complete Linux irqdomain/PDC/GICv3 CE IRQ handling, SMMU context mapping and coherent DMA; prove remove/error rollback.
+4. Verify per-device calibration and factory MAC read-only; confirm WLFW `0x45` and firmware matching before any WLAN-PD attempt.
+5. Build/validate a real Violet Linux boot image; RAM boot only after rescue/log recovery is ready. Then test WLAN in separate controlled stages (FW_READY, wlan0, scan, association, DHCP).
+
+The 2026-11-27 freestanding prototype and host tests are supporting evidence only, not completion of this roadmap item.

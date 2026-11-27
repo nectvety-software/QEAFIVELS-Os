@@ -136,3 +136,13 @@ to hold Power 10–15 s; do not keep retrying a flash that will time out.
 - A `liblog.so` shim replaces the stock Bionic liblog in the ramdisk (the real
   one is kept as `liblog.real.so`) so stderr debug is capturable; this changes
   only where log text goes, not QMI/service behaviour.
+
+## Wi-Fi / ICNSS gate (2026-11-27)
+
+- Production driver ownership stays in the exact Violet Linux 4.14.215 kernel. The native `violet_platform.c`/WLFW prototype is only a freestanding reference/host-tested track; do not treat its GIC or MMIO callbacks as the production implementation.
+- The currently inspected WSL kernel source is 4.14.117 experimental. Obtain and verify matching 4.14.215 source/config/board DTS before any production patch.
+- Do not start `wlan_pd`, boot the modem, write `/dev/wlan` or run RF bring-up until reset/SSR handling, watchdog/rescue capture and per-unit calibration/factory MAC backup are verified. Previous attempts have reset Violet.
+- No fake WLFW service, MAC, BDF or calibration. `wlan0` is READY only after it exists in the real kernel and scan/association/DHCP are tested.
+- CNSS2 applies only to a genuinely enumerated PCIe WLAN controller with a native CNSS2 driver; do not use it for Violet integrated ICNSS/SNOC.
+- Firmware/calibration staging paths are not installation. Require trusted signature/hash/board identity checks, a verified per-unit backup and atomic rollback before any update.
+- Never send the QEMU `0x40000000` freestanding ELF to Fastboot. First build and structurally validate a proper Violet boot image from the approved kernel payload; physical test remains separately consent-gated and RAM boot only.

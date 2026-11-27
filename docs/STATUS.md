@@ -4997,3 +4997,9 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
   và `audit_rescue_channel` PASS. Ảnh SHA-256
   `38e5d978da49f1c41a8d35d2a4ee1ab7b1d8a1d4f666f10b713f893def654147`.
 - Chưa nạp thiết bị; không ghi `p76/boot`, `p77/recovery`, `userdata` hoặc `misc`.
+
+## Wi-Fi/ICNSS update (2026-11-27)
+
+Status: **PARTIAL / HARDWARE BLOCKED**. ICNSS resource parsing, reference IRQ lifecycle, Phase-2 contract, WLFW session preflight, CNSS2 policy and advanced Wi-Fi settings have host-tested implementations. Test results: Wi-Fi/WCN 9/9 CTest, WLFW session 1/1, Violet Wi-Fi contracts 15/15, QRTR/QMI 4/4, WLFW client 2/2. The AArch64 test is QEMU `virt`, not Violet.
+
+Production Linux 4.14.215 ICNSS integration and the PM6150/RPMh, XO/clock, WLAN-PD, SMMU/coherent-DMA and real CE IRQ providers remain incomplete. WLFW `0x45`, `wlan0`, RF scan and connectivity are unverified. No WLAN-PD or `fastboot boot` was run in this phase; no partition writes occurred. See `docs/wifi/ICNSS_NATIVE_BACKEND_PHASE_2026-11-27.md`.

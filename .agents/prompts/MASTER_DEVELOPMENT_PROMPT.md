@@ -166,3 +166,17 @@ I. Recovery, signed updates, backup/restore and VQEAF PC tools.
 
 ## Definition of done
 A feature is done only when code exists, interfaces are documented, error cases are handled, tests pass, QEMU/device evidence is captured and limitations are stated. Mark hardware-dependent functions as unsupported until the real device path is proven. Do not replace a missing implementation with a mock screen or nonfunctional button.
+
+## Wi-Fi / ICNSS engineering state (2026-11-27)
+
+The latest QEAF ICNSS work is a **reference prototype**, not production integration:
+
+- Host-tested: real Violet reference-DTB ICNSS resource parser; diagnostic SPI-to-GIC INTID conversion; GIC disable/unregister API; checked Phase-2 ABI v5; callback contract for regulator/clock/power/MSA/DMA/CE; WLFW session coordinator; CNSS2 policy; Wi-Fi advanced settings staging UI.
+- Host tests: Wi-Fi/WCN CTest 9/9; WLFW session CTest 1/1; Violet Wi-Fi bring-up Python 15/15; QRTR/QMI 4/4; WLFW client 2/2.
+- AArch64 build/QEMU tests run only on the retained `kernel/arch/aarch64` QEMU `virt` reference track. That ELF is linked at `0x40000000` and uses QEMU PL011/ramfb/virtio; it is **not** a valid Violet Fastboot boot image.
+- Production Violet remains vendor Linux `4.14.215-azure-Pixel+`; inspected Linux source tree `micode-violet-q-oss-exp` is experimental `4.14.117`, not an acceptable production source baseline. Never merge freestanding MMIO/GIC/DMA callbacks into production userspace.
+- Physical WLFW `0x45`, `wlan0`, scan, association and DHCP are not verified. Prior WLAN-PD attempts have reset the handset. Keep WLAN-PD OFF until power/PD recovery, serial logs and per-device calibration/MAC are verified.
+
+Next required engineering work is a source-provenance-correct Linux 4.14.215 ICNSS/WCN3990 patch: verify exact Violet board DTS; audit regulator/clock/PM/Q6/WLAN-PD contracts; use Linux regulator, clk, irqdomain, DMA-coherent and SMMU APIs; establish teardown/SSR recovery; validate firmware/BDF/calibration provenance; test host/compile first. CNSS2 is PCIe-only and must not be forced on Violet's integrated SNOC WLAN. Firmware/calibration staging UI is not an installer: no write until a trusted signature/hash/board-identity verifier and atomic install/rollback are connected.
+
+Reference: `docs/wifi/ICNSS_NATIVE_BACKEND_PHASE_2026-11-27.md`. Task prompt: `.agents/prompts/ICNSS_NATIVE_BACKEND_PROMPT.md`.

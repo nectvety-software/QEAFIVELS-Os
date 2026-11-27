@@ -34,3 +34,7 @@ not production Linux or Violet hardware evidence.
 
 ## Important
 These are implementation instructions, not claims that all listed OS features already exist. Follow `docs/STATUS.md` and mark hardware-dependent work as blocked until tested on supported hardware.
+
+## Task prompts
+- `prompts/ICNSS_NATIVE_BACKEND_PROMPT.md` - continuation task for the Violet WCN3990/ICNSS work; includes source provenance, hardware blockers, acceptance gates and no-flash/no-WLAN-PD rules.
+- Current implementation report: `../docs/wifi/ICNSS_NATIVE_BACKEND_PHASE_2026-11-27.md`.

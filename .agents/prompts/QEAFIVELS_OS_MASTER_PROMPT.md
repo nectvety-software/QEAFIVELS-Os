@@ -145,7 +145,20 @@ reviewed kernel backport:
 - No mock/bypass QMI, no fake `wlan0`, no fake firmware. See
   `docs/platforms/VIOLET_WIFI_BRINGUP.md` for full evidence and blockers.
 
-### 7c. Design language — VQEAF Midnight V2 (2026-11-22)
+### 7c. Wi-Fi / ICNSS implementation status (2026-11-27)
+
+The 2026-11-27 ICNSS work is a tested **freestanding/reference prototype plus host tests**, not a production Violet Linux driver:
+
+- Implemented in the reference code: ICNSS resource parser against `violet-reference.dtb`; diagnostic SPI-to-GIC INTID conversion; GIC disable/unregister; Phase-2 ABI v5 and hardware callback contract; WLFW session sequencing/preflight; CNSS2 PCIe policy; Wi-Fi advanced settings page with staging paths.
+- Evidence: Wi-Fi/WCN CTest 9/9; WLFW session CTest 1/1; Violet Wi-Fi Python contracts 15/15; QRTR/QMI 4/4; WLFW client 2/2; separate AArch64 QEMU `virt` gate PASS.
+- The freestanding kernel ELF is QEMU `virt`-specific (`0x40000000`, PL011/ramfb/virtio). It is not a Violet boot image; QEMU results are not handset tests.
+- Production remains `platform/violet/` on vendor Linux 4.14.215. The inspected 4.14.117 source tree is experimental and must not be treated as the production kernel source.
+- PM6150/RPMh regulators, XO/clock sequencing, WLAN reset/PD, SMMU context, coherent DMA, physical CE IRQ and exact per-device calibration/MAC are still blockers. WLFW `0x45`, `wlan0`, RF scan and network connectivity are not verified. Keep WLAN-PD OFF until the reset/recovery path is proven.
+- CNSS2 is for enumerated PCIe WLAN only; Violet uses integrated ICNSS/SNOC. Firmware/calibration UI stores staging paths only; policy flags do not perform cryptographic verification. Do not install or write persist.
+
+Continue from `docs/wifi/ICNSS_NATIVE_BACKEND_PHASE_2026-11-27.md` and task prompt `.agents/prompts/ICNSS_NATIVE_BACKEND_PROMPT.md`.
+
+### 7d. Design language — VQEAF Midnight V2 (2026-11-22)
 - The shell uses the independent **VQEAF Midnight V2** design system; canonical
   spec is `docs/design/VQEAF_MIDNIGHT_V2.md`. Dark UI: Midnight Navy `#070B20`,
   Deep Blue `#101A3A`, Neon Violet `#8157FF`, Electric Blue `#287BFF`,

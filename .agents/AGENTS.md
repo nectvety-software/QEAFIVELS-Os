@@ -64,3 +64,14 @@ before editing code.
 - Hardware tested vs simulated.
 - Unsupported features and blockers.
 - Next small, verifiable milestone.
+
+## Wi-Fi / ICNSS status (2026-11-27)
+
+- Production architecture remains `platform/violet/` on vendor Linux `4.14.215-azure-Pixel+`. Linux owns ICNSS/WCN3990 probe/remove, irqdomain, IRQ, DMA/SMMU, clocks, regulators, resets and PD lifecycle. QEAF userspace only orchestrates permitted services and reports capabilities.
+- The new `kernel/drivers/wifi/wcn3990/violet_platform.c`, `wlfw_session.c`, `wifi_advanced.c`, Phase-2 ABI v5 and GIC APIs were built/tested in the **retained freestanding AArch64/QEMU reference tree plus host tests**. Do not call this a production Violet driver. `vqeaf-kernel-aarch64.elf` is QEMU `virt` linked at `0x40000000`, not a phone boot image.
+- Test evidence (2026-11-27): Wi-Fi/WCN CTest 9/9; WLFW session CTest 1/1; Violet Wi-Fi bring-up Python 15/15; QRTR/QMI 4/4; WLFW client 2/2; QEMU AArch64 reference gate PASS. These tests do not exercise physical SM6150 WLAN.
+- Remaining hardware blockers: PM6150/RPMh regulator provider, clocks/XO sequencing, WLAN reset/PD lifecycle, real SMMU context/stream mapping, coherent DMA, physical PDC/GICv3 CE IRQ handling, and the exact device's backed-up calibration/factory MAC. The WLFW `0x45` endpoint and `wlan0` were not proven available in the last device evidence.
+- `CNSS2` is a PCIe-specific option; never force it on Violet's integrated ICNSS/SNOC WLAN. Any CNSS2 UI selection must require real PCI enumeration and a registered native driver.
+- Firmware/calibration UI currently stages paths only. Policy flags are not themselves cryptographic verification. Do not unlock install until trusted hash/signature/board identity providers, authenticated per-unit backup and atomic installer exist.
+- Do not start WLAN/modem PD or issue physical `fastboot boot` merely because host/QEMU tests pass. First establish a tested rescue/log path and valid Violet Linux 4.14.215 image. No p74/p76/p77 writes without separate explicit consent.
+- Read `docs/wifi/ICNSS_NATIVE_BACKEND_PHASE_2026-11-27.md` and `.agents/prompts/ICNSS_NATIVE_BACKEND_PROMPT.md` before continuing.
