@@ -4,6 +4,7 @@
 #define GENI_SER_M_CLK_CFG      0x048u
 #define GENI_IF_FIFO_DISABLE_RO 0x064u
 #define SE_GENI_M_CMD0          0x600u
+#define SE_GENI_M_CMD_CTRL_REG  0x604u
 #define SE_GENI_M_IRQ_STATUS    0x610u
 #define SE_GENI_M_IRQ_EN        0x614u
 #define SE_GENI_M_IRQ_CLEAR     0x618u
@@ -16,6 +17,10 @@
 #define FIFO_IF_DISABLE         (1u << 0)
 #define M_CMD_DONE_EN           (1u << 0)
 #define M_TX_FIFO_WATERMARK_EN  (1u << 30)
+#define M_CANCEL_IRQ            (1u << 4)
+#define M_ABORT_IRQ             (1u << 5)
+#define M_CANCEL_CMD            (1u << 2)
+#define M_ABORT_CMD             (1u << 1)
 #define TX_FIFO_WC              0x0FFFFFFFu
 #define UART_START_TX           (1u << 27)
 #define GENI_POLL_DEFAULT       100000u
@@ -28,6 +33,27 @@ static int wait_mask(mre_uart_geni_t *u,uint32_t off,uint32_t mask)
     uint32_t i;
     for(i=0;i<u->poll_limit;++i) if((rd(u,off)&mask)==mask) return 1;
     return 0;
+}
+static void recover_command(mre_uart_geni_t *u)
+{
+    wr(u,SE_GENI_M_IRQ_EN,rd(u,SE_GENI_M_IRQ_EN)&
+       ~(M_TX_FIFO_WATERMARK_EN|M_CMD_DONE_EN));
+    wr(u,SE_GENI_TX_WATERMARK,0u);
+    if((rd(u,GENI_STATUS)&M_GENI_CMD_ACTIVE)==0u) {
+        wr(u,SE_GENI_M_IRQ_CLEAR,M_CANCEL_IRQ|M_ABORT_IRQ);
+        return;
+    }
+    wr(u,SE_GENI_M_CMD_CTRL_REG,M_CANCEL_CMD);
+    if(wait_mask(u,SE_GENI_M_IRQ_STATUS,M_CANCEL_IRQ)) {
+        wr(u,SE_GENI_M_IRQ_CLEAR,M_CANCEL_IRQ|M_ABORT_IRQ);
+        return;
+    }
+    wr(u,SE_GENI_M_CMD_CTRL_REG,M_ABORT_CMD);
+    if(wait_mask(u,SE_GENI_M_IRQ_STATUS,M_ABORT_IRQ)) {
+        wr(u,SE_GENI_M_IRQ_CLEAR,M_CANCEL_IRQ|M_ABORT_IRQ);
+        return;
+    }
+    wr(u,SE_GENI_M_IRQ_CLEAR,M_CANCEL_IRQ|M_ABORT_IRQ);
 }
 mre_status_t mre_uart_geni_attach(mre_uart_geni_t *u,const mre_uart_bus_t *bus,
                                   uint32_t depth,uint32_t width,uint32_t polls,
@@ -48,9 +74,10 @@ mre_status_t mre_uart_geni_attach(mre_uart_geni_t *u,const mre_uart_bus_t *bus,
 mre_status_t mre_uart_geni_write(mre_uart_geni_t *u,const char *data,size_t length)
 {
     size_t i=0, expanded=0;
-    uint32_t wm=2u;
+    uint32_t wm=2u, stalls=0u;
     if(u==NULL || data==NULL || !u->attached) return MRE_E_INVALID;
     if(length==0u) return MRE_OK;
+    if(length>0x00FFFFFFu) return MRE_E_INVALID;
     for(i=0;i<length;++i) expanded+=(data[i]=='\n')?2u:1u;
     if(expanded>0x00FFFFFFu || u->fifo_depth_words<=wm) return MRE_E_INVALID;
     wr(u,SE_GENI_M_IRQ_CLEAR,M_TX_FIFO_WATERMARK_EN|M_CMD_DONE_EN);
@@ -64,7 +91,7 @@ mre_status_t mre_uart_geni_write(mre_uart_geni_t *u,const char *data,size_t leng
         size_t consumed=0;
         uint32_t used,available,words=0;
         if(!wait_mask(u,SE_GENI_M_IRQ_STATUS,M_TX_FIFO_WATERMARK_EN)) {
-            u->attached=0; return MRE_E_BUSY;
+            recover_command(u); u->attached=0; return MRE_E_BUSY;
         }
         used=rd(u,SE_GENI_TX_FIFO_STATUS)&TX_FIFO_WC;
         available=(used>=u->fifo_depth_words)?0u:u->fifo_depth_words-used;
@@ -81,14 +108,18 @@ mre_status_t mre_uart_geni_write(mre_uart_geni_t *u,const char *data,size_t leng
         }
         if(consumed==0u) {
             wr(u,SE_GENI_M_IRQ_CLEAR,M_TX_FIFO_WATERMARK_EN);
+            if(++stalls>u->poll_limit) {
+                recover_command(u); u->attached=0; return MRE_E_BUSY;
+            }
             continue;
         }
+        stalls=0u;
         i+=consumed;
         mre_arch_dsb_sy();
         wr(u,SE_GENI_M_IRQ_CLEAR,M_TX_FIFO_WATERMARK_EN);
     }
     if(!wait_mask(u,SE_GENI_M_IRQ_STATUS,M_CMD_DONE_EN)) {
-        u->attached=0; return MRE_E_BUSY;
+        recover_command(u); u->attached=0; return MRE_E_BUSY;
     }
     wr(u,SE_GENI_M_IRQ_CLEAR,M_CMD_DONE_EN);
     return MRE_OK;

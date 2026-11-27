@@ -21,26 +21,9 @@ int storage_kind_from_name(const char *name) {
     return -1;
 }
 
-/* Empty, RAM-only folders matching the layout a stock violet internal-storage
- * screen shows (OPPO/ColorOS user view). They carry no files and no vendor
- * branding content: this is only a familiar place for user captures. */
-static const char *const STANDARD_STORAGE_DIRS[] = {
-    ".androidsafe", ".applogs", ".camera", ".mcs", ".OTA",
-    ".SAU", ".thumbnails", "Android", "apn", "ColorOS",
-    "DCIM", "Download", "Kingroot", "kinguserdown", "Movies",
-    "Music", "ndownloads", "oppo_log", "Pictures", "Recordings",
-    "tencent", "ThemeStore", "toprange", "TouchPal2015",
-};
-
 int storage_publish(struct fat16_volume *vol) {
     int vq, sys, fw, th, df, bt, dr, sv, up, ud, ins;
-    unsigned i, published = 0;
     if (!vol) return -1;
-    for (i = 0; i < sizeof(STANDARD_STORAGE_DIRS) /
-                    sizeof(STANDARD_STORAGE_DIRS[0]); i++) {
-        if (fat16_mkdir(vol, STANDARD_STORAGE_DIRS[i]) >= 0) published++;
-    }
-    umos_logf("storage: published %u standard user folder(s)\n", published);
     vq = fat16_mkdir(vol, "VQEAF");
     if (vq < 0) return -1;
     ud = fat16_mkdir(vol, "UserData");
@@ -118,7 +101,6 @@ int storage_publish(struct fat16_volume *vol) {
     fat16_mkdir_in(vol, (uint32_t)ins, "Themes");
     fat16_mkdir_in(vol, (uint32_t)ins, "Drivers");
     fat16_mkdir_in(vol, (uint32_t)ins, "Updates");
-    umos_logf("storage: VQEAF/UserData/Install + %u standard folders published\n",
-             published);
-    return 3;
+    umos_logf("storage: VQEAF/UserData/Install published\n");
+    return UMOS_STORAGE_COUNT;
 }

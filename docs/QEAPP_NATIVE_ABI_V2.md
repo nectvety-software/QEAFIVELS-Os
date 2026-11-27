@@ -142,9 +142,12 @@ section.
 
 Modules are produced by `sdk/compiler/qenlink.py`, a small ELF64 PIC static
 linker. It resolves PC-relative relocations at build time (base-independent)
-and rejects absolute/GOT relocations and undefined symbols, so a module needs
-no runtime relocation and no libc. x86_64 accepts PC32/PLT32; aarch64 accepts
-the ADRP/ADD/LDST-lo12, literal-load and branch PIC families.
+and rejects relocations that would still need load-time binding. x86_64 accepts
+PC32/PLT32 and relaxes defined GOTPCREL/REX_GOTPCRELX calls, jumps and address
+loads to direct PC-relative forms; unsupported GOT instructions, absolute
+relocations and undefined symbols remain hard errors. aarch64 accepts the
+ADRP/ADD/LDST-lo12, literal-load and branch PIC families. No module needs a
+runtime relocation or libc.
 
 ### Load-base alignment (arm64)
 
@@ -180,6 +183,19 @@ Every function pointer in the table (and every module export) uses the
 `QEAF_APP_CALL` convention from `qeaf_api.h`: SysV AMD64 on x86_64 even when the
 host is Windows, AAPCS64 on aarch64. This keeps the module and the host in
 agreement regardless of the host compiler's default ABI.
+
+The frozen 64-bit table sizes are:
+
+| API | Structure | Size |
+| --- | --- | --- |
+| v2 | `qeaf_app_api_v2` | 48 bytes |
+| v3 | `qeaf_app_api_v3` | 64 bytes |
+| v4 | `qeaf_app_api_v4` | 72 bytes |
+| v5 | `qeaf_app_api_v5` | 80 bytes |
+
+These are prefix-compatible strict supersets, not interchangeable versions. A
+module declares one ABI and imports exactly the matching table name; the runtime
+checks both `size` and `abi_version` before exposing callbacks.
 
 ## Framework API v3 (media revision, implemented)
 
@@ -340,10 +356,71 @@ Initial permission set:
 Permissions are declared in the manifest and enforced by the OS. The app cannot
 bypass them through native code.
 
+## Rust SDK and compiler (implemented)
+
+The canonical freestanding Rust API is [`sdk/rust`](../sdk/rust/src/lib.rs).
+It mirrors the C layouts with `#[repr(C)]`, compile-time size assertions, typed
+`ApiV2`-`ApiV5` wrappers, UTF-8/NUL validation, permission and input constants,
+layout helpers, and an owning `FileBuffer` that calls the framework's `free`
+callback on drop. The `QeappApp` trait and `qeapp_app!` macro emit `create`,
+`start`, `pause`, `resume`, `stop`, `destroy`, and `on_input` with the C ABI.
+
+Create and build a simulator-targeted app:
+
+```text
+rustup target add x86_64-unknown-none aarch64-unknown-none
+python sdk/cli/qeaf.py create hello-rust --rust --arch x86_64 --id org.example.hello
+python sdk/cli/qeaf.py build hello-rust --config release
+python sdk/cli/qeaf.py validate hello-rust/build/releases/hello-rust.qeapp
+python sdk/cli/qeaf.py simulate hello-rust/build/releases/hello-rust.qeapp
+```
+
+Use `--arch arm64` and the generated project's `build.py --config all` for a
+Violet package. `Cargo.toml` provides editor/package metadata; the canonical
+compiler invokes `rustc` directly and is the supported `.qeapp` build path.
+
+[`sdk/compiler/qenrust.py`](../sdk/compiler/qenrust.py) compiles one combined
+crate with `#![no_std]`, `panic=abort`, PIC, one codegen unit, and `--emit=obj`.
+The canonical SDK is included as private module `qeapp`, and application
+`src/main.rs` as private module `app`. The generated crate is a binary with
+`#![no_main]` and an unreferenced `main`, avoiding both a hosted Rust entry point
+and a second SDK codegen unit. The compiler targets
+`x86_64-unknown-none` or `aarch64-unknown-none`, requires the lifecycle exports,
+then invokes [`qenlink.py`](../sdk/compiler/qenlink.py) to produce the normal
+`.qen` payload.
+
+Rust modules have no standard library, heap allocator, libc, dynamic loader,
+threads, TLS, unwinding, or direct OS syscalls. The combined-crate runtime
+supplies the small freestanding memory/string routines needed by generated
+code. Undefined symbols, absolute relocations, unsupported GOT forms, `.data.rel.ro`
+requirements, and missing lifecycle exports remain hard failures rather than
+being deferred to the device loader. The Rust package still uses the ordinary
+manifest, signature verifier, permission broker, module validator, simulator,
+and guarded runtime; Rust does not introduce a second package or trust format.
+
+For x86_64, defined-symbol GOTPCREL/REX_GOTPCRELX references are resolved without
+a load-time GOT: an indirect GOT call/jump is rewritten to a direct PC-relative
+branch plus NOP, and a supported RIP-relative GOT address load is rewritten to
+LEA. Undefined-symbol or other GOT instruction forms are rejected. AArch64 uses
+the existing ADRP/ADD, literal-load, low-12 memory and branch PIC families and
+still requires the 4096-byte-aligned load base described above.
+
+Evidence: `tests/test_qeapp_rust.py` builds signed release/debug packages,
+checks the v5 import and lifecycle exports, rejects mixed C/Rust sources and
+undefined symbols, checks deterministic output, and runs the API/input probe in
+the x86_64 host simulator with zero outstanding allocations. Its AArch64 test is
+a structural build/validation gate, not an execution or physical-device claim.
+`cargo test --manifest-path sdk/rust/Cargo.toml` directly checks the standalone
+API wrappers, UTF-8/NUL validation, table size/version rejection, and successful
+and failed `FileBuffer` cleanup. `tests/test_qenlink.py` covers the relocation
+rules independently.
+
 ## SDK changes
 
-- `qeaf create` gains `--native` to scaffold a native project.
-- `qeaf build` compiles C/C++ to the QEAF module format for the selected arch.
+- `qeaf create` gains `--native` to scaffold a native C project and `--rust`
+  to scaffold a self-contained freestanding Rust project.
+- `qeaf build` compiles freestanding PIC C or Rust to the QEAF module format for
+  the selected arch, or emits a valid empty stub when no native source exists.
 - `qeaf validate` checks manifest, module hash, imports, permissions, and size.
 - `qeaf sign` signs the whole package including the native module.
 - Simulator runs the module against the framework API.
@@ -453,13 +530,13 @@ child renders into a `MAP_SHARED` 720x1560 XRGB8888 frame that the shell shows o
 reports `crashed (signal 11); shell survived`; a hanging module is killed at the
 timeout. A native package installed from Tệp → QEAFRESCUE → Cài gets a real
 "Chạy trên thiết bị" button; the rescue verb `qeapp <file>` stays for
-diagnostics. The runtime is still the Linux-musl transport prototype, so this
-is not an independent-OS claim.
+diagnostics. The runtime executes in the Linux-core PID 1 path; Linux is the
+approved kernel core and is not presented as a QEAF-written kernel.
 
 Verification boundary: the QEMU harness above proves the arm64 module and the
 AAPCS64/PIC contract under emulation; the physical-device run proves the same
-package executes on violet hardware through the prototype shell. The independent
-OS kernel (`kernel/arch/aarch64`) is not yet implemented.
+package executes on violet hardware through the Linux-core shell. The
+freestanding `kernel/arch/aarch64` track is separate reference code.
 
 ## Permission broker and quotas (Phase 5, implemented)
 
@@ -515,7 +592,7 @@ only; device-runtime enforcement is not yet wired).
 6. Add permissions and quotas.
 7. Port simple apps only after stages 1-6 pass.
 
-## Current status (Phase 1-4)
+## Current status (Phase 1-5)
 
 - Manifest validation accepts `format_version: 2` with `runtime: "native"`,
   `abi_version` 2-5 (default scaffold **5**), a relative `.qen` entry, and
@@ -535,9 +612,10 @@ only; device-runtime enforcement is not yet wired).
   resource release; the shell survives a crashing or hanging module.
 - The real arm64 Hello module (Phase 4) executes under QEMU virt AArch64 and
   renders the same framebuffer hash as the x86_64 host (`0x6cc394ad`), 0 leaks.
-- Verification boundary: x86_64 execution is proven on the host; arm64 execution
-  is proven under **emulation** (QEMU virt) with cross-arch hash equality. No
-  physical violet hardware evidence is claimed (no authorized board), and the
-  independent OS kernel is not yet implemented. The violet aarch64 cross-build
-  links the guarded runtime as a compile proof only. Phase 5 (permissions and
-  quotas) is next.
+- Verification boundary: x86_64 execution is proven on the host; the separate
+  freestanding AArch64 harness is proven under **emulation** (QEMU virt) with
+  cross-arch hash equality. Physical violet execution is proven through the
+  Linux-core PID 1 runtime as recorded above; it is not evidence for the
+  freestanding kernel.
+- Phase 5 adds permission-broker and quota enforcement to the host simulator.
+  Device-runtime broker enforcement remains unwired and must not be claimed.

@@ -6,6 +6,7 @@ zlib, applies the five PNG filters and resamples nearest-neighbour. The output
 is exactly 64*64*4 bytes in BGRA order, which is how LVGL's
 LV_COLOR_FORMAT_ARGB8888 is laid out little-endian (0xAARRGGBB).
 """
+from collections import deque
 import struct
 import sys
 import zlib
@@ -74,12 +75,46 @@ def decode_png(path):
     return width, height, channels, rows
 
 
+def bleed_alpha_edges(width, height, channels, rows):
+    if channels != 4 or width == 0 or height == 0:
+        return rows
+    max_alpha = max(row[index] for row in rows for index in range(3, len(row), 4))
+    if max_alpha == 0:
+        return rows
+    unseen = bytearray(b"\xFF") * (width * height)
+    queue = deque()
+    for y, row in enumerate(rows):
+        for x in range(width):
+            index = y * width + x
+            if row[x * 4 + 3] == max_alpha:
+                unseen[index] = 0
+                queue.append((x, y))
+    while queue:
+        x, y = queue.popleft()
+        source = rows[y]
+        source_offset = x * 4
+        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            index = ny * width + nx
+            if not unseen[index]:
+                continue
+            unseen[index] = 0
+            target = rows[ny]
+            target_offset = nx * 4
+            target[target_offset:target_offset + 3] = \
+                source[source_offset:source_offset + 3]
+            queue.append((nx, ny))
+    return rows
+
+
 def main(argv):
     if len(argv) < 3:
         print("usage: png_to_qeapp_icon.py input.png output.rgba")
         return 2
     src, dst = argv[1], argv[2]
     width, height, channels, rows = decode_png(src)
+    rows = bleed_alpha_edges(width, height, channels, rows)
     out = bytearray()
     for y in range(SIZE):
         sy = min(height - 1, (y * height) // SIZE)

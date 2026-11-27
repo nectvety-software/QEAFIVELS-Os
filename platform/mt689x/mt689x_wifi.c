@@ -195,3 +195,60 @@ void vio_wifi_sysdump(char *out, int cap)
     n += snprintf(out + n, (size_t)(cap - n), "  /dev/stpbt %s\n",
                   path_exists("/dev/stpbt") ? "present" : "-");
 }
+
+void vio_wifi_diag(char *out, int cap)
+{
+    if(out == NULL || cap <= 0) return;
+    vio_wifi_report(out, cap);
+}
+
+static int firmware_file_count(const char *path)
+{
+    DIR *dir = opendir(path);
+    struct dirent *entry;
+    int count = 0;
+
+    if(dir == NULL) return 0;
+    while((entry = readdir(dir)) != NULL) {
+        if(entry->d_name[0] == '.') continue;
+        count++;
+    }
+    closedir(dir);
+    return count;
+}
+
+int vio_wifi_fw_report(char *out, size_t cap)
+{
+    static const char *const dirs[] = {
+        "/vendor/firmware/mediatek/mt6893",
+        "/lib/firmware/mediatek/mt6893",
+        "/vendor/firmware/mediatek",
+        "/lib/firmware/mediatek",
+    };
+    size_t used = 0;
+    int found = 0;
+
+    if(out == NULL || cap == 0) return -1;
+    out[0] = '\0';
+    for(unsigned i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++) {
+        int count = firmware_file_count(dirs[i]);
+        int n;
+        if(count == 0) continue;
+        found = 1;
+        if(used + 1u >= cap) break;
+        n = snprintf(out + used, cap - used,
+                     "fw check: %s: %d file(s) present\n", dirs[i], count);
+        if(n < 0 || (size_t)n >= cap - used) {
+            out[cap - 1u] = '\0';
+            used = cap - 1u;
+            break;
+        }
+        used += (size_t)n;
+    }
+    if(!found && cap > 1u)
+        snprintf(out, cap, "fw check: no MediaTek firmware directory populated\n");
+    if(found && used + 1u < cap)
+        snprintf(out + used, cap - used,
+                 "fw check: presence only; kernel/driver validation not performed\n");
+    return found ? 0 : -1;
+}

@@ -23,6 +23,7 @@ const char *vqeaf_fw_state_name(vqeaf_fw_state_t s)
     case VQEAF_FW_BOOTING:        return "FIRMWARE_BOOTING";
     case VQEAF_FW_QRTR_READY:     return "QRTR_READY";
     case VQEAF_FW_QMI_DISCOVERED: return "QMI_SERVICE_DISCOVERED";
+    case VQEAF_FW_WLFW_READY:     return "WLFW_READY";
     case VQEAF_FW_WLAN_READY:     return "WLAN_READY";
     case VQEAF_FW_CRASHED:        return "FIRMWARE_CRASHED";
     default:                      return "FAILED";
@@ -103,21 +104,34 @@ static int wait_boot(vqeaf_fw_boot_t *b, uint32_t timeout_ms, uint32_t poll_ms)
     }
 }
 
+static int wait_wlfw(vqeaf_fw_boot_t *b, uint32_t timeout_ms, uint32_t poll_ms)
+{
+    const vqeaf_fw_ops_t *o = b->ops;
+    uint64_t deadline = o->now_ms(o->ctx) + timeout_ms;
+    for(;;) {
+        int rc = o->wlfw_ready(o->ctx);
+        if(rc == 0) return set(b, VQEAF_FW_WLFW_READY);
+        if(rc != -EAGAIN) return fail(b, rc);
+        if(o->now_ms(o->ctx) >= deadline) return fail(b, -ETIMEDOUT);
+        if(o->sleep_ms != NULL && poll_ms > 0) o->sleep_ms(o->ctx, poll_ms);
+    }
+}
+
 int vqeaf_fw_boot_run(vqeaf_fw_boot_t *b, const char *fw_path,
                       uint32_t boot_timeout_ms, uint32_t poll_ms,
-                      uint32_t max_restarts)
+                      uint32_t wlfw_timeout_ms, uint32_t max_restarts)
 {
     const vqeaf_fw_ops_t *o;
     size_t len = 0;
     int rc;
 
     if(b == NULL || b->ops == NULL || fw_path == NULL ||
-       boot_timeout_ms == 0) return -EINVAL;
+       boot_timeout_ms == 0 || wlfw_timeout_ms == 0) return -EINVAL;
     o = b->ops;
     if(!o->power_on || !o->power_off || !o->clocks_enable ||
        !o->clocks_disable || !o->bus_ready || !o->fw_validate ||
        !o->fw_load || !o->fw_boot_status || !o->qrtr_ready ||
-       !o->qmi_discover || !o->now_ms) return -EINVAL;
+       !o->qmi_discover || !o->wlfw_ready || !o->now_ms) return -EINVAL;
     b->last_error = 0;
     b->restarts = 0;
     b->qmi_node = b->qmi_port = 0;
@@ -170,6 +184,8 @@ int vqeaf_fw_boot_run(vqeaf_fw_boot_t *b, const char *fw_path,
         if(rc) return fail(b, rc); /* -ENOENT stays FAILED, never WLAN_READY */
         set(b, VQEAF_FW_QMI_DISCOVERED);
 
+        rc = wait_wlfw(b, wlfw_timeout_ms, poll_ms);
+        if(rc) return rc;
         set(b, VQEAF_FW_WLAN_READY);
         return 0;
     }

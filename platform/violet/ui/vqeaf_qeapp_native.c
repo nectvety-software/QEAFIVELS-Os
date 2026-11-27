@@ -23,6 +23,20 @@ static uint32_t fnv1a32(const uint8_t *data, size_t size)
     return value;
 }
 
+static int import_abi(const uint8_t *name, size_t length)
+{
+    static const char *const names[4] = {
+        "qeaf_app_api_v2", "qeaf_app_api_v3",
+        "qeaf_app_api_v4", "qeaf_app_api_v5"
+    };
+
+    for(int abi = 2; abi <= 5; abi++)
+        if(strlen(names[abi - 2]) == length &&
+           memcmp(names[abi - 2], name, length) == 0)
+            return abi;
+    return 0;
+}
+
 int vqeaf_qeapp_native_arch_id(const char *name)
 {
     if(name == NULL) return 0;
@@ -44,6 +58,7 @@ int vqeaf_qeapp_native_validate_module(const uint8_t *data, size_t size,
     uint32_t code_size;
     uint32_t rodata_size;
     uint32_t data_size;
+    uint16_t min_api;
     uint32_t imports_size;
     uint32_t exports_size;
     uint32_t entry_offset;
@@ -64,6 +79,7 @@ int vqeaf_qeapp_native_validate_module(const uint8_t *data, size_t size,
     code_size      = le32(data + 21);
     rodata_size    = le32(data + 25);
     data_size      = le32(data + 29);
+    min_api        = le16(data + 53);
     imports_size   = le32(data + 41);
     exports_size   = le32(data + 45);
     entry_offset   = le32(data + 37);
@@ -72,6 +88,7 @@ int vqeaf_qeapp_native_validate_module(const uint8_t *data, size_t size,
     if(module_version != 1u) return -1;
     if(abi_version != 2u && abi_version != 3u && abi_version != 4u &&
        abi_version != 5u) return -1;
+    if(code_size != 0u && min_api != abi_version) return -1;
     if(arch != VQEAF_QEN_ARCH_ARM64 && arch != VQEAF_QEN_ARCH_X86_64) return -1;
     if(expected_arch != 0 && arch != (uint8_t)expected_arch) return -1;
     if(flags != 0u) return -1;
@@ -87,14 +104,25 @@ int vqeaf_qeapp_native_validate_module(const uint8_t *data, size_t size,
         size_t off = VQEAF_QEN_HEADER_SIZE + code_size + rodata_size + data_size;
         size_t end = off + imports_size;
         size_t i = off;
+        unsigned seen = 0u;
+
         while(i < end) {
             size_t j = i;
+            int abi;
             while(j < end && data[j] != 0u) j++;
             if(j >= end || j == i) return -1;
             for(size_t k = i; k < j; k++)
                 if(data[k] < 0x20u || data[k] > 0x7eu) return -1;
+            abi = import_abi(data + i, j - i);
+            if(abi != 0) {
+                unsigned bit = 1u << (abi - 2);
+                if(abi != abi_version || (seen & bit) != 0u) return -1;
+                seen |= bit;
+            }
             i = j + 1;
         }
+        if(imports_size != 0u && (seen & (1u << (abi_version - 2))) == 0u)
+            return -1;
     }
     {
         size_t off = VQEAF_QEN_HEADER_SIZE + code_size + rodata_size +

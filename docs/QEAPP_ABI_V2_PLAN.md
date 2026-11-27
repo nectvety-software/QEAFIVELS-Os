@@ -89,8 +89,8 @@ bound enforced before mapping), `platform/violet/ui/vqeaf_qeapp_runtime.h/.c`
 (guarded child-process launch, 5000 ms timeout, crash/hang containment, canvas
 return, deterministic resource release), and `tests/fixtures/qeapp-aarch64/`
 (freestanding AArch64 harness). The guarded runtime is compiled and linked into
-the violet aarch64-linux-musl image via `scripts/build_violet.py` (cross-build
-compile proof; legacy transport prototype, not the independent OS).
+the Violet Linux-core aarch64-musl image via `scripts/build_violet.py`
+(cross-build compile proof; physical execution evidence is recorded separately).
 
 Evidence (all gates exit 0):
 
@@ -111,11 +111,11 @@ Evidence (all gates exit 0):
   `scripts/render_phone_ui.py` (60 PNGs, 15 pages x 2 profiles x 2 orientations)
   all remain green.
 
-Verification boundary: arm64 execution is now proven on physical violet
-hardware through the Linux-musl transport prototype (verb `qeapp` over the
-QEAFRESCUE channel, guarded child, page `QEAF_PAGE_QEAPP_NATIVE`). The
-independent OS kernel `kernel/arch/aarch64` is still not implemented. Installed
-native apps now have a real "Chạy trên thiết bị" button in the prototype shell
+Verification boundary: arm64 execution is proven on physical violet hardware
+through the Linux-core PID 1 path (verb `qeapp` over the QEAFRESCUE channel,
+guarded child, page `QEAF_PAGE_QEAPP_NATIVE`). The freestanding reference
+kernel `kernel/arch/aarch64` is a separate QEMU-only track. Installed native
+apps now have a real "Chạy trên thiết bị" button in the shell
 (cài qua Tệp → QEAFRESCUE → Cài), and the rescue verb `qeapp <file>` remains for
 diagnostics. An arm64 module must be loaded at
 a 4096-byte-aligned base (ADRP page granularity); see the ABI spec. Phase 5
@@ -173,10 +173,11 @@ clobbered mid-call (this was a latent, layout-sensitive crash exposed by the
 extra broker locals; fixed at the root, not masked).
 
 Verification boundary: broker/quota enforcement is proven on the host simulator
-(x86_64) and compiled for aarch64; device-runtime enforcement is not yet wired.
-The launcher wiring ("connect the real runner to the launcher") stays DEFERRED
-until the independent OS has a process model (`kernel/arch/aarch64` is empty);
-no fake launch button is added. Phase 6 (app ecosystem) is next.
+(x86_64) and compiled for aarch64; device-runtime broker enforcement is not yet
+wired. The Phase 4 guarded runner is connected to the real Linux-core PID 1
+launcher and has physical violet execution evidence; the freestanding
+`kernel/arch/aarch64` track remains a separate reference. Phase 6 (app
+ecosystem) is next.
 
 ## Phase 6 - app ecosystem
 

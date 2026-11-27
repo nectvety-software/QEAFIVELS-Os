@@ -299,7 +299,7 @@ class Device:
             time.sleep(2)
         return False
 
-    def probe(self, timeout=6.0):
+    def probe(self, timeout=20.0):
         """Round-trip proof that the rescue worker still services verbs.
 
         wait_ready() only shows the LUN is enumerated. A boot that hung at the
@@ -371,7 +371,7 @@ class Device:
             raise SystemExit("device_check: missing image %s" % image)
         size = os.path.getsize(image)
         print("flash: %s (%d bytes)" % (os.path.relpath(image, ROOT), size))
-        if self.wait_ready(15) and self.probe():
+        if self.wait_ready(15) and self.probe(timeout=20.0):
             self.flash_rescue(image, size)
             return
         if self.letter:

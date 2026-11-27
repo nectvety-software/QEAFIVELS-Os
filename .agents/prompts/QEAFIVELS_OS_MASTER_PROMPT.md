@@ -1,33 +1,38 @@
-# QEAFIVELS OS — TRUE INDEPENDENT OPERATING SYSTEM
+# QEAFIVELS OS — LINUX-CORE OPERATING SYSTEM
 
-Canonical mission prompt for this repository. Supersedes older identity
-wording ("VQEAF OS"). The x86_64 QEMU reference and the violet platform layer
-are development vehicles; the product below is the target.
+Canonical mission prompt for this repository. Architecture decision approved
+2026-11-25: Linux is the kernel core for the whole QEAFIVELS OS. QEAFIVELS
+owns its userspace, services, framework, runtime, applications, recovery,
+interface and tooling; it does not claim to have written the Linux kernel.
 
-## Standalone OS Architecture for Xiaomi Redmi Note 7 Pro (Violet)
+## Linux-Core Architecture for Xiaomi Redmi Note 7 Pro (Violet)
 
 ### 1. Core Identity
 
-Develop QEAFIVELS OS as a completely independent operating system.
+Develop QEAFIVELS OS as a Linux-kernel-based operating system with a
+QEAF-owned native userspace and application ecosystem.
 
-QEAFIVELS OS MUST NOT be based on, derived from, or require:
+- Violet production kernel: vendor Linux `4.14.215-azure-Pixel+`, AArch64.
+- x86_64/QEMU reference kernel: separately pinned Linux 4.14.215, not the
+  Violet binary and not the retired freestanding `KERNEL.EFI` path.
+- QEAFIVELS owns PID 1/init, service supervision, capability policy, device
+  brokers, storage/package/update policy, framework, UI, QEAPP runtime,
+  rescue and SDK/tooling.
+- Linux owns scheduling, memory, interrupts, VFS/filesystems, namespaces,
+  kernel security primitives and kernel drivers.
 
-- Vendor mobile-platform ROM families
-- Linux kernel, Ubuntu, Debian, any existing general-purpose OS
-- Vendor app runtime, vendor framework, vendor HAL, vendor system services
-- Linux userspace or Linux distributions
-
-Do not build a vendor mobile ROM, custom vendor firmware, Linux distribution,
-or vendor launcher. The objective is a new operating system with its own
-architecture, kernel, system interfaces, runtime, framework, applications
-and development ecosystem.
+QEAFIVELS MUST NOT depend on an Android/AOSP/ART runtime, APK-style packages,
+Java/Kotlin, a vendor mobile ROM, vendor framework/HAL/services or a Linux
+distribution as its userspace foundation. Do not rename a vendor ROM or a
+Linux distribution as QEAFIVELS OS, and do not mislabel Linux as a
+QEAF-written kernel.
 
 ### 2. Target Hardware
 
 Primary device: Xiaomi Redmi Note 7 Pro (`violet`), ARM64. SoC **confirmed
 SM6150 / Snapdragon 675** (fastboot `variant: SM6 EMMC`; kernel reports
 `4.14.215-azure-Pixel+`), Adreno 612, 1080x2340 panel, capacitive
-multi-touch, UFS storage, Wi-Fi/BT/modem/GPS, sensors, USB-C. Older notes in
+multi-touch, eMMC storage, Wi-Fi/BT/modem/GPS, sensors, USB-C. Older notes in
 `docs/VIOLET_HARDWARE.md` that suggested SDM660 are obsolete.
 
 First, investigate the actual hardware, boot chain, memory map, peripherals
@@ -35,32 +40,32 @@ and security configuration of Violet. Never assume a hardware component is
 accessible without verified documentation, driver research or physical
 testing.
 
-### 3. Independent System Architecture
+### 3. Linux-Core System Architecture
 
-- **Layer 1 — Boot**: QEAFIVELS bootloader, hardware/memory init, secure-boot
-  investigation, kernel loading, boot config, recovery path, diagnostics.
-- **Layer 2 — QEAFIVELS Kernel** (C/C++ + arch assembly; NOT Linux):
-  ARM64 exceptions, physical/virtual memory, scheduler, interrupts, timers,
-  IPC, sync primitives, syscall interface, per-task credentials and
-  capabilities, syscall authorization, VFS handles with ownership/mode
-  enforcement, power management, crash handling.
-- **Layer 3 — HAL and drivers** (QEAFIVELS-native): display/framebuffer,
-  touch, GPU, storage/UFS, USB, audio, battery/charging, power, GPIO, I2C,
-  SPI, UART, sensors, Wi-Fi, BT, modem, GPS, camera, fingerprint. Minimal
-  working set first. Vendor firmware components documented separately; no
-  silent Linux or vendor runtime dependencies through vendor components.
+- **Layer 1 — Boot transport**: existing verified boot chain, pinned kernel
+  artifact, initramfs, recovery path and diagnostics. Do not replace XBL/ABL
+  or write boot-critical partitions as an exploratory step.
+- **Layer 2 — Linux kernel core**: vendor Violet 4.14.215 on AArch64 and a
+  pinned upstream 4.14.215 x86_64/QEMU baseline. Linux owns process/memory,
+  interrupts, timers, VFS, namespaces, security primitives and drivers.
+- **Layer 3 — Linux drivers and QEAF hardware services**: kernel drivers own
+  probe, IRQ, DMA, clocks, regulators and device binding. QEAF services
+  expose bounded, permissioned hardware APIs to apps; userspace never writes
+  MMIO or opens privileged devices directly. Firmware remains external and
+  provenance-recorded.
 - **Layer 4 — Core system services**: Process, Memory, Device, Storage,
   Power, Network, Audio, Display, Input, Security, Package, Notification,
-  Update, Logging — QEAFIVELS-native APIs and IPC only.
+  Update and Logging — QEAF-owned services above Linux.
 - **Layer 5 — Framework**: Window Manager, graphics, UI toolkit, event
   system, touch/gestures, app lifecycle, resources, fonts, animation, theme,
-  accessibility, native API. No vendor SDK, Java/Kotlin or vendor app runtime.
+  accessibility and native API. No vendor SDK, Java/Kotlin or vendor app runtime.
 - **Layer 6 — QeafVXP Runtime**: separate compatibility subsystem for MRE
   `.vxp` apps; never confused with the native architecture.
 - **Layer 7 — Native app environment**: native executable format, loader,
-  `.qeapp` packages, permissions, sandbox, lifecycle, native APIs, signing.
+  `.qeapp` packages, permissions, Linux process sandbox, lifecycle, native
+  APIs and signing.
 - **Layer 8 — System UI**: lock, home, drawer, notifications, quick
-  settings, settings, file manager, themes, app manager, system info,
+  settings, settings, file manager, themes, app manager, system info and
   recovery UI — talking to QEAFIVELS services only.
 
 ### 4. Native Development Ecosystem
@@ -68,7 +73,7 @@ testing.
 | Component | Name |
 |---|---|
 | Operating System | QEAFIVELS OS |
-| Kernel | QEAFIVELS Kernel |
+| Kernel | QEAFIVELS Linux Core (vendor Violet 4.14.215; pinned x86_64 4.14.215) |
 | Native Framework | QEAFIVELS Framework |
 | Runtime | QeafVXP Runtime |
 | Native Application | `.qeapp` |
@@ -82,58 +87,54 @@ its existing MRE VXP toolchain.
 
 ### 5. Recovery and Update Architecture
 
-Independent QEAFIVELS Recovery: own boot entry, own execution environment,
-storage access, package verification, update install, system repair,
-diagnostics, logs, factory reset. Never a vendor mobile-platform recovery or TWRP.
+QEAFRESCUE and QEAF Recovery run as QEAF-owned Linux userspace/initramfs
+paths with bounded storage access, package verification, diagnostics and
+repair tools. Never present a vendor mobile-platform recovery or TWRP as
+QEAFIVELS Recovery. Signed update and rollback remain separate gates.
 
-### 6. Development Strategy (verified stages)
+### 6. Development Strategy (Linux-core migration)
 
-1. Hardware and boot-chain research — **see `docs/VIOLET_HARDWARE.md`**
-2. Bootloader proof of concept
-3. ARM64 kernel startup
-4. Memory and interrupt management
-5. UART debugging
-6. Basic display output
-7. Touchscreen input
-8. Storage access
-9. Process and memory management
-10. Native system calls
-11. Native system services
-12. Graphics and window manager
-13. QEAFIVELS Framework
-14. Native `.qeapp` runtime
-15. System UI
-16. Recovery environment
-17. Networking, audio, sensors, camera, remaining drivers
-18. VXPEngine integration
-19. Qeafivels Tool integration
-20. Physical-device validation
+1. Record the approved Linux foundation and kernel/package provenance.
+2. Verify Violet stock-kernel reuse without changing the binary or flashing.
+3. Pin and build the x86_64 Linux 4.14.215 QEMU baseline and initramfs.
+4. Boot QEAF PID 1/services on x86_64 QEMU, then validate rescue and QEAPP.
+5. Make the Violet Linux kernel source/config/DTB build reproducible when
+   exact vendor sources are available; until then declare binary-only provenance.
+6. Move hardware ownership to Linux drivers and QEAF service adapters; retain
+   the freestanding kernel only as a reference/regression track.
+7. Complete Linux security, persistence, update and rollback evidence.
+8. Validate physical Violet only after separate explicit authorization.
 
 Every stage must produce testable build artifacts and documented results.
 
 ### 7. Absolute Engineering Restrictions
 
-- Never use a vendor mobile platform as the OS foundation; never use the Linux kernel.
-- Never depend on a vendor app runtime or framework.
-- Never repackage a vendor mobile ROM and rename it QEAFIVELS OS.
+- Linux is the approved kernel core; never claim QEAFIVELS wrote the Linux
+  kernel and never load freestanding-kernel drivers into Linux userspace.
+- Never depend on an Android/AOSP/ART runtime, vendor app runtime/framework,
+  APK-style packages, Java/Kotlin or a vendor mobile ROM.
+- Never repackage a vendor mobile ROM or Linux distribution and rename it
+  QEAFIVELS OS.
 - Never fake hardware support; never claim physical-device compatibility
   based only on an emulator; never confuse the UI with the OS itself; never
   mix `.qeapp` and `.vxp` execution models.
-- Never let an EL0 process widen its own uid or capability mask, and never add
-  a syscall that bypasses the dispatcher's capability check or the VFS
-  owner/mode check. Apps must never hold `VQEAF_CAP_SYSTEM` or
-  `VQEAF_CAP_FS_ADMIN`.
-- If a feature is blocked by missing hardware documentation, firmware or
-  boot access, document the blocker and investigate alternative native
-  implementations.
+- QEAPP processes must drop root identity, clear supplementary groups, close
+  inherited descriptors, apply `no_new_privs`, seccomp and resource limits,
+  and receive no direct MMIO or privileged device access.
+- Do not modify boot/recovery/radio/userdata/misc partitions, flash firmware
+  or boot-test physical hardware without separate explicit authorization.
+- If a feature is blocked by missing hardware documentation, firmware,
+  kernel configuration or source provenance, document the blocker and keep
+  the capability disabled or blocked with an explanation.
 
-### 7b. Current development reality (evidence, 2026-11-21)
+### 7b. Current development reality (evidence, 2026-11-25)
 
-The `platform/violet` PID 1 runs on the **stock 4.14.215 vendor kernel** as a
-development vehicle (not the QEAFIVELS Kernel). That kernel is monolithic —
-drivers (wlan, cfg80211, bluetooth, touch, camera, fingerprint) are **already
-built in**; there is nothing to "port" from the stock ROM into it. Missing
-capabilities are userspace/service/firmware, not kernel drivers:
+The `platform/violet` PID 1 runs on the **vendor Linux 4.14.215 kernel**, now
+the approved Violet kernel core. That kernel is monolithic — drivers (wlan,
+cfg80211, bluetooth, touch, camera, fingerprint) are already built in; there
+is nothing to "port" from the stock ROM into Linux userspace. Missing
+capabilities are firmware, userspace/service, kernel configuration or a
+reviewed kernel backport:
 - Wi-Fi: `wlan0` absent because WLFW QMI service `0x45` is never published by
   the modem; cnss-daemon now runs (binderfs `/dev/binder` fixed) but is silent.
 - GNSS: kernel exposes no `/dev/gnss` or `/sys/class/gnss`; HAL service is
@@ -159,9 +160,10 @@ capabilities are userspace/service/firmware, not kernel drivers:
 
 ### 8. Final Objective
 
-Deliver a genuinely independent mobile operating system for Xiaomi Redmi
-Note 7 Pro: QEAFIVELS OS owns its boot architecture, kernel, drivers, system
-services, framework, runtime, native applications, recovery environment and
-development tools.
+Deliver QEAFIVELS OS for Xiaomi Redmi Note 7 Pro as a Linux-core mobile OS:
+QEAFIVELS owns PID 1/init, system services, hardware policy, framework,
+runtime, native applications, recovery, interface and development tools,
+with every kernel/firmware artifact and hardware capability traceable to
+real evidence.
 
 **QEAFIVELS OS — Explore • Create • Enjoy**

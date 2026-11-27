@@ -1,36 +1,50 @@
-# QEAFIVELS OS — 20-stage implementation roadmap
+# QEAFIVELS OS — Linux-core migration roadmap
 
 Canonical requirements and safety policy: `docs/INDEPENDENT_OS_CHARTER.md`.
+Architecture decision approved 2026-11-25.
 
-| Stage | Deliverable | Gate / current status |
+| Phase | Deliverable | Gate / current status |
 |---|---|---|
-| 1 | Violet hardware and boot-chain research | PARTIAL; resolve SoC, boot handoff, memory map and security |
-| 2 | Boot transport proof | NOT STARTED; serial payload through documented existing chain |
-| 3 | Freestanding ARM64 startup | DONE on QEMU virt (entry, EL1, vectors, PL011, safe PSCI off); Violet handoff/entry NOT STARTED |
-| 4 | Physical/virtual memory | DONE on QEMU virt (identity map, PMM, per-task user roots); Violet memory map absent |
-| 5 | Interrupts and timers | DONE on QEMU virt (GICv2, generic timer, PL011 RX); Violet IRQ wiring absent |
-| 6 | Scheduler and synchronization | DONE on QEMU virt (preemptive round-robin, IRQ-masked critical sections, single core); SMP not started |
-| 7 | IPC and syscalls | DONE on QEMU virt: EL0 SVC ABI with per-task uid/gid/capabilities, capability-gated dispatch, open/read/write/close. Object-registry IPC and revocation NOT STARTED |
-| 8 | Native block/storage drivers | PARTIAL: virtio-mmio block (modern v2 + legacy v1) on QEMU only; Violet eMMC driver not started |
-| 9 | VFS and native storage services | PARTIAL: kernel ramfs root + per-task handle tables with owner/mode checks; no persistent filesystem or mount layer |
-| 10 | Kernel diagnostics and crash handling | PARTIAL: vectors, ESR/FAR/ELR dump, panic path and UART evidence markers; no crash dump to storage |
-| 11 | Native service supervisor | partial host/reference code; ARM64 runtime integration absent |
-| 12 | Driver model and capability registry | PARTIAL: probe/register model + capability registry on QEMU; phone drivers absent |
-| 13 | Display and input services | PARTIAL on QEMU virt (ramfb scanout, PL011 keyboard, compositor/WM); native Violet display/touch drivers absent |
-| 14 | QEAFIVELS Framework | PARTIAL: window manager, compositor, AMS launch path and EL0 SystemUI prototype; stable app ABI and lifecycle incomplete |
-| 15 | Native UI and .qeapp lifecycle | UI prototypes exist; no claim of production app runtime |
-| 16 | Independent recovery | x86_64 EFI reference only; Violet freestanding recovery not started |
-| 17 | Networking/audio/sensors/camera | NOT STARTED; firmware and interfaces need research |
-| 18 | QeafVXP Runtime and VXPEngine | compatibility design must remain isolated from .qeapp |
-| 19 | Qeafivels Tool integration | SDK/CLI partial; deployment must remain non-destructive |
-| 20 | Physical-device validation | NOT STARTED; requires verified serial/boot/display/input/storage tests |
+| 1 | Linux architecture and Violet package provenance | IN PROGRESS: canonical rules updated; `package_violet.py --verify-only`, 10 manifest tests and 3 ownership-boundary tests PASS on host |
+| 2 | Pinned x86_64 Linux 4.14.215 baseline | PASS: pinned upstream source/config, monolithic `bzImage`, static userspace and deterministic initramfs |
+| 3 | x86_64 QEMU Linux boot and initramfs | PASS: Linux 4.14.215 boots QEAF PID 1 and powers off cleanly with separate artifacts |
+| 4 | QEAF PID 1/services/rescue/QEAPP on Linux QEMU | PARTIAL: service readiness and sandboxed Puzzle lifecycle PASS; headless only, rescue/UI/persistence/update not wired |
+| 5 | Reproducible Violet 4.14 kernel build | BLOCKED: exact vendor source, revision, config and DTB provenance are unavailable |
+| 6 | Linux driver and QEAF service/capability parity | IN PROGRESS: Linux already owns Violet hardware; service/firmware blockers remain |
+| 7 | Security, persistence, signed update and rollback | PARTIAL: QEAPP sandbox exists; durable storage, revocation and rollback are incomplete |
+| 8 | Physical Violet validation | NOT AUTHORIZED: separate approval plus p77-only raw read-back and boot evidence required |
 
 ## Rules
 
-- Linux-musl `platform/violet` image is legacy stock-kernel transport only.
-- "DONE on QEMU virt" means emulator evidence from `scripts/test_kernel_aarch64.py` (UART markers + clean PSCI exit). It is never evidence of Violet hardware support, and it does not cover the ARM64 boot handoff.
-- Kernel security (stage 7, milestone F4): every EL0 syscall is capability-checked at dispatch and every VFS access is owner/mode checked. A new syscall without a policy-table entry, or an app task created without an explicit credential, is a gate failure.
-- x86_64 UEFI/QEMU results are reference/emulator evidence only.
-- No XBL/ABL replacement, boot-critical partition write or flash without separate explicit authorization, backups and a recovery plan.
-- Hardware feature status is granted only after a native QEAFIVELS driver passes a documented physical-device test.
-- Every stage publishes source, reproducible artifact, tests, logs and limitations.
+- Linux is the approved kernel core for the whole OS. Never describe it as a
+  QEAF-written kernel or load freestanding-kernel drivers into Linux userspace.
+- Violet packaging must keep the kernel payload byte-for-byte equal to the
+  approved stock reference until an explicit kernel selector and provenance
+  contract exist.
+- Host verification is not physical boot evidence. QEMU evidence is not
+  Violet hardware evidence.
+- The freestanding x86_64 and AArch64 kernels remain reference/regression
+  tracks with independent artifact names and tests.
+- QEAPP processes use Linux identity separation, descriptor hygiene,
+  `no_new_privs`, seccomp and resource limits; apps never receive direct MMIO
+  or privileged device access. The current x86_64 QEMU sandbox is a baseline:
+  its arena is RWX, rlimit failures are unchecked, and namespaces/chroot/
+  device cgroups/LSM policy are not implemented.
+- No XBL/ABL replacement, boot-critical partition write or flash without
+  separate explicit authorization, backups and a recovery plan.
+- Every phase publishes source or binary provenance, reproducible artifacts
+  where source exists, tests, logs and limitations.
+
+## Verified x86_64/QEMU evidence (2026-11-25)
+
+- `python scripts/build_linux_x86_64.py --skip-kernel --timeout 60`: PASS.
+- `python scripts/build_linux_x86_64.py --verify-only`: PASS.
+- `python -m unittest tests.test_linux_x86_64_baseline`: 21/21 PASS.
+- Linux/QEAPP regression selection: 66/66 PASS.
+- `build/linux-x86_64/boot.log` records service READY, Puzzle verification,
+  uid/gid 20000, `no_new_privs`, seccomp, full lifecycle, service STOPPED,
+  system PASS and `reboot: Power down`.
+- Three negative QEMU cases PASS fail-closed: missing services, missing package
+  and tampered package. Logs are under `build/linux-x86_64/negative-qemu/`.
+- This is emulator evidence only. No physical x86_64 or Violet test, flash,
+  partition write or commit was performed.

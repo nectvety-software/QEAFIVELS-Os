@@ -124,6 +124,7 @@ void vqeaf_cam_control_init(VqeafCamControl *ctl, int32_t op_code,
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <linux/videodev2.h>
 
@@ -194,6 +195,47 @@ static int subdev_find(const char *needle, int nth, char *node, int node_cap,
         return 0;
     }
     return -ENOENT;
+}
+
+/* Power the sensor subdev through the standard v4l2 control. Sensors on
+ * msm-camera stay dark until their driver receives S_POWER(1) from userspace,
+ * so this is the first real step of the physical chain. */
+static int subdev_s_power(const char *node, int on)
+{
+    int fd, rc;
+    int32_t power = (int32_t)on;
+
+    if (!node) return -EINVAL;
+    fd = open(node, O_RDWR | O_CLOEXEC);
+    if (fd < 0) return -errno;
+    rc = ioctl(fd, _IOWR('V', 96, int32_t), &power);
+    if (rc < 0) rc = -errno;
+    close(fd);
+    return rc;
+}
+
+/* Count real media-controller nodes. The cam-req-mgr stack can run without
+ * them, but their presence decides whether mc topology can be used later. */
+static int media_nodes(char *buf, int cap, int *off)
+{
+    int found = 0;
+
+    for (int i = 0; i < 8; i++) {
+        char sp[64];
+        struct stat st;
+
+        snprintf(sp, sizeof(sp), "/dev/media%d", i);
+        if (stat(sp, &st) != 0 || !S_ISCHR(st.st_mode)) continue;
+        if (found == 0)
+            appendf(buf, cap, off, "  media nodes: ");
+        appendf(buf, cap, off, "%s ", sp);
+        found++;
+    }
+    if (found)
+        appendf(buf, cap, off, "\n");
+    else
+        appendf(buf, cap, off, "  media nodes: none registered\n");
+    return found;
 }
 
 static int cap_query(int fd, void *caps, int caps_size, char *buf, int cap,
@@ -446,16 +488,18 @@ static void destroy_session(int32_t session, char *buf, int cap, int *off)
 int vqeaf_camera_acquire_link(char *buf, int cap)
 {
     VqeafCamLink link;
-    int32_t session = 0, sensor_h = 0, isp_h = 0, icp_h = 0;
-    int32_t link_hdls[3] = {0, 0, 0}, link_hdl = 0;
-    char sensor_node[64] = "", isp_node[64] = "", icp_node[64] = "";
+    int32_t session = 0, sensor_h = 0, isp_h = 0, icp_h = 0, csiphy_h = 0;
+    int32_t link_hdls[4] = {0, 0, 0, 0}, link_hdl = 0;
+    char sensor_node[64] = "", isp_node[64] = "", icp_node[64] = "",
+         csiphy_node[64] = "";
     char name[64], err[200];
-    int off = 0, count = 0, rc, fd;
+    int off = 0, count = 0, rc, fd, sensor_powered = 0;
 
     if (!buf || cap <= 0) return -EINVAL;
     buf[0] = '\0';
     appendf(buf, cap, &off,
-            "cam link: CAM_ACQUIRE_DEV then CAM_REQ_MGR_LINK (no stream scheduled)\n");
+            "cam link: sensor power, CSIPHY/ISP/ICP acquire, CAM_REQ_MGR_LINK\n");
+    media_nodes(buf, cap, &off);
     rc = vqeaf_camera_create_session(&session, err, (int)sizeof(err));
     if (rc != 0) {
         appendf(buf, cap, &off, "  session: failed: %s\n", err);
@@ -468,6 +512,14 @@ int vqeaf_camera_acquire_link(char *buf, int cap)
     if (rc < 0) {
         appendf(buf, cap, &off, "  sensor: subdev not found (errno %d)\n", -rc);
     } else {
+        rc = subdev_s_power(sensor_node, 1);
+        if (rc == 0) {
+            sensor_powered = 1;
+            appendf(buf, cap, &off, "  sensor: S_POWER(1) ok\n");
+        } else {
+            appendf(buf, cap, &off,
+                    "  sensor: S_POWER(1) failed (errno %d)\n", -rc);
+        }
         rc = acquire_dev(sensor_node, session, NULL, 0, &sensor_h);
         appendf(buf, cap, &off, "  sensor %s: acquire %s", sensor_node,
                 rc == 0 ? "ok handle=0x" : "failed (errno ");
@@ -476,6 +528,25 @@ int vqeaf_camera_acquire_link(char *buf, int cap)
         else
             appendf(buf, cap, &off, "%d)\n", -rc);
         if (rc == 0) link_hdls[count++] = sensor_h;
+    }
+
+    rc = subdev_find("cam-csiphy", 0, csiphy_node, (int)sizeof(csiphy_node),
+                     name, (int)sizeof(name));
+    if (rc < 0) {
+        appendf(buf, cap, &off, "  csiphy: subdev not found (errno %d)\n", -rc);
+    } else {
+        /* No resource payload: csiphy acquire without combo-mode info; the
+         * kernel's answer decides whether this is acceptable. */
+        rc = acquire_dev(csiphy_node, session, NULL, 0, &csiphy_h);
+        if (rc == 0) {
+            appendf(buf, cap, &off, "  csiphy %s: acquire ok handle=0x%08x\n",
+                    csiphy_node, (unsigned)csiphy_h);
+            link_hdls[count++] = csiphy_h;
+        } else {
+            appendf(buf, cap, &off,
+                    "  csiphy %s: acquire failed (errno %d)\n",
+                    csiphy_node, -rc);
+        }
     }
 
     rc = subdev_find("cam-isp", 0, isp_node, (int)sizeof(isp_node),
@@ -540,6 +611,12 @@ int vqeaf_camera_acquire_link(char *buf, int cap)
     release_dev(icp_node, session, icp_h, "icp", buf, cap, &off);
     release_dev(isp_node, session, isp_h, "isp", buf, cap, &off);
     release_dev(sensor_node, session, sensor_h, "sensor", buf, cap, &off);
+    release_dev(csiphy_node, session, csiphy_h, "csiphy", buf, cap, &off);
+    if (sensor_powered) {
+        rc = subdev_s_power(sensor_node, 0);
+        appendf(buf, cap, &off, "  sensor: S_POWER(0) %s\n",
+                rc == 0 ? "ok" : "failed (left on)" );
+    }
     destroy_session(session, buf, cap, &off);
     appendf(buf, cap, &off,
             "cam link: no buffers allocated and no request scheduled\n");

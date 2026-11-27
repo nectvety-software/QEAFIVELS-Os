@@ -1,0 +1,16 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/clock/qcom,camcc-sm6150.h>
+
+#include "sm6150-idp.dtsi"
+#include "sm6150-audio-overlay.dtsi"
+#include "xiaomi/violet/violet-sm6150-display.dtsi"
+
+/ {
+    model = "QEAF Violet display overlay";
+    compatible = "qcom,sm6150-idp", "qcom,sm6150", "qcom,idp";
+    qcom,msm-id = <355 0x0>;
+    qcom,board-id = <34 0>;
+};

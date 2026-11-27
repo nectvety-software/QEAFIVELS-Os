@@ -48,8 +48,8 @@ python scripts/render_phone_ui.py
 
 PASS khi:
 
-- `720x1560 ok (15 pages x 2 profiles)` và `1560x720 ok (15 pages x 2 profiles)`;
-- `wrote 60 PNGs` vào `build/screens/phone-ui/`;
+- `720x1560 ok (50 frames x 2 profiles)` và `1560x720 ok (50 frames x 2 profiles)`;
+- `wrote 200 PNGs` vào `build/screens/phone-ui/`;
 - Script tự fail nếu một ảnh trống (dưới 30 màu lấy mẫu), sai kích thước, hoặc
   hai trang cho ra khung hình giống nhau.
 
@@ -210,15 +210,15 @@ mỗi poll nhích một bước (mặc định 8, cho phép 2..64) tới điểm
 xếp hàng, `... refused` khi điểm ngoài canvas, UI chưa dựng hoặc đang có gesture
 chờ; mỗi loại nhận một yêu cầu mỗi lần (yêu cầu thứ hai bị từ chối).
 
-Dock dưới cùng mặc định chứa Điện thoại / Tin nhắn / Trình duyệt / Thư viện,
-nên điều hướng test dùng home bar, status bar và vuốt ngang thay vì tap dock.
+Home Midnight không có dock hay thanh điều hướng đáy; điều hướng test dùng
+vuốt mở khóa, vuốt ngang và status bar thay vì tap dock.
 
 Toạ độ cho canvas 720×1560:
 
 | Trang | Chuỗi tap |
 |---|---|
 | Unlock | swipe `(360, 1250)`→`(360, 250)` |
-| Home | swipe mở khóa (hoặc tap home bar `(360, 1540)`) |
+| Home | swipe mở khóa; vuốt ngang để đổi trang |
 | Ứng dụng | mở khóa → `(654, 346)` (“Tất cả”) |
 | Điều khiển | mở khóa → `(100, 30)` (status bar) |
 | Cài đặt | mở khóa → `(100, 30)` → swipe `(600, 1100)`→`(120, 1100)` |

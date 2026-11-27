@@ -22,9 +22,13 @@
 
 #include "vqeaf_state.h"
 #include "vqeaf_theme.h"
+#include "vqeaf_components.h"
+#include "vqeaf_drag.h"
+#include "vqeaf_sound.h"
 #include "vqeaf_ime.h"
 #include "violet.h"
 #include "vqeaf_wifi.h"
+#include "vqeaf_security.h"
 #include "vqeaf_files.h"
 #include "vqeaf_sys_tools.h"
 #include "vqeaf_tools_ui.h"
@@ -33,6 +37,7 @@
 #include "vqeaf_camera.h"
 #include "vqeaf_qeapp.h"
 #include "vqeaf_qeapp_device.h"
+#include <vqeaf/qeapp_package.h>
 #include <vqeaf/settings.h>
 #include "qeaf_native_abi.h"
 #include "icons/vqeaf_app_icons.h"
@@ -44,6 +49,7 @@
 
 static lv_obj_t *page_clock;
 static lv_obj_t *page_date;
+static void setup_wifi_back_cb(lv_event_t *event);
 
 /* Labels on the detail pages that follow live providers. They are rebound on
  * every rebuild, so at most one page's widgets are attached at a time. */
@@ -58,6 +64,20 @@ static lv_obj_t *live_usb;
 static const char *usb_mode_text(void);
 static lv_obj_t *live_wifi;
 static lv_obj_t *live_brightness;
+static lv_obj_t *live_sound_status;
+
+static lv_obj_t *lock_battery_icon;
+static lv_obj_t *lock_battery_value;
+static lv_obj_t *lock_battery_caption;
+static lv_obj_t *lock_wifi_icon;
+static lv_obj_t *lock_wifi_value;
+static lv_obj_t *lock_wifi_caption;
+static lv_obj_t *lock_storage_value;
+static lv_obj_t *lock_storage_caption;
+static lv_obj_t *lock_notification_card;
+static lv_obj_t *lock_notification_count;
+static lv_obj_t *lock_notification_title;
+static lv_obj_t *lock_notification_body;
 
 static void format_bytes(uint64_t bytes, char *out, size_t cap)
 {
@@ -193,9 +213,56 @@ static void refresh_live_fields(void)
     }
     if(live_usb) lv_label_set_text(live_usb, usb_mode_text());
     if(live_wifi) lv_label_set_text(live_wifi, wifi_text());
+    if(live_sound_status)
+        lv_label_set_text(live_sound_status, vqeaf_sound_status());
     if(live_brightness) {
         snprintf(text, sizeof(text), "%d%%", vqeaf_state.brightness);
         lv_label_set_text(live_brightness, text);
+    }
+    if(lock_battery_value) {
+        if(vqeaf_state.battery_valid)
+            snprintf(text, sizeof(text), "%d%%", vqeaf_state.battery_pct);
+        else
+            snprintf(text, sizeof(text), "--");
+        lv_label_set_text(lock_battery_value, text);
+        lv_label_set_text(lock_battery_caption,
+                          vqeaf_state.charging ? "Đang sạc" : "Pin");
+        lv_label_set_text(lock_battery_icon,
+            vqeaf_state.charging ? VQEAF_SYM_BATTERY_CHARGING_FULL :
+                                   VQEAF_SYM_BATTERY_FULL);
+        lv_obj_set_style_text_color(lock_battery_value,
+            vqeaf_state.charging ? VQEAF_C_ACCENT : VQEAF_C_TEXT, 0);
+    }
+    if(lock_wifi_value) {
+        lv_label_set_text(lock_wifi_value,
+            vqeaf_state.wifi_up > 0 ? "Bật" :
+            vqeaf_state.wifi_up == 0 ? "Tắt" : "Chưa rõ");
+        lv_label_set_text(lock_wifi_caption, "Wi-Fi");
+        lv_label_set_text(lock_wifi_icon,
+            vqeaf_state.wifi_up > 0 ? VQEAF_SYM_WIFI :
+                                      VQEAF_SYM_SIGNAL_WIFI_OFF);
+    }
+    if(lock_storage_value) {
+        if(vqeaf_state.storage_valid)
+            snprintf(text, sizeof(text), "%d%%", vqeaf_state.storage_pct);
+        else
+            snprintf(text, sizeof(text), "--");
+        lv_label_set_text(lock_storage_value, text);
+        lv_label_set_text(lock_storage_caption, "Lưu trữ");
+    }
+    if(lock_notification_card) {
+        int count = vqeaf_ui_notification_count();
+        const vqeaf_notification_t *note = vqeaf_ui_notification_at(0);
+        if(count > 0)
+            snprintf(text, sizeof(text), "%d thông báo", count);
+        else
+            snprintf(text, sizeof(text), "Thông báo");
+        lv_label_set_text(lock_notification_count, text);
+        lv_label_set_text(lock_notification_title,
+                          note != NULL ? note->title : "Không có thông báo");
+        lv_label_set_text(lock_notification_body,
+            note != NULL ? (note->body[0] ? note->body : "Sự kiện hệ thống") :
+                           "Sự kiện thật của hệ thống sẽ xuất hiện ở đây.");
     }
 }
 
@@ -235,7 +302,8 @@ static lv_obj_t *page_title(lv_obj_t *parent, const char *title)
 
 /* Detail pages carry their own back affordance; the nav bar keeps the four
  * primary destinations and never highlights a detail page. */
-static lv_obj_t *detail_header(lv_obj_t *root, const char *title)
+static lv_obj_t *detail_header_back(lv_obj_t *root, const char *title,
+                                    vqeaf_page_t back_page)
 {
     lv_obj_t *row = vqeaf_row(root);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
@@ -245,9 +313,17 @@ static lv_obj_t *detail_header(lv_obj_t *root, const char *title)
 
     lv_obj_t *back = vqeaf_tile(row, VQEAF_SYM_ARROW_BACK, VQEAF_C_SURFACE,
                                 VQEAF_C_TEXT, 72, 24);
-    vqeaf_on_click(back, nav_cb, (void *)(intptr_t)VQEAF_PAGE_SETTINGS);
+    if(back_page == VQEAF_PAGE_SETUP)
+        vqeaf_on_click(back, setup_wifi_back_cb, NULL);
+    else
+        vqeaf_on_click(back, nav_cb, (void *)(intptr_t)back_page);
     vqeaf_label(row, title, VQEAF_FONT_HEADLINE, VQEAF_C_TEXT);
     return row;
+}
+
+static lv_obj_t *detail_header(lv_obj_t *root, const char *title)
+{
+    return detail_header_back(root, title, VQEAF_PAGE_SETTINGS);
 }
 
 static void style_progress(lv_obj_t *bar)
@@ -637,9 +713,9 @@ static lv_obj_t *search_pill(lv_obj_t *parent, const char *placeholder)
     lv_obj_set_style_pad_column(pill, 16, 0);
 
     vqeaf_glyph(pill, VQEAF_SYM_SEARCH, VQEAF_ICON_SM,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFF7FF) : VQEAF_C_TEXT_DIM);
+        vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFFFFF) : VQEAF_C_TEXT_DIM);
     vqeaf_label(pill, placeholder, VQEAF_FONT_BODY,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xF4E8FA) : VQEAF_C_TEXT_MUTE);
+        vqeaf_theme_liquid_glass() ? lv_color_hex(0xEAF5FF) : VQEAF_C_TEXT_MUTE);
     vqeaf_on_click(pill, search_modal_open_cb, NULL);
     return pill;
 }
@@ -670,11 +746,9 @@ static const vqeaf_app_t system_apps[] = {
     { VQEAF_SYM_SETTINGS,  "Cài đặt",    0x1E2A2C, 0xB8CBCB, VQEAF_PAGE_SETTINGS, VQEAF_APP_ICON_SETTINGS },
 };
 
-/* Default dock: the four launchable apps the reference handset shows there.
- * Registry ids: 4 Phone, 5 Messages, 7 Browser, 9 Gallery (0..3 are the
- * Home/Apps/Control/Settings screens, still reachable from the drawer, the
- * status bar and the home bar). Drag-and-drop can still replace any slot. */
-static int g_dock_apps[VQEAF_DOCK_SLOTS] = { 4, 5, 7, 9 };
+/* Default dock: four apps with real destinations. Registry ids 0..3 remain
+ * the Home/Apps/Control/Settings roles; drag-and-drop can replace any slot. */
+static int g_dock_apps[VQEAF_DOCK_SLOTS] = { 7, 8, 9, 10 };
 
 /* The sheet is two siblings on the top layer: a full-screen scrim that closes
  * it and the card itself. They used to be one full-screen wrapper with the
@@ -791,7 +865,7 @@ static void app_info_show(const char *name, const char *kind,
 
     lv_obj_t *card = vqeaf_obj(lv_layer_top());
     g_info_card = card;
-    lv_obj_set_size(card, width * 82 / 100, 430);
+    lv_obj_set_size(card, width * 86 / 100, 430);
     lv_obj_align(card, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(card, VQEAF_C_SURFACE, 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
@@ -831,9 +905,9 @@ static void app_info_show(const char *name, const char *kind,
     lv_obj_set_flex_flow(buttons, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(buttons, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(buttons, 12, 0);
+    lv_obj_set_style_pad_column(buttons, 8, 0);
     lv_obj_t *close = vqeaf_obj(buttons);
-    lv_obj_set_size(close, 136, 64);
+    lv_obj_set_size(close, 104, 64);
     lv_obj_set_style_bg_color(close, VQEAF_C_SURFACE_3, 0);
     lv_obj_set_style_bg_opa(close, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(close, 32, 0);
@@ -845,7 +919,7 @@ static void app_info_show(const char *name, const char *kind,
 
     if(page != VQEAF_PAGE_COUNT || qeapp_index >= 0) {
         lv_obj_t *open = vqeaf_obj(buttons);
-        lv_obj_set_size(open, 150, 64);
+        lv_obj_set_size(open, 120, 64);
         lv_obj_set_style_bg_color(open, VQEAF_C_ACCENT, 0);
         lv_obj_set_style_bg_opa(open, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(open, 32, 0);
@@ -862,7 +936,7 @@ static void app_info_show(const char *name, const char *kind,
 
     if(app_id >= 0) {
         lv_obj_t *move = vqeaf_obj(buttons);
-        lv_obj_set_size(move, 190, 64);
+        lv_obj_set_size(move, 150, 64);
         lv_obj_set_style_bg_color(move, VQEAF_C_SURFACE_3, 0);
         lv_obj_set_style_bg_opa(move, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(move, 32, 0);
@@ -877,7 +951,7 @@ static void app_info_show(const char *name, const char *kind,
 
         if(default_role_for_app(app_id) >= 0) {
             lv_obj_t *def = vqeaf_obj(buttons);
-            lv_obj_set_size(def, 200, 64);
+            lv_obj_set_size(def, 150, 64);
             lv_obj_set_style_bg_color(def, VQEAF_C_SURFACE_3, 0);
             lv_obj_set_style_bg_opa(def, LV_OPA_COVER, 0);
             lv_obj_set_style_radius(def, 32, 0);
@@ -909,6 +983,7 @@ static void app_info_cb(lv_event_t *event)
 {
     int app_id = (int)(intptr_t)lv_event_get_user_data(event);
     vqeaf_pages_app_info(app_id);
+    lv_event_stop_processing(event);
 }
 
 void vqeaf_pages_app_info(int app_id)
@@ -947,68 +1022,167 @@ static void app_open_cb(lv_event_t *event)
     vqeaf_ui_show(page);
 }
 
-static lv_obj_t *app_tile(lv_obj_t *parent, const app_def_t *app, int app_id)
+static void app_unavailable_cb(lv_event_t *event)
+{
+    int app_id = (int)(intptr_t)lv_event_get_user_data(event);
+    const vqeaf_app_t *app = vqeaf_app_by_id(app_id);
+    char message[96];
+
+    if(app == NULL) return;
+    snprintf(message, sizeof(message),
+             "%s chưa có trang nội dung trên ảnh này.", app->name);
+    show_toast(message);
+    lv_event_stop_processing(event);
+}
+
+int vqeaf_pages_home_order_at(int index);
+void vqeaf_pages_home_move(int from, int to);
+
+static void home_drag_refresh_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    vqeaf_ui_show(VQEAF_PAGE_HOME);
+}
+
+static int home_drag_target(lv_point_t point, void *context)
+{
+    lv_obj_t *grid = (lv_obj_t *)context;
+    uint32_t count = lv_obj_get_child_count(grid);
+    for(uint32_t i = 0; i < count; i++) {
+        lv_obj_t *item = lv_obj_get_child(grid, (int32_t)i);
+        lv_area_t area;
+        lv_obj_get_coords(item, &area);
+        if(point.x >= area.x1 && point.x <= area.x2 &&
+           point.y >= area.y1 && point.y <= area.y2)
+            return (int)(intptr_t)lv_obj_get_user_data(item);
+    }
+    return -1;
+}
+
+static void home_drag_commit(lv_obj_t *source, int target, void *context)
+{
+    int from = (int)(intptr_t)lv_obj_get_user_data(source);
+    (void)context;
+    if(from == target) return;
+    vqeaf_pages_home_move(from, target);
+    vqeaf_sound_play(VQEAF_SOUND_DROP);
+    lv_timer_t *timer = lv_timer_create(home_drag_refresh_cb, 30, NULL);
+    if(timer != NULL) lv_timer_set_repeat_count(timer, 1);
+}
+
+static void home_drag_fallback(lv_obj_t *source, void *context)
+{
+    int position = (int)(intptr_t)lv_obj_get_user_data(source);
+    (void)context;
+    vqeaf_pages_app_info(vqeaf_pages_home_order_at(position));
+}
+
+static lv_obj_t *app_tile(lv_obj_t *parent, const app_def_t *app, int app_id,
+                          int32_t icon_size, int compact, int position,
+                          int draggable)
 {
     lv_obj_t *item = vqeaf_obj(parent);
     const lv_image_dsc_t *icon = vqeaf_app_icon(app->icon);
-    lv_obj_set_size(item, 156, 176);
+    lv_obj_t *plate;
+    int unavailable = app->page == VQEAF_PAGE_COUNT;
+
+    lv_obj_set_size(item, compact ? 118 : 144, compact ? 112 : 152);
     lv_obj_set_flex_flow(item, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(item, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(item, 12, 0);
+    lv_obj_set_style_pad_row(item, compact ? 4 : 8, 0);
 
     if(vqeaf_theme_liquid_glass()) {
-        lv_obj_t *glass = vqeaf_obj(item);
-        lv_obj_set_size(glass, 112, 112);
-        vqeaf_glass_surface(glass, 28, LV_OPA_50);
+        plate = vqeaf_obj(item);
+        lv_obj_set_size(plate, icon_size + 8, icon_size + 8);
+        vqeaf_glass_surface(plate, 10, LV_OPA_50);
         if(icon != NULL) {
-            lv_obj_t *image = vqeaf_icon_img(glass, icon, 88);
+            lv_obj_t *image = vqeaf_icon_img(plate, icon, icon_size);
             lv_obj_center(image);
         }
         else {
-            lv_obj_t *glyph = vqeaf_glyph(glass, app->symbol, VQEAF_ICON,
+            lv_obj_t *glyph = vqeaf_glyph(plate, app->symbol, VQEAF_ICON,
                                           lv_color_hex(0xFFF7FF));
             lv_obj_center(glyph);
         }
     }
     else {
-        lv_obj_t *tile = vqeaf_icon_img(item, icon, 104);
-        if(tile == NULL) {
-            tile = vqeaf_tile(item, app->symbol, lv_color_hex(app->fg),
-                              lv_color_white(), 104,
-                              vqeaf_theme_fluent() ? 20 : 30);
-            vqeaf_app_icon_style(tile, lv_color_hex(app->fg),
+        plate = vqeaf_icon_img(item, icon, icon_size);
+        if(plate == NULL) {
+            plate = vqeaf_tile(item, app->symbol, lv_color_hex(app->fg),
+                               lv_color_white(), icon_size,
+                               vqeaf_theme_fluent() ? 20 : 26);
+            vqeaf_app_icon_style(plate, lv_color_hex(app->fg),
                                  lv_color_hex(app->bg));
         }
     }
+    lv_obj_center(plate);
+
+    if(unavailable) {
+        lv_obj_t *badge = vqeaf_obj(item);
+        lv_obj_add_flag(badge, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        lv_obj_set_size(badge, 26, 26);
+        lv_obj_set_style_radius(badge, 13, 0);
+        lv_obj_set_style_bg_color(badge, VQEAF_C_SURFACE_3, 0);
+        lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+        int32_t badge_x = (lv_obj_get_self_width(item) -
+                           lv_obj_get_self_width(plate)) / 2 + 2;
+        lv_obj_align(badge, LV_ALIGN_TOP_RIGHT, -badge_x, -2);
+        lv_obj_t *mark = vqeaf_label(badge, "!", VQEAF_FONT_CAPTION_BOLD,
+                                     VQEAF_C_TEXT_DIM);
+        lv_obj_center(mark);
+        lv_obj_set_style_opa(plate, (lv_opa_t)150, 0);
+    }
 
     lv_obj_t *label = vqeaf_label(item, app->name, VQEAF_FONT_CAPTION,
-        vqeaf_wallpaper_text_color());
+        unavailable ? VQEAF_C_TEXT_MUTE : vqeaf_wallpaper_text_color());
     lv_obj_set_width(label, lv_pct(100));
+    lv_obj_set_height(label, compact ? 24 : 40);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(label, compact ? LV_LABEL_LONG_MODE_DOTS :
+                                         LV_LABEL_LONG_MODE_WRAP);
 
-    /* Tap opens the page; long-press shows the app info sheet. SHORT_CLICKED
-     * is suppressed after LONG_PRESSED on every indev type; CLICKED is not. */
+    /* A stationary long-press opens information; moving after the hold starts
+     * a real reorder drag and suppresses the tap that follows it. */
     lv_obj_add_flag(item, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(item, app_info_cb, LV_EVENT_LONG_PRESSED,
-                        (void *)(intptr_t)app_id);
-    if(app->page != VQEAF_PAGE_COUNT)
+    lv_obj_set_user_data(item, (void *)(intptr_t)position);
+    if(draggable) {
+        vqeaf_drag_attach(item, position, app->symbol, home_drag_target,
+                          home_drag_commit, home_drag_fallback, parent);
+    }
+    else {
+        lv_obj_add_event_cb(item, app_info_cb, LV_EVENT_LONG_PRESSED,
+                            (void *)(intptr_t)app_id);
+    }
+    if(unavailable)
+        lv_obj_add_event_cb(item, app_unavailable_cb, LV_EVENT_SHORT_CLICKED,
+                            (void *)(intptr_t)app_id);
+    else
         lv_obj_add_event_cb(item, app_open_cb, LV_EVENT_SHORT_CLICKED,
                             (void *)(intptr_t)app->page);
     return item;
 }
 
 static lv_obj_t *app_grid(lv_obj_t *parent, const app_def_t *apps, size_t count,
-                          int first_id)
+                          int first_id, int32_t icon_size)
 {
+    lv_display_t *display = lv_obj_get_display(parent);
+    int landscape = lv_display_get_horizontal_resolution(display) >
+                    lv_display_get_vertical_resolution(display);
+    int columns = landscape ? 8 : 4;
     lv_obj_t *grid = vqeaf_obj(parent);
-    lv_obj_set_width(grid, lv_pct(100));
+
+    lv_obj_set_width(grid, columns * 144 + (columns - 1) * 12);
     lv_obj_set_height(grid, LV_SIZE_CONTENT);
+    lv_obj_align(grid, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_style_pad_column(grid, 16, 0);
-    lv_obj_set_style_pad_row(grid, 22, 0);
+    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(grid, 12, 0);
+    lv_obj_set_style_pad_row(grid, 14, 0);
     for(size_t i = 0; i < count; i++)
-        app_tile(grid, &apps[i], first_id + (int)i);
+        app_tile(grid, &apps[i], first_id + (int)i, icon_size, 0,
+                 first_id + (int)i - 4, 0);
     return grid;
 }
 
@@ -1045,8 +1219,8 @@ static const app_def_t all_apps[] = {
     { VQEAF_SYM_SETTINGS,     "Cài đặt",    0x1E2A2C, 0xB8CBCB, VQEAF_PAGE_SETTINGS, VQEAF_APP_ICON_SETTINGS },
     { VQEAF_SYM_SCHEDULE,     "Đồng hồ",    0x2C1B3E, 0xC79BFF, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_CLOCK },
     { VQEAF_SYM_SYSTEM_UPDATE,"Cập nhật",   0x1A2A46, 0x6FA8FF, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_UPDATE },
-    { VQEAF_SYM_STORAGE,      "Lưu trữ",    0x3A2E14, 0xF3C64E, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_STORAGE },
-    { VQEAF_SYM_INFO,         "Thông tin",  0x123A44, 0x49C8E8, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_ABOUT },
+    { VQEAF_SYM_STORAGE,      "Lưu trữ",    0x3A2E14, 0xF3C64E, VQEAF_PAGE_STORAGE,  VQEAF_APP_ICON_STORAGE },
+    { VQEAF_SYM_INFO,         "Thông tin",  0x123A44, 0x49C8E8, VQEAF_PAGE_ABOUT,    VQEAF_APP_ICON_ABOUT },
     { VQEAF_SYM_SHARE,        "Chia sẻ",    0x2A1A3E, 0xB48CFF, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_SHARE },
     { VQEAF_SYM_BUILD,        "Công cụ",    0x1E2A2C, 0xB8CBCB, VQEAF_PAGE_COUNT,    VQEAF_APP_ICON_TOOLS },
     { VQEAF_SYM_KEYBOARD,     "Terminal",     0x0F2A24, 0x7758,    VQEAF_PAGE_TERMINAL, VQEAF_APP_ICON_TOOLS },
@@ -1088,6 +1262,63 @@ void vqeaf_pages_apps_page_set(int page)
     if(page < 0) page = 0;
     if(page > last) page = last;
     g_apps_page = page;
+}
+
+static int g_home_page;
+static int g_home_order[(sizeof(all_apps) / sizeof(all_apps[0]))];
+static int g_home_order_ready;
+
+static void home_order_init(void)
+{
+    if(g_home_order_ready) return;
+    for(size_t i = 0; i < sizeof(g_home_order) / sizeof(g_home_order[0]); i++)
+        g_home_order[i] = 4 + (int)i;
+    g_home_order_ready = 1;
+}
+
+int vqeaf_pages_home_order_at(int index)
+{
+    home_order_init();
+    if(index < 0 || index >= (int)(sizeof(g_home_order) / sizeof(g_home_order[0])))
+        return -1;
+    return g_home_order[index];
+}
+
+void vqeaf_pages_home_move(int from, int to)
+{
+    int count = (int)(sizeof(g_home_order) / sizeof(g_home_order[0]));
+    int app_id;
+
+    home_order_init();
+    if(from < 0 || from >= count || to < 0 || to >= count || from == to)
+        return;
+    app_id = g_home_order[from];
+    if(from < to) {
+        for(int i = from; i < to; i++) g_home_order[i] = g_home_order[i + 1];
+    }
+    else {
+        for(int i = from; i > to; i--) g_home_order[i] = g_home_order[i - 1];
+    }
+    g_home_order[to] = app_id;
+}
+
+int vqeaf_pages_home_page(void)
+{
+    return g_home_page;
+}
+
+int vqeaf_pages_home_page_count(void)
+{
+    int count = (int)(sizeof(all_apps) / sizeof(all_apps[0]));
+    return (count + VQEAF_HOME_PER_PAGE - 1) / VQEAF_HOME_PER_PAGE;
+}
+
+void vqeaf_pages_home_page_set(int page)
+{
+    int last = vqeaf_pages_home_page_count() - 1;
+    if(page < 0) page = 0;
+    if(page > last) page = last;
+    g_home_page = page;
 }
 
 const vqeaf_app_t *vqeaf_app_by_id(int id)
@@ -1255,10 +1486,16 @@ static int pin_matches(const char *entered)
     return pin != NULL && entered != NULL && strcmp(pin, entered) == 0;
 }
 
-static void pin_store(const char *pin)
+static int pin_store(const char *pin)
 {
-    vqeaf_settings_set_str(PIN_SETTING_KEY,
-                           pin != NULL ? pin : "");
+    return vqeaf_settings_set_str(PIN_SETTING_KEY,
+                                  pin != NULL ? pin : "");
+}
+
+static int pin_store_accepted(const char *pin)
+{
+    const char *stored = vqeaf_settings_get_str(PIN_SETTING_KEY, "");
+    return stored != NULL && strcmp(stored, pin != NULL ? pin : "") == 0;
 }
 
 int vqeaf_lock_pin_enabled(void) { return pin_enabled(); }
@@ -1273,27 +1510,25 @@ void vqeaf_lock_unlock(void)
 
 static void lock_torch_cb(lv_event_t *event)
 {
-    (void)event;
+    lv_event_stop_processing(event);
     show_toast("Máy không có đèn pin điều khiển được.");
 }
 
 static void lock_camera_cb(lv_event_t *event)
 {
-    (void)event;
+    lv_event_stop_processing(event);
     show_toast("Máy ảnh không có trên thiết bị này.");
 }
 
-static lv_obj_t *lock_weather_chip;
-
-/* Lock-screen clock style. The editor changes these three values and the next
- * lock build uses them; the state is RAM-only until prefs exist on violet. */
+/* Lock-screen clock style. The editor changes these values for this session;
+ * violet has no durable preferences partition yet. */
 typedef struct {
     const char *name;
     const lv_font_t *font;
 } lock_font_t;
 
 static const lock_font_t lock_fonts[] = {
-    { "Lumen",  &vqeaf_font_bold_96 },
+    { "Lumen",  &vqeaf_font_bold_160 },
     { "Cao",    &vqeaf_font_bold_56 },
     { "Gọn",    &vqeaf_font_34 },
     { "Nhỏ",    &vqeaf_font_28 },
@@ -1305,254 +1540,264 @@ static const uint32_t lock_colors[] = {
 };
 
 static int g_lock_font;
-/* Zero tracks the current mode: dark ink in Light, pale ink in Dark. */
 static uint32_t g_lock_color;
 static int g_lock_weight = 100;
 
 static uint32_t lock_clock_rgb(void)
 {
     if(g_lock_color != 0) return g_lock_color;
-    return vqeaf_theme_get() == VQEAF_THEME_LIGHT ? 0x1C1C1E : 0xEAF7F5;
+    return vqeaf_theme_get() == VQEAF_THEME_LIGHT ? 0x0B2447 : 0xFFFFFF;
 }
 
-static void apply_lock_clock_style(lv_obj_t *label)
+static void apply_lock_clock_style(lv_obj_t *label, int landscape)
 {
     if(label == NULL) return;
-    lv_obj_set_style_text_font(label, lock_fonts[g_lock_font].font, 0);
+    size_t font_index = landscape && g_lock_font == 0 ? 1 : (size_t)g_lock_font;
+    lv_obj_set_style_text_font(label, lock_fonts[font_index].font, 0);
     lv_obj_set_style_text_color(label, lv_color_hex(lock_clock_rgb()), 0);
     lv_obj_set_style_opa(label, (lv_opa_t)(g_lock_weight * 255 / 100), 0);
 }
 
-static lv_obj_t *lock_stat_cell(lv_obj_t *parent, const char *symbol,
-                                const char *value, const char *caption)
+static void lock_surface(lv_obj_t *obj, int32_t radius, lv_opa_t opacity)
 {
-    lv_obj_t *cell = vqeaf_column(parent);
-    lv_obj_set_width(cell, 170);
-    lv_obj_set_style_pad_row(cell, 2, 0);
-    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+    if(vqeaf_theme_liquid_glass()) {
+        vqeaf_glass_surface(obj, radius, opacity);
+        return;
+    }
+    if(vqeaf_theme_fluent()) {
+        vqeaf_acrylic_surface(obj, radius);
+        return;
+    }
+    lv_obj_set_style_bg_color(obj, VQEAF_C_SURFACE, 0);
+    lv_obj_set_style_bg_opa(obj, opacity, 0);
+    lv_obj_set_style_radius(obj, radius, 0);
+    lv_obj_set_style_border_width(obj, 1, 0);
+    lv_obj_set_style_border_color(obj, VQEAF_C_LINE, 0);
+    lv_obj_set_style_shadow_width(obj, 16, 0);
+    lv_obj_set_style_shadow_ofs_y(obj, 6, 0);
+    lv_obj_set_style_shadow_color(obj, lv_color_hex(0x030511), 0);
+    lv_obj_set_style_shadow_opa(obj, 45, 0);
+}
+
+static void lock_stop_cb(lv_event_t *event)
+{
+    lv_event_stop_processing(event);
+}
+
+static lv_obj_t *lock_stat_card(lv_obj_t *parent, const char *symbol,
+                                lv_obj_t **icon_out, lv_obj_t **value_out,
+                                lv_obj_t **caption_out, int32_t size)
+{
+    lv_obj_t *card = vqeaf_obj(parent);
+    lv_obj_set_size(card, size, size);
+    lv_obj_set_style_radius(card, 28, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
-    vqeaf_glyph(cell, symbol, VQEAF_ICON_SM,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFE9FF) : VQEAF_C_ACCENT);
-    vqeaf_label(cell, value, VQEAF_FONT_BODY,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFFFFF) : VQEAF_C_TEXT);
-    vqeaf_label(cell, caption, VQEAF_FONT_CAPTION,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xF2DDF9) : VQEAF_C_TEXT_MUTE);
-    return cell;
+    lv_obj_set_style_pad_row(card, 4, 0);
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(card, lock_stop_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *icon;
+    lv_obj_t *caption;
+    if(icon_out == NULL) icon_out = &icon;
+    if(caption_out == NULL) caption_out = &caption;
+    *icon_out = vqeaf_glyph(card, symbol, VQEAF_ICON_SM, VQEAF_C_ACCENT);
+    *value_out = vqeaf_label(card, "--", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    *caption_out = vqeaf_label(card, "", VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    return card;
 }
 
 static lv_obj_t *lock_round_button(lv_obj_t *parent, const char *symbol,
                                    const char *caption, lv_event_cb_t cb)
 {
     lv_obj_t *col = vqeaf_column(parent);
-    lv_obj_set_width(col, 130);
+    lv_obj_set_width(col, 150);
     lv_obj_set_style_pad_row(col, 6, 0);
     lv_obj_set_flex_align(col, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
 
     lv_obj_t *btn = vqeaf_obj(col);
-    lv_obj_set_size(btn, 84, 84);
-    lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(btn,
-        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? VQEAF_C_SURFACE :
-                                                  lv_color_hex(0x0E2A2C), 0);
-    lv_obj_set_style_bg_opa(btn,
-        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? LV_OPA_90 : LV_OPA_70, 0);
-    lv_obj_set_style_border_width(btn, 1, 0);
-    lv_obj_set_style_border_color(btn, VQEAF_C_LINE, 0);
-    if(vqeaf_theme_liquid_glass())
-        vqeaf_glass_surface(btn, 42, LV_OPA_50);
+    lv_obj_set_size(btn, 76, 76);
+    lock_surface(btn, LV_RADIUS_CIRCLE, (lv_opa_t)115);
+    lv_obj_set_style_text_color(btn, VQEAF_C_TEXT_MUTE, 0);
+    lv_obj_set_style_opa(btn, LV_OPA_70, 0);
     lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
-    lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
-    vqeaf_glyph(btn, symbol, VQEAF_ICON, VQEAF_C_TEXT);
+    vqeaf_glyph(btn, symbol, VQEAF_ICON, VQEAF_C_TEXT_MUTE);
     vqeaf_on_click(btn, cb, NULL);
-    vqeaf_m3_ripple(btn);
 
-    vqeaf_label(col, caption, VQEAF_FONT_CAPTION,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xF2DDF9) : VQEAF_C_TEXT_DIM);
+    vqeaf_label(col, caption, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    vqeaf_label(col, "Không hỗ trợ", VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
     return col;
 }
 
 static void unlock_click_cb(lv_event_t *event)
 {
-    (void)event;
+    lv_event_stop_processing(event);
     vqeaf_lock_unlock();
+}
+
+static void lock_notification_cb(lv_event_t *event)
+{
+    lv_event_stop_processing(event);
+    if(vqeaf_ui_notification_count() > 0)
+        vqeaf_ui_show(VQEAF_PAGE_CONTROL);
 }
 
 static void build_lock(lv_obj_t *root)
 {
     lv_obj_t *wall = root;
-    /* The content box was just resized, but LVGL has not recomputed its
-     * coordinates yet, so read the height from the display instead. */
     lv_display_t *display = lv_obj_get_display(wall);
+    int32_t width = (int32_t)lv_display_get_horizontal_resolution(display);
     int32_t height = (int32_t)lv_display_get_vertical_resolution(display);
-    int32_t top = height < 900 ? height * 8 / 100 : height * 14 / 100;
+    int landscape = height < width;
 
     vqeaf_wallpaper(wall);
+    lv_obj_t *lock_backdrop = vqeaf_obj(wall);
+    lv_obj_set_size(lock_backdrop, lv_pct(100), lv_pct(100));
+    lv_obj_add_flag(lock_backdrop, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(lock_backdrop, unlock_click_cb, LV_EVENT_CLICKED, NULL);
 
-    /* One flex column carries the lock glyph, clock, date, the real status
-     * widget and the newest notification, so the composition cannot overlap
-     * itself in portrait or landscape. */
-    lv_obj_t *stack = vqeaf_obj(wall);
-    lv_obj_set_width(stack, lv_pct(100));
-    lv_obj_set_height(stack, LV_SIZE_CONTENT);
-    lv_obj_set_pos(stack, 0, top);
-    lv_obj_set_flex_flow(stack, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(stack, LV_FLEX_ALIGN_START,
+    lv_obj_t *brand = vqeaf_obj(wall);
+    lv_obj_set_size(brand, landscape ? 500 : lv_pct(100), 52);
+    lv_obj_align(brand, landscape ? LV_ALIGN_TOP_LEFT : LV_ALIGN_TOP_MID,
+                 landscape ? 48 : 0, landscape ? 34 : 42);
+    lv_obj_set_flex_flow(brand, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(brand, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(brand, 12, 0);
+    lv_obj_t *brand_dot = vqeaf_obj(brand);
+    lv_obj_set_size(brand_dot, 12, 12);
+    lv_obj_set_style_radius(brand_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(brand_dot, VQEAF_C_ACCENT, 0);
+    lv_obj_set_style_bg_opa(brand_dot, LV_OPA_COVER, 0);
+    lv_obj_t *brand_text = vqeaf_label(brand, "QEAFIVELS", VQEAF_FONT_BODY,
+                                       VQEAF_C_TEXT);
+    lv_obj_set_style_text_letter_space(brand_text, 3, 0);
+
+    page_date = vqeaf_label(wall, vqeaf_state.date_text, VQEAF_FONT_BODY,
+                            VQEAF_C_TEXT_DIM);
+    lv_obj_align(page_date, landscape ? LV_ALIGN_TOP_LEFT : LV_ALIGN_TOP_MID,
+                 landscape ? 48 : 0, landscape ? 106 : 224);
+
+    page_clock = vqeaf_label(wall, vqeaf_state.clock_text,
+                             VQEAF_FONT_LOCK_CLOCK, VQEAF_C_TEXT);
+    apply_lock_clock_style(page_clock, landscape);
+    lv_obj_align(page_clock, landscape ? LV_ALIGN_TOP_LEFT : LV_ALIGN_TOP_MID,
+                 landscape ? 38 : 0, landscape ? 144 : 270);
+
+    int32_t stat_size = landscape ? 144 : 184;
+    int32_t stat_y = landscape ? 286 : 500;
+    lv_obj_t *stats = vqeaf_obj(wall);
+    lv_obj_set_size(stats, stat_size * 3 + 48, stat_size);
+    lv_obj_align(stats, landscape ? LV_ALIGN_TOP_LEFT : LV_ALIGN_TOP_MID,
+                 landscape ? 48 : 0, stat_y);
+    lv_obj_set_flex_flow(stats, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(stats, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(stats, 24, 0);
+    lock_surface(stats, 36, (lv_opa_t)115);
+    lock_stat_card(stats,
+        vqeaf_state.charging ? VQEAF_SYM_BATTERY_CHARGING_FULL :
+                               VQEAF_SYM_BATTERY_FULL,
+        &lock_battery_icon, &lock_battery_value, &lock_battery_caption, stat_size);
+    lock_stat_card(stats,
+        vqeaf_state.wifi_up > 0 ? VQEAF_SYM_WIFI : VQEAF_SYM_SIGNAL_WIFI_OFF,
+        &lock_wifi_icon, &lock_wifi_value, &lock_wifi_caption, stat_size);
+    lock_stat_card(stats, VQEAF_SYM_STORAGE, NULL, &lock_storage_value,
+                   &lock_storage_caption, stat_size);
+
+    lock_notification_card = vqeaf_obj(wall);
+    lv_obj_set_size(lock_notification_card, 616, landscape ? 128 : 148);
+    lv_obj_align(lock_notification_card,
+                 landscape ? LV_ALIGN_TOP_LEFT : LV_ALIGN_TOP_MID,
+                 landscape ? 48 : 0, landscape ? 452 : 716);
+    lock_surface(lock_notification_card, 36, (lv_opa_t)150);
+    lv_obj_add_flag(lock_notification_card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_style_pad_left(lock_notification_card, 24, 0);
+    lv_obj_set_style_pad_right(lock_notification_card, 24, 0);
+    lv_obj_set_style_pad_top(lock_notification_card, 16, 0);
+    lv_obj_set_style_pad_bottom(lock_notification_card, 16, 0);
+    lv_obj_set_flex_flow(lock_notification_card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(lock_notification_card, LV_FLEX_ALIGN_START,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(stack, height < 900 ? 12 : 18, 0);
+    lv_obj_set_style_pad_row(lock_notification_card, 3, 0);
+    lv_obj_add_event_cb(lock_notification_card, lock_notification_cb,
+                        LV_EVENT_CLICKED, NULL);
+    lock_notification_count = vqeaf_label(lock_notification_card, "Thông báo",
+                                          VQEAF_FONT_CAPTION, VQEAF_C_ACCENT);
+    lock_notification_title = vqeaf_label(lock_notification_card, "",
+                                          VQEAF_FONT_BODY, VQEAF_C_TEXT);
+    lv_obj_set_width(lock_notification_title, lv_pct(100));
+    lv_label_set_long_mode(lock_notification_title, LV_LABEL_LONG_DOT);
+    lock_notification_body = vqeaf_label(lock_notification_card, "",
+                                         VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    lv_obj_set_width(lock_notification_body, lv_pct(100));
+    lv_label_set_long_mode(lock_notification_body, LV_LABEL_LONG_DOT);
 
-    vqeaf_glyph(stack, VQEAF_SYM_LOCK, VQEAF_ICON_SM, VQEAF_C_ACCENT);
-    page_clock = vqeaf_label(stack, vqeaf_state.clock_text,
-                             VQEAF_FONT_CLOCK, VQEAF_C_TEXT);
-    apply_lock_clock_style(page_clock);
-    page_date = vqeaf_label(stack, vqeaf_state.date_text,
-        VQEAF_FONT_BODY, vqeaf_theme_liquid_glass() ?
-        lv_color_hex(0xF2DDF9) : VQEAF_C_TEXT_DIM);
-
-    /* Device widget: only values the kernel actually reports. There is no
-     * weather provider on this initramfs, so no invented temperature. */
-    lock_weather_chip = vqeaf_obj(stack);
-    lv_obj_set_size(lock_weather_chip, 600, 118);
-    lv_obj_set_style_bg_color(lock_weather_chip,
-        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? VQEAF_C_SURFACE :
-                                                  lv_color_hex(0x0E2A2C), 0);
-    lv_obj_set_style_bg_opa(lock_weather_chip,
-        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? LV_OPA_90 : LV_OPA_70, 0);
-    lv_obj_set_style_radius(lock_weather_chip, 34, 0);
-    lv_obj_set_style_border_width(lock_weather_chip, 1, 0);
-    lv_obj_set_style_border_color(lock_weather_chip, VQEAF_C_LINE, 0);
-    if(vqeaf_theme_liquid_glass())
-        vqeaf_glass_surface(lock_weather_chip, 34, LV_OPA_50);
-    lv_obj_set_flex_flow(lock_weather_chip, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(lock_weather_chip, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    {
-        char value[32];
-        if(vqeaf_state.battery_valid)
-            snprintf(value, sizeof(value), "%d%%", vqeaf_state.battery_pct);
-        else
-            snprintf(value, sizeof(value), "--");
-        lock_stat_cell(lock_weather_chip,
-                       vqeaf_state.charging ? VQEAF_SYM_BATTERY_CHARGING_FULL :
-                       VQEAF_SYM_BATTERY_FULL, value,
-                       vqeaf_state.charging ? "Đang sạc" : "Pin");
-        lock_stat_cell(lock_weather_chip,
-                       vqeaf_state.wifi_up > 0 ? VQEAF_SYM_WIFI :
-                       VQEAF_SYM_SIGNAL_WIFI_OFF,
-                       vqeaf_state.wifi_up > 0 ? "Bật" :
-                       vqeaf_state.wifi_up == 0 ? "Tắt" : "--", "Wi-Fi");
-        if(vqeaf_state.storage_valid)
-            snprintf(value, sizeof(value), "%d%%", vqeaf_state.storage_pct);
-        else
-            snprintf(value, sizeof(value), "--");
-        lock_stat_cell(lock_weather_chip, VQEAF_SYM_STORAGE, value, "Lưu trữ");
+    lv_obj_t *unlock = vqeaf_obj(wall);
+    lv_obj_add_flag(unlock, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(unlock, 300, 164);
+    if(landscape) {
+        lv_obj_align(unlock, LV_ALIGN_RIGHT_MID, -86, -34);
     }
-
-    /* Newest real event from the shell's notification log. */
-    {
-        const vqeaf_notification_t *note = vqeaf_ui_notification_at(0);
-        lv_obj_t *card = vqeaf_obj(stack);
-        lv_obj_set_size(card, 600, 128);
-        lv_obj_set_style_bg_color(card,
-            vqeaf_theme_get() == VQEAF_THEME_LIGHT ? VQEAF_C_SURFACE :
-                                                      lv_color_hex(0x0E2A2C), 0);
-        lv_obj_set_style_bg_opa(card,
-            vqeaf_theme_get() == VQEAF_THEME_LIGHT ? LV_OPA_90 : LV_OPA_60, 0);
-        lv_obj_set_style_radius(card, 30, 0);
-        lv_obj_set_style_border_width(card, 1, 0);
-        lv_obj_set_style_border_color(card, VQEAF_C_LINE, 0);
-        if(vqeaf_theme_liquid_glass())
-            vqeaf_glass_surface(card, 30, LV_OPA_50);
-        lv_obj_set_flex_flow(card, LV_FLEX_FLOW_ROW);
-        lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START,
-                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_column(card, 16, 0);
-        lv_obj_set_style_pad_left(card, 20, 0);
-        lv_obj_set_style_pad_right(card, 20, 0);
-
-        if(note != NULL) {
-            vqeaf_tile(card, note->symbol[0] ? note->symbol :
-                       VQEAF_SYM_NOTIFICATIONS,
-                       lv_color_hex(note->color), VQEAF_C_BG, 56, 18);
-            lv_obj_t *text = vqeaf_column(card);
-            lv_obj_set_flex_grow(text, 1);
-            lv_obj_set_style_pad_row(text, 2, 0);
-            vqeaf_label(text, note->title, VQEAF_FONT_BODY, VQEAF_C_TEXT);
-            lv_obj_t *body = vqeaf_label(text, note->body,
-                                         VQEAF_FONT_CAPTION,
-                vqeaf_theme_liquid_glass() ? lv_color_hex(0xF2DDF9) :
-                                              VQEAF_C_TEXT_DIM);
-            lv_obj_set_width(body, lv_pct(100));
-            lv_label_set_long_mode(body, LV_LABEL_LONG_DOT);
-            char ago[32];
-            format_uptime(note->uptime_s, ago, sizeof(ago));
-            vqeaf_label(card, ago, VQEAF_FONT_CAPTION,
-                vqeaf_theme_liquid_glass() ? lv_color_hex(0xE8D4F2) :
-                                              VQEAF_C_TEXT_MUTE);
-        }
-        else {
-            vqeaf_tile(card, VQEAF_SYM_NOTIFICATIONS, VQEAF_C_SURFACE_3,
-                       VQEAF_C_TEXT_DIM, 56, 18);
-            lv_obj_t *text = vqeaf_column(card);
-            lv_obj_set_style_pad_row(text, 2, 0);
-            vqeaf_label(text, "Không có thông báo", VQEAF_FONT_BODY,
-                        VQEAF_C_TEXT);
-            vqeaf_label(text, "Sự kiện thật của hệ thống sẽ xuất hiện ở đây.",
-                        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
-        }
+    else {
+        lv_obj_align(unlock, LV_ALIGN_BOTTOM_MID, 0, -190);
     }
+    lv_obj_set_flex_flow(unlock, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(unlock, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(unlock, 12, 0);
+    lv_obj_t *ring = vqeaf_obj(unlock);
+    lv_obj_set_size(ring, 104, 104);
+    lock_surface(ring, LV_RADIUS_CIRCLE, (lv_opa_t)115);
+    lv_obj_set_style_border_width(ring, 3, 0);
+    lv_obj_set_style_border_color(ring, VQEAF_C_ACCENT, 0);
+    lv_obj_set_style_shadow_width(ring, 24, 0);
+    lv_obj_set_style_shadow_color(ring, VQEAF_C_ACCENT, 0);
+    lv_obj_set_style_shadow_opa(ring, 45, 0);
+    lv_obj_set_flex_flow(ring, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(ring, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    vqeaf_glyph(ring, VQEAF_SYM_LOCK, VQEAF_ICON, VQEAF_C_TEXT);
+    lv_obj_add_event_cb(unlock, unlock_click_cb, LV_EVENT_CLICKED, NULL);
 
-    /* Bottom corners: the two hardware affordances a lock screen normally
-     * offers. Neither exists on this device, and the toast says so instead of
-     * opening a dead camera or toggling a flashlight that is not wired. */
+    lv_obj_t *hint = vqeaf_label(unlock, pin_enabled() ? "Nhấn để nhập PIN" :
+                                 "Vuốt để mở khóa",
+                                 VQEAF_FONT_BODY, VQEAF_C_TEXT);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+
     lv_obj_t *torch = lock_round_button(wall, VQEAF_SYM_FLASHLIGHT_ON,
                                         "Đèn pin", lock_torch_cb);
-    lv_obj_align(torch, LV_ALIGN_BOTTOM_LEFT, 36, -104);
     lv_obj_t *camera = lock_round_button(wall, VQEAF_SYM_CAMERA_ALT,
                                          "Máy ảnh", lock_camera_cb);
-    lv_obj_align(camera, LV_ALIGN_BOTTOM_RIGHT, -36, -104);
-
-    lv_obj_t *hint = vqeaf_obj(wall);
-    lv_obj_set_size(hint, 420, 84);
-    lv_obj_set_style_bg_color(hint,
-        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? VQEAF_C_SURFACE :
-                                                  lv_color_hex(0x0E2A2C), 0);
-    lv_obj_set_style_bg_opa(hint,
-        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? LV_OPA_90 : LV_OPA_60, 0);
-    lv_obj_set_style_radius(hint, 42, 0);
-    lv_obj_set_style_border_width(hint, 1, 0);
-    lv_obj_set_style_border_color(hint, VQEAF_C_LINE, 0);
-    if(vqeaf_theme_liquid_glass())
-        vqeaf_glass_surface(hint, 42, LV_OPA_50);
-    lv_obj_set_flex_flow(hint, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(hint, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(hint, 10, 0);
-    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -30);
-    vqeaf_label(hint, pin_enabled() ? "Nhấn để nhập PIN" :
-                "Vuốt để mở khóa", VQEAF_FONT_BODY, VQEAF_C_TEXT);
-    vqeaf_glyph(hint, VQEAF_SYM_CHEVRON_RIGHT, VQEAF_ICON_SM, VQEAF_C_ACCENT);
-    lv_obj_add_event_cb(hint, unlock_click_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(wall, unlock_click_cb, LV_EVENT_CLICKED, NULL);
+    if(landscape) {
+        lv_obj_align(torch, LV_ALIGN_BOTTOM_RIGHT, -228, -34);
+        lv_obj_align(camera, LV_ALIGN_BOTTOM_RIGHT, -54, -34);
+    }
+    else {
+        lv_obj_align(torch, LV_ALIGN_BOTTOM_LEFT, 38, -48);
+        lv_obj_align(camera, LV_ALIGN_BOTTOM_RIGHT, -38, -48);
+    }
 }
 
 /* ---- home ---------------------------------------------------------------- */
 
 static lv_obj_t *home_stat_cell(lv_obj_t *parent, lv_obj_t **value_out,
-                               const char *caption)
+                               const char *caption, int compact)
 {
     lv_obj_t *cell = vqeaf_column(parent);
     lv_obj_set_flex_grow(cell, 1);
     lv_obj_set_style_pad_row(cell, 2, 0);
     lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
-    *value_out = vqeaf_label(cell, "--", VQEAF_FONT_TITLE,
+    *value_out = vqeaf_label(cell, "--",
+        compact ? VQEAF_FONT_BODY_BOLD : VQEAF_FONT_TITLE,
         vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFFFFF) : VQEAF_C_TEXT);
     vqeaf_label(cell, caption, VQEAF_FONT_CAPTION,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xF2DDF9) : VQEAF_C_TEXT_MUTE);
+        vqeaf_theme_liquid_glass() ? lv_color_hex(0xEAF5FF) : VQEAF_C_TEXT_MUTE);
     return cell;
 }
 
@@ -1570,23 +1815,26 @@ static const char *fluent_greeting(void)
 
 /* Live system widget: uptime, RAM and storage from the kernel. Shared by the
  * stock Home and the Fluent Start page so both show the same real readings. */
-static void home_widget_card(lv_obj_t *root)
+static void home_widget_card(lv_obj_t *root, int compact)
 {
     lv_obj_t *widget = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
     if(vqeaf_theme_liquid_glass())
-        vqeaf_glass_surface(widget, 28, LV_OPA_60);
+        vqeaf_glass_surface(widget, compact ? 24 : 34, LV_OPA_60);
+    lv_obj_set_style_pad_all(widget, compact ? 14 : 20, 0);
     lv_obj_set_flex_flow(widget, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(widget, 14, 0);
+    lv_obj_set_style_pad_row(widget, compact ? 8 : 14, 0);
     lv_obj_t *whead = vqeaf_row(widget);
-    vqeaf_label(whead, "Tiện ích hệ thống", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
-    lv_obj_t *edit = vqeaf_label(whead, "Sửa", VQEAF_FONT_BODY,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xF6CEFF) : VQEAF_C_ACCENT);
+    vqeaf_label(whead, "Tiện ích hệ thống",
+        compact ? VQEAF_FONT_BODY_BOLD : VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    lv_obj_t *edit = vqeaf_label(whead, "Sửa",
+        compact ? VQEAF_FONT_CAPTION : VQEAF_FONT_BODY,
+        vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFFFFF) : VQEAF_C_ACCENT);
     vqeaf_on_click(edit, nav_cb, (void *)(intptr_t)VQEAF_PAGE_APPS_EDIT);
     lv_obj_t *stats = vqeaf_weighted_row(widget);
-    lv_obj_set_style_pad_ver(stats, 4, 0);
-    home_stat_cell(stats, &live_uptime, "Thời gian chạy");
-    home_stat_cell(stats, &live_mem_pair, "RAM đã dùng");
-    home_stat_cell(stats, &live_storage_pct, "Lưu trữ");
+    lv_obj_set_style_pad_ver(stats, compact ? 0 : 4, 0);
+    home_stat_cell(stats, &live_uptime, "Thời gian chạy", compact);
+    home_stat_cell(stats, &live_mem_pair, "RAM đã dùng", compact);
+    home_stat_cell(stats, &live_storage_pct, "Lưu trữ", compact);
 }
 
 /* Start page in the Windows 11 layout: greeting header with the power button,
@@ -1624,8 +1872,8 @@ static void build_home_fluent(lv_obj_t *content)
 
     search_pill(root, "Tìm kiếm ứng dụng, cài đặt…");
     section_row(root, "Đã ghim", "Tất cả");
-    app_grid(root, home_apps, sizeof(home_apps) / sizeof(home_apps[0]), 4);
-    home_widget_card(root);
+    app_grid(root, home_apps, sizeof(home_apps) / sizeof(home_apps[0]), 4, 104);
+    home_widget_card(root, 0);
     /* The shell's own dock strip is restyled into the Fluent taskbar by
      * vqeaf_ui.c, so Home does not draw a second launcher row. */
 
@@ -1636,66 +1884,129 @@ static void build_home_fluent(lv_obj_t *content)
     lv_obj_set_style_text_align(footer, LV_TEXT_ALIGN_CENTER, 0);
 }
 
+static lv_obj_t *home_root(lv_obj_t *parent)
+{
+    lv_obj_t *root = vqeaf_obj(parent);
+    lv_obj_set_size(root, lv_pct(100), lv_pct(100));
+    lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_left(root, 24, 0);
+    lv_obj_set_style_pad_right(root, 24, 0);
+    lv_obj_set_style_pad_top(root, VQEAF_STATUS_H + 20, 0);
+    lv_obj_set_style_pad_bottom(root,
+        lv_display_get_vertical_resolution(lv_obj_get_display(parent)) <
+        lv_display_get_horizontal_resolution(lv_obj_get_display(parent)) ? 16 : 28, 0);
+    lv_obj_set_style_pad_row(root, 8, 0);
+    return root;
+}
+
+static lv_obj_t *launcher_root(lv_obj_t *parent)
+{
+    lv_display_t *display = lv_obj_get_display(parent);
+    int landscape = lv_display_get_horizontal_resolution(display) >
+                    lv_display_get_vertical_resolution(display);
+    lv_obj_t *root = vqeaf_obj(parent);
+
+    lv_obj_set_size(root, lv_pct(100), lv_pct(100));
+    lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_left(root, 24, 0);
+    lv_obj_set_style_pad_right(root, 24, 0);
+    lv_obj_set_style_pad_top(root, landscape ? 12 : 18, 0);
+    lv_obj_set_style_pad_bottom(root, landscape ? 12 : 20, 0);
+    lv_obj_set_style_pad_row(root, landscape ? 8 : 12, 0);
+    return root;
+}
+
+static void home_page_cb(lv_event_t *event)
+{
+    int page = (int)(intptr_t)lv_event_get_user_data(event);
+    vqeaf_pages_home_page_set(page);
+    vqeaf_ui_show(vqeaf_ui_page() == VQEAF_PAGE_APPS_EDIT ?
+                  VQEAF_PAGE_APPS_EDIT : VQEAF_PAGE_HOME);
+}
+
+static lv_obj_t *home_grid(lv_obj_t *parent, int compact)
+{
+    lv_display_t *display = lv_obj_get_display(parent);
+    int landscape = lv_display_get_horizontal_resolution(display) >
+                    lv_display_get_vertical_resolution(display);
+    int total = (int)(sizeof(all_apps) / sizeof(all_apps[0]));
+    int first = vqeaf_pages_home_page() * VQEAF_HOME_PER_PAGE;
+    int last = first + VQEAF_HOME_PER_PAGE;
+    int columns = landscape ? 8 : 4;
+    int tile_width = compact ? 118 : 144;
+    lv_obj_t *grid;
+
+    if(first > total) first = total;
+    if(last > total) last = total;
+    grid = vqeaf_obj(parent);
+    lv_obj_set_width(grid, columns * tile_width + (columns - 1) * 12);
+    lv_obj_align(grid, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_flex_grow(grid, 1);
+    lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(grid, 12, 0);
+    lv_obj_set_style_pad_row(grid, compact ? 6 : 14, 0);
+    for(int i = first; i < last; i++) {
+        int app_id = vqeaf_pages_home_order_at(i);
+        app_tile(grid, &all_apps[app_id - 4], app_id,
+                 compact ? 64 : 88, compact, i, !compact);
+    }
+    return grid;
+}
+
+static lv_obj_t *home_dots(lv_obj_t *parent, int compact)
+{
+    int pages = vqeaf_pages_home_page_count();
+    lv_obj_t *dots = vqeaf_row(parent);
+    lv_obj_set_width(dots, lv_pct(100));
+    lv_obj_set_height(dots, compact ? 28 : 36);
+    lv_obj_set_style_pad_column(dots, 10, 0);
+    lv_obj_set_flex_align(dots, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_color_t ink = vqeaf_wallpaper_text_color();
+    for(int i = 0; i < pages; i++) {
+        int active = i == vqeaf_pages_home_page();
+        lv_obj_t *dot = vqeaf_obj(dots);
+        lv_obj_set_size(dot, active && !compact ? 26 : 10, 10);
+        lv_obj_set_style_radius(dot, 5, 0);
+        lv_obj_set_style_bg_color(dot, ink, 0);
+        lv_obj_set_style_bg_opa(dot, active ? LV_OPA_COVER : LV_OPA_40, 0);
+        lv_obj_add_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+        vqeaf_on_click(dot, home_page_cb, (void *)(intptr_t)i);
+    }
+    return dots;
+}
+
+static void home_edit_cb(lv_event_t *event)
+{
+    (void)event;
+    vqeaf_ui_show(VQEAF_PAGE_APPS_EDIT);
+    lv_event_stop_processing(event);
+}
+
 static void build_home(lv_obj_t *content)
 {
+    lv_display_t *display = lv_obj_get_display(content);
+    int landscape = lv_display_get_horizontal_resolution(display) >
+                    lv_display_get_vertical_resolution(display);
+
     if(vqeaf_theme_fluent()) {
         build_home_fluent(content);
         return;
     }
     vqeaf_wallpaper(content);
-    lv_obj_t *root = page_root(content);
-
-    lv_obj_t *header = vqeaf_row(root);
-    lv_obj_set_style_pad_top(header, 8, 0);
-
-    lv_obj_t *when = vqeaf_column(header);
-    lv_obj_set_width(when, LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_row(when, 0, 0);
-    page_clock = vqeaf_label(when, vqeaf_state.clock_text,
-                             VQEAF_FONT_HOME_CLOCK, VQEAF_C_TEXT);
-    page_date = vqeaf_label(when, vqeaf_state.date_text,
-        VQEAF_FONT_CAPTION, vqeaf_theme_liquid_glass() ?
-        lv_color_hex(0xF2DDF9) : VQEAF_C_TEXT_DIM);
-
-    /* Battery chip: a real power_supply reading, not a weather placeholder. */
-    lv_obj_t *battery = vqeaf_obj(header);
-    lv_obj_set_size(battery, 210, 112);
-    lv_obj_set_style_bg_color(battery, VQEAF_C_SURFACE, 0);
-    lv_obj_set_style_bg_opa(battery, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(battery, 28, 0);
-    lv_obj_set_style_border_width(battery, 1, 0);
-    lv_obj_set_style_border_color(battery, VQEAF_C_LINE, 0);
-    if(vqeaf_theme_liquid_glass())
-        vqeaf_glass_surface(battery, 28, LV_OPA_60);
-    lv_obj_set_flex_flow(battery, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(battery, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(battery, 2, 0);
-    vqeaf_glyph(battery,
-                vqeaf_state.charging ? VQEAF_SYM_BATTERY_CHARGING_FULL :
-                VQEAF_SYM_BATTERY_FULL, VQEAF_ICON_SM,
-                vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFE9FF) :
-                                              VQEAF_C_ACCENT);
-    live_battery_pct = vqeaf_label(battery, "--", VQEAF_FONT_TITLE,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFFFFF) : VQEAF_C_ACCENT);
-    vqeaf_label(battery, "Pin", VQEAF_FONT_CAPTION,
-        vqeaf_theme_liquid_glass() ? lv_color_hex(0xF2DDF9) : VQEAF_C_TEXT_MUTE);
-    vqeaf_on_click(battery, nav_cb, (void *)(intptr_t)VQEAF_PAGE_CONTROL);
-    vqeaf_m3_ripple(battery);
-
-    home_widget_card(root);
-
-    search_pill(root, "Tìm trên thiết bị...");
-    section_row(root, "Ứng dụng", "Tất cả");
-    app_grid(root, home_apps, sizeof(home_apps) / sizeof(home_apps[0]), 4);
-    build_dock(root);
-
-    lv_obj_t *footer = vqeaf_label(root,
-                                   "Chỉ hiển thị trạng thái thật",
-        VQEAF_FONT_CAPTION, vqeaf_theme_liquid_glass() ?
-        lv_color_hex(0xF2DDF9) : VQEAF_C_TEXT_MUTE);
-    lv_obj_set_width(footer, lv_pct(100));
-    lv_obj_set_style_text_align(footer, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_t *root = launcher_root(content);
+    lv_obj_add_flag(root, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(root, home_edit_cb, LV_EVENT_LONG_PRESSED, NULL);
+    home_widget_card(root, landscape);
+    home_grid(root, landscape);
+    home_dots(root, landscape);
+    lv_obj_t *search = search_pill(root, "Tìm ứng dụng, cài đặt…");
+    if(landscape) {
+        lv_obj_set_height(search, 68);
+        lv_obj_set_style_radius(search, 34, 0);
+    }
 }
 
 /* ---- apps ---------------------------------------------------------------- */
@@ -1847,7 +2158,7 @@ static void build_apps(lv_obj_t *content)
     int first = g_apps_page * VQEAF_APPS_PER_PAGE;
     int last = first + VQEAF_APPS_PER_PAGE;
     if(last > total) last = total;
-    app_grid(root, &all_apps[first], (size_t)(last - first), 4 + first);
+    app_grid(root, &all_apps[first], (size_t)(last - first), 4 + first, 88);
 
     lv_obj_t *dots = vqeaf_row(root);
     lv_obj_set_style_pad_column(dots, 10, 0);
@@ -1913,12 +2224,32 @@ static void build_apps(lv_obj_t *content)
 static void qeapp_uninstall_cb(lv_event_t *event)
 {
     int index = vqeaf_qeapp_selected();
-    const vqeaf_qeapp_t *app = vqeaf_qeapp_at(index);
+    vqeaf_qeapp_package_info_t info;
+    vqeaf_qeapp_package_result_t result;
     char name[64] = "Ứng dụng";
+    const char *message;
+    uint32_t color = 0xFF8A7A;
+    int status;
     (void)event;
-    if(app != NULL) snprintf(name, sizeof(name), "%s", app->name);
-    vqeaf_qeapp_uninstall(index);
-    vqeaf_ui_notify(name, "Đã gỡ khỏi thiết bị", VQEAF_SYM_DELETE, 0xFF8A7A);
+
+    if(index < 0 ||
+       vqeaf_qeapp_package_get((size_t)index, &info, &result) != VQEAF_QEAPP_PACKAGE_OK)
+        return;
+    snprintf(name, sizeof(name), "%s", info.name);
+    status = vqeaf_qeapp_package_uninstall(info.id, &result);
+    if(status == VQEAF_QEAPP_PACKAGE_OK) {
+        message = "Đã gỡ và lưu vào kho p77";
+        color = 0x35E0C8;
+    }
+    else if(status == VQEAF_QEAPP_PACKAGE_OK_SESSION_ONLY) {
+        message = "Đã gỡ trong phiên này; chưa lưu vào kho p77";
+        color = 0xF3C64E;
+    }
+    else {
+        message = status == VQEAF_QEAPP_PACKAGE_UNSUPPORTED ?
+                  "Host không có backend gỡ QEAPP" : result.message;
+    }
+    vqeaf_ui_notify(name, message, VQEAF_SYM_DELETE, color);
     vqeaf_ui_show(VQEAF_PAGE_APPS);
 }
 
@@ -2004,9 +2335,8 @@ static void build_qeapp_store(lv_obj_t *content)
     lv_obj_set_style_text_align(note, LV_TEXT_ALIGN_CENTER, 0);
 }
 
-/* Launcher edit mode: wallpaper entry point, the live widget preview and the
- * "Xong" exit, in the same arrangement as the reference screen. Nothing here
- * changes the app registry; the grid is the real home grid. */
+/* Launcher edit mode previews the real pager over the wallpaper. Wallpaper and
+ * Done are real actions; Widgets explains that no widget picker exists yet. */
 static void apps_edit_done_cb(lv_event_t *event)
 {
     (void)event;
@@ -2016,50 +2346,59 @@ static void apps_edit_done_cb(lv_event_t *event)
 static void apps_edit_widget_cb(lv_event_t *event)
 {
     (void)event;
-    show_toast("Thẻ trạng thái hệ thống đang hiển thị trên Home.");
+    show_toast("Chưa có bộ chọn tiện ích; Home giữ tiện ích hệ thống thật.");
 }
 
 static void build_apps_edit(lv_obj_t *content)
 {
-    lv_obj_t *root = page_root(content);
-    page_title(root, "Sửa màn hình chính");
-    lv_obj_t *hint = vqeaf_label(root,
-        "Chạm giữ một ứng dụng để xem thông tin hoặc ghim vào dock.",
-        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
-    lv_obj_set_width(hint, lv_pct(100));
+    lv_display_t *display = lv_obj_get_display(content);
+    int landscape = lv_display_get_horizontal_resolution(display) >
+                    lv_display_get_vertical_resolution(display);
+    vqeaf_wallpaper(content);
+    lv_obj_t *root = home_root(content);
+    lv_obj_set_style_pad_top(root, VQEAF_STATUS_H + 16, 0);
+    lv_obj_set_style_pad_row(root, 12, 0);
 
-    /* Wallpaper preview is the shell's real gradient, not a stock photo. */
+    int screen_h = lv_display_get_vertical_resolution(display);
+    int preview_h = screen_h - (VQEAF_STATUS_H + 16) -
+                    (landscape ? 16 : 28) - 72 - 28 - 24;
     lv_obj_t *preview = vqeaf_obj(root);
-    lv_obj_set_size(preview, lv_pct(100), 176);
-    lv_obj_set_style_radius(preview, 32, 0);
+    lv_obj_set_size(preview, lv_pct(100), preview_h);
+    lv_obj_set_style_radius(preview, landscape ? 28 : 36, 0);
     lv_obj_set_style_clip_corner(preview, 1, 0);
-    lv_obj_set_style_border_width(preview, 1, 0);
-    lv_obj_set_style_border_color(preview, VQEAF_C_LINE, 0);
+    lv_obj_set_style_border_width(preview, 2, 0);
+    lv_obj_set_style_border_color(preview, vqeaf_wallpaper_text_color(), 0);
+    lv_obj_set_style_border_opa(preview, LV_OPA_30, 0);
+    lv_obj_set_style_pad_all(preview, 10, 0);
     vqeaf_wallpaper(preview);
-    lv_obj_t *overlay = vqeaf_column(preview);
-    lv_obj_set_width(overlay, LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(overlay, 0, 0);
-    lv_obj_align(overlay, LV_ALIGN_BOTTOM_LEFT, 22, -20);
-    vqeaf_label(overlay, "Hình nền hiện tại", VQEAF_FONT_BODY, VQEAF_C_TEXT);
-    lv_obj_t *change = vqeaf_label(overlay, "Đổi hình nền", VQEAF_FONT_CAPTION,
-                                   VQEAF_C_ACCENT);
-    vqeaf_on_click(change, nav_cb, (void *)(intptr_t)VQEAF_PAGE_LOCK_THEME);
+
+    lv_obj_t *preview_root = vqeaf_column(preview);
+    lv_obj_set_size(preview_root, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_pad_all(preview_root, 12, 0);
+    lv_obj_set_style_pad_row(preview_root, 6, 0);
+    home_grid(preview_root, 1);
+    home_dots(preview_root, 1);
 
     lv_obj_t *actions = vqeaf_row(root);
+    lv_obj_set_width(actions, lv_pct(100));
+    lv_obj_set_height(actions, 72);
+    lv_obj_set_style_pad_column(actions, 12, 0);
+    lv_obj_set_flex_align(actions, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
     lv_obj_t *wall = vqeaf_m3_button(actions, "Hình nền", VQEAF_M3_TONAL);
+    lv_obj_set_flex_grow(wall, 1);
     lv_obj_add_event_cb(wall, nav_cb, LV_EVENT_CLICKED,
                         (void *)(intptr_t)VQEAF_PAGE_LOCK_THEME);
-    lv_obj_t *widgets = vqeaf_m3_button(actions, "Tiện ích",
-                                        VQEAF_M3_TONAL);
+    lv_obj_t *widgets = vqeaf_m3_button(actions, "Tiện ích", VQEAF_M3_TONAL);
+    lv_obj_set_flex_grow(widgets, 1);
     lv_obj_add_event_cb(widgets, apps_edit_widget_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *done = vqeaf_m3_button(actions, "Xong", VQEAF_M3_FILLED);
+    lv_obj_set_flex_grow(done, 1);
     lv_obj_add_event_cb(done, apps_edit_done_cb, LV_EVENT_CLICKED, NULL);
 
-    app_grid(root, home_apps, sizeof(home_apps) / sizeof(home_apps[0]), 4);
-
     lv_obj_t *footer = vqeaf_label(root,
-        "Bố cục áp dụng ngay trong phiên này; khởi động lại trở về mặc định.",
-        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+        "Xem trước bố cục · nhấn giữ ứng dụng để xem thông tin.",
+        VQEAF_FONT_CAPTION, vqeaf_wallpaper_text_color());
     lv_obj_set_width(footer, lv_pct(100));
     lv_obj_set_style_text_align(footer, LV_TEXT_ALIGN_CENTER, 0);
 }
@@ -2083,16 +2422,77 @@ static void native_back_cb(lv_event_t *event)
     vqeaf_ui_show(VQEAF_PAGE_APPS);
 }
 
-/* The running app's own frame IS its user interface: it fills the page at its
- * native 720x1560 size, with no shell title, lifecycle line or hash over the
- * pixels. The only chrome is a translucent back chip, because a QEAPP gets no
- * input events yet and would otherwise be a one-way page. Launch diagnostics
- * live on the app's detail page (`build_qeapp`) instead. */
+/* The running app's own frame IS its user interface. Interactive sessions
+ * receive touch coordinates from the image; one-shot modules keep a view-only
+ * frame. Launch diagnostics live on the app's detail page. */
+static lv_obj_t *g_native_image;
+static lv_timer_t *g_native_timer;
+static uint32_t g_native_frame_seq;
+static int g_native_touch_down;
+static void native_error_show(const char *text, int offer_grant);
+
+static void native_touch_cb(lv_event_t *event)
+{
+    lv_event_code_t code = lv_event_get_code(event);
+    lv_obj_t *image = lv_event_get_current_target(event);
+    lv_indev_t *indev = lv_event_get_indev(event);
+    lv_point_t point;
+    lv_area_t coords;
+    vqeaf_qeapp_device_input_t input;
+    uint32_t pressed;
+
+    if(!vqeaf_qeapp_device_session_active() || image == NULL || indev == NULL)
+        return;
+    if(code != LV_EVENT_PRESSED && code != LV_EVENT_PRESSING &&
+       code != LV_EVENT_RELEASED && code != LV_EVENT_PRESS_LOST)
+        return;
+    lv_indev_get_point(indev, &point);
+    lv_obj_get_coords(image, &coords);
+    pressed = (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING) ? 1u : 0u;
+    if(code == LV_EVENT_PRESSED) g_native_touch_down = 1;
+    if(code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST)
+        g_native_touch_down = 0;
+    if(!g_native_touch_down && pressed) return;
+    input.type = QEAF_INPUT_TOUCH;
+    input.code = 1u;
+    input.x = point.x - coords.x1;
+    input.y = point.y - coords.y1;
+    input.pressed = pressed;
+    (void)vqeaf_qeapp_device_session_send(&input);
+}
+
+static void native_session_timer_cb(lv_timer_t *timer)
+{
+    char error[192];
+    uint32_t seq;
+    (void)timer;
+
+    if(vqeaf_qeapp_device_session_poll(error, sizeof(error)) != 0) {
+        if(error[0]) native_error_show(error, 0);
+        else vqeaf_ui_notify("Ứng dụng", "Phiên ứng dụng đã kết thúc",
+                             VQEAF_SYM_CHECK_CIRCLE, 0x69D6A5);
+        vqeaf_ui_show(VQEAF_PAGE_APPS);
+        return;
+    }
+    seq = vqeaf_qeapp_device_session_frame_seq();
+    if(seq != g_native_frame_seq) {
+        g_native_frame_seq = seq;
+        if(g_native_image != NULL) lv_obj_invalidate(g_native_image);
+    }
+}
+
 static void build_qeapp_native(lv_obj_t *content)
 {
     const uint32_t *frame = vqeaf_qeapp_device_frame();
     lv_obj_t *root;
 
+    if(g_native_timer != NULL) {
+        lv_timer_delete(g_native_timer);
+        g_native_timer = NULL;
+    }
+    g_native_image = NULL;
+    g_native_frame_seq = vqeaf_qeapp_device_session_frame_seq();
+    g_native_touch_down = 0;
     if(frame == NULL) {
         root = page_root(content);
         detail_header(root, "Ứng dụng");
@@ -2120,7 +2520,19 @@ static void build_qeapp_native(lv_obj_t *content)
     lv_image_set_src(img, &dsc);
     lv_image_set_scale(img, 256);      /* 1:1: the app drew for this canvas */
     lv_obj_align(img, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    g_native_image = img;
+    if(vqeaf_qeapp_device_session_active()) {
+        lv_obj_add_flag(img, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(img, native_touch_cb, LV_EVENT_PRESSED, NULL);
+        lv_obj_add_event_cb(img, native_touch_cb, LV_EVENT_PRESSING, NULL);
+        lv_obj_add_event_cb(img, native_touch_cb, LV_EVENT_RELEASED, NULL);
+        lv_obj_add_event_cb(img, native_touch_cb, LV_EVENT_PRESS_LOST, NULL);
+        g_native_timer = lv_timer_create(native_session_timer_cb, 30, NULL);
+        if(g_native_timer != NULL) lv_timer_set_repeat_count(g_native_timer, -1);
+    }
+    else {
+        lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
+    }
 
     lv_obj_t *back = vqeaf_tile(root, VQEAF_SYM_ARROW_BACK, VQEAF_C_SURFACE,
                                 VQEAF_C_TEXT, 64, 22);
@@ -2221,9 +2633,8 @@ static void native_error_show(const char *text, int offer_grant)
     vqeaf_on_click(close, native_error_close_cb, NULL);
 }
 
-/* Runs the installed arm64 package on the phone. The guarded runner returns
- * after at most VQEAF_QEAPP_DEVICE_TIMEOUT_MS, so this blocks the LVGL thread
- * only for the module's own run (a hang is killed at the hard timeout). */
+/* Interactive modules run in a persistent sandboxed child. Validated modules
+ * without on_input retain the bounded one-shot launch and its final frame. */
 static void native_run_cb(lv_event_t *event)
 {
     (void)event;
@@ -2247,6 +2658,21 @@ static void native_run_cb(lv_event_t *event)
     if(vqeaf_qeapp_package(vqeaf_qeapp_selected(), &package, &size) != 0 ||
        package == NULL) {
         native_error_show("Không đọc lại được gói từ kho ứng dụng.", 0);
+        return;
+    }
+    vqeaf_qeapp_device_session_stop();
+    rc = vqeaf_qeapp_device_session_start(
+        package, size,
+        vqeaf_qeapp_effective_permissions(vqeaf_qeapp_selected()),
+        error, sizeof(error));
+    if(rc == 0) {
+        free(package);
+        vqeaf_ui_show(VQEAF_PAGE_QEAPP_NATIVE);
+        return;
+    }
+    if(rc < 0) {
+        free(package);
+        native_error_show(error[0] ? error : "Phiên ứng dụng không khởi động được.", 0);
         return;
     }
     rc = vqeaf_qeapp_device_launch(
@@ -3605,7 +4031,11 @@ static const char *page_name(vqeaf_page_t page)
     case VQEAF_PAGE_APPS_EDIT: return "Sửa màn hình chính";
     case VQEAF_PAGE_QEAPP_STORE: return "Chợ QEAPP";
     case VQEAF_PAGE_SECURITY: return "Bảo mật";
+    case VQEAF_PAGE_WIFI_AUDIT: return "Kiểm tra Wi-Fi";
+    case VQEAF_PAGE_ADVISORIES: return "Cơ sở dữ liệu lỗ hổng";
+    case VQEAF_PAGE_ADVISORY_DETAIL: return "Chi tiết advisory";
     case VQEAF_PAGE_PIN: return "Nhập PIN";
+    case VQEAF_PAGE_SETUP: return "Thiết lập lần đầu";
     case VQEAF_PAGE_DEFAULT_APPS: return "Ứng dụng mặc định";
     case VQEAF_PAGE_TERMINAL: return "Terminal";
     case VQEAF_PAGE_KEYBOARD_FEEDBACK: return "Phản hồi bàn phím";
@@ -3849,49 +4279,136 @@ typedef struct {
     const char *symbol;
     const char *name;
     ctl_kind_t kind;
-    int group;
 } ctl_def_t;
 
-/* Grouped like the reference panel: Kết nối / Tiện ích / Màn hình. Every tile
- * still reports a real provider state or says "không hỗ trợ" — there is no
- * shell-local toggle pretending to drive a radio the kernel does not expose. */
+/* The compact panel keeps ten rounded-square controls in a 5x2 grid. Expanded mode
+ * exposes every real or explicitly unavailable control without hiding the
+ * device's missing capabilities behind decorative toggles. */
 static const ctl_def_t control_tiles[] = {
-    { VQEAF_SYM_WIFI,                "Wi-Fi",            CTL_WIFI,          0 },
-    { VQEAF_SYM_BLUETOOTH,           "Bluetooth",        CTL_BLUETOOTH,     0 },
-    { VQEAF_SYM_NETWORK_CELL,        "Dữ liệu di động",  CTL_MOBILE_DATA,   0 },
-    { VQEAF_SYM_WIFI_TETHERING,      "Phát Wi-Fi",       CTL_HOTSPOT,       0 },
-    { VQEAF_SYM_AIRPLANEMODE_ACTIVE, "Máy bay",          CTL_AIRPLANE,      0 },
-    { VQEAF_SYM_FLASHLIGHT_ON,       "Đèn pin",          CTL_TORCH,         1 },
-    { VQEAF_SYM_LOCATION_ON,         "Vị trí",           CTL_LOCATION,      1 },
-    { VQEAF_SYM_BEDTIME,             "Không làm phiền",  CTL_DND,           1 },
-    { VQEAF_SYM_BATTERY_SAVER,       "Tiết kiệm pin",    CTL_BATTERY_SAVER, 1 },
-    { VQEAF_SYM_MODE,                "Chế độ",           CTL_MODES,         1 },
-    { VQEAF_SYM_SCREEN_ROTATION,     "Xoay màn hình",    CTL_ROTATE,        2 },
-    { VQEAF_SYM_CONTRAST,            "Chế độ tối",       CTL_DARK,          2 },
-    { VQEAF_SYM_APPS,                "Phím ảo",          CTL_NAVKEYS,       2 },
-    { VQEAF_SYM_IMAGE,               "Chụp màn hình",    CTL_SHOT,          2 },
-    { VQEAF_SYM_MOVIE,               "Quay màn hình",    CTL_RECORD,        2 },
+    { VQEAF_SYM_WIFI,                "Wi-Fi",           CTL_WIFI },
+    { VQEAF_SYM_BLUETOOTH,           "Bluetooth",       CTL_BLUETOOTH },
+    { VQEAF_SYM_NETWORK_CELL,        "Dữ liệu",         CTL_MOBILE_DATA },
+    { VQEAF_SYM_FLASHLIGHT_ON,       "Đèn pin",         CTL_TORCH },
+    { VQEAF_SYM_LOCATION_ON,         "Vị trí",          CTL_LOCATION },
+    { VQEAF_SYM_BEDTIME,             "Không phiền",    CTL_DND },
+    { VQEAF_SYM_BATTERY_SAVER,       "Tiết kiệm pin",  CTL_BATTERY_SAVER },
+    { VQEAF_SYM_SCREEN_ROTATION,     "Tự xoay",         CTL_ROTATE },
+    { VQEAF_SYM_CONTRAST,            "Chế độ tối",     CTL_DARK },
+    { VQEAF_SYM_APPS,                "Phím ảo",         CTL_NAVKEYS },
+    { VQEAF_SYM_WIFI_TETHERING,      "Phát Wi-Fi",      CTL_HOTSPOT },
+    { VQEAF_SYM_AIRPLANEMODE_ACTIVE, "Máy bay",         CTL_AIRPLANE },
+    { VQEAF_SYM_MODE,                "Chế độ",          CTL_MODES },
+    { VQEAF_SYM_IMAGE,               "Chụp màn hình",  CTL_SHOT },
+    { VQEAF_SYM_MOVIE,               "Quay màn hình",  CTL_RECORD },
 };
 
-static const char *const control_groups[] = {
-    "Kết nối", "Tiện ích", "Màn hình"
+static const ctl_kind_t control_compact[] = {
+    CTL_WIFI, CTL_BLUETOOTH, CTL_MOBILE_DATA, CTL_TORCH, CTL_LOCATION,
+    CTL_DND, CTL_BATTERY_SAVER, CTL_ROTATE, CTL_DARK, CTL_NAVKEYS
 };
 
 /* Tile editing only changes the visible list in RAM; nothing is persisted. */
 static int g_control_hidden[CTL_COUNT];
+static ctl_kind_t g_control_order[CTL_COUNT];
+static int g_control_order_ready;
 static int g_control_edit;
+static int g_control_expanded;
+
+static void control_order_init(void)
+{
+    if(g_control_order_ready) return;
+    for(int i = 0; i < (int)CTL_COUNT; i++)
+        g_control_order[i] = control_tiles[i].kind;
+    g_control_order_ready = 1;
+}
+
+static const ctl_def_t *control_def(ctl_kind_t kind)
+{
+    for(size_t i = 0; i < sizeof(control_tiles) / sizeof(control_tiles[0]); i++)
+        if(control_tiles[i].kind == kind) return &control_tiles[i];
+    return NULL;
+}
+
+static int control_compact_has(ctl_kind_t kind)
+{
+    for(size_t i = 0; i < sizeof(control_compact) / sizeof(control_compact[0]); i++)
+        if(control_compact[i] == kind) return 1;
+    return 0;
+}
+
+static void control_drag_refresh_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+}
+
+static int control_drag_target(lv_point_t point, void *context)
+{
+    lv_obj_t *grid = (lv_obj_t *)context;
+    uint32_t count = lv_obj_get_child_count(grid);
+    for(uint32_t i = 0; i < count; i++) {
+        lv_obj_t *cell = lv_obj_get_child(grid, (int32_t)i);
+        lv_area_t area;
+        lv_obj_get_coords(cell, &area);
+        if(point.x >= area.x1 && point.x <= area.x2 &&
+           point.y >= area.y1 && point.y <= area.y2)
+            return (int)(intptr_t)lv_obj_get_user_data(cell);
+    }
+    return -1;
+}
+
+static void control_drag_commit(lv_obj_t *source, int target, void *context)
+{
+    int from = -1, to = -1;
+    ctl_kind_t moved;
+    (void)context;
+    control_order_init();
+    for(int i = 0; i < (int)CTL_COUNT; i++) {
+        if(g_control_order[i] == (ctl_kind_t)(intptr_t)lv_obj_get_user_data(source))
+            from = i;
+        if(g_control_order[i] == (ctl_kind_t)target) to = i;
+    }
+    if(from < 0 || to < 0 || from == to) return;
+    moved = g_control_order[from];
+    if(from < to) {
+        for(int i = from; i < to; i++) g_control_order[i] = g_control_order[i + 1];
+    }
+    else {
+        for(int i = from; i > to; i--) g_control_order[i] = g_control_order[i - 1];
+    }
+    g_control_order[to] = moved;
+    vqeaf_sound_play(VQEAF_SOUND_DROP);
+    lv_timer_t *timer = lv_timer_create(control_drag_refresh_cb, 30, NULL);
+    if(timer != NULL) lv_timer_set_repeat_count(timer, 1);
+}
 
 static void control_done_cb(lv_event_t *event)
 {
     (void)event;
     g_control_edit = 0;
+    g_control_expanded = 0;
     vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+}
+
+static void control_expand_cb(lv_event_t *event)
+{
+    (void)event;
+    g_control_expanded = !g_control_expanded;
+    vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+}
+
+static void control_close_cb(lv_event_t *event)
+{
+    (void)event;
+    vqeaf_ui_control_close();
 }
 
 static void control_reset_cb(lv_event_t *event)
 {
     (void)event;
     for(int i = 0; i < (int)CTL_COUNT; i++) g_control_hidden[i] = 0;
+    g_control_order_ready = 0;
+    control_order_init();
     vqeaf_ui_show(VQEAF_PAGE_CONTROL);
 }
 
@@ -3899,6 +4416,7 @@ static void control_edit_cb(lv_event_t *event)
 {
     (void)event;
     g_control_edit = 1;
+    g_control_expanded = 1;
     vqeaf_ui_show(VQEAF_PAGE_CONTROL);
 }
 
@@ -4025,182 +4543,488 @@ static void control_app_style_cb(lv_event_t *event)
     vqeaf_ui_show(vqeaf_ui_page());
 }
 
-static void build_control(lv_obj_t *content)
+typedef struct {
+    int on;
+    int supported;
+    const char *status;
+} control_state_t;
+
+static control_state_t control_tile_state(ctl_kind_t kind)
 {
-    lv_obj_t *root = page_root(content);
-    lv_obj_t *head = page_title(root, "Trung tâm điều khiển");
-    if(g_control_edit) {
-        lv_obj_t *reset = vqeaf_label(head, "Đặt lại", VQEAF_FONT_BODY,
-                                      VQEAF_C_TEXT_DIM);
-        vqeaf_on_click(reset, control_reset_cb, NULL);
-        lv_obj_t *done = vqeaf_label(head, "Xong", VQEAF_FONT_BODY_BOLD,
-                                     VQEAF_C_ACCENT);
-        vqeaf_on_click(done, control_done_cb, NULL);
+    control_state_t state = { 0, 0, "Không hỗ trợ" };
+    switch(kind) {
+    case CTL_WIFI:
+        state.on = vqeaf_state.wifi_up > 0;
+        state.supported = vqeaf_state.wifi_up >= 0;
+        state.status = wifi_text();
+        break;
+    case CTL_BLUETOOTH:
+        state.on = vqeaf_state.bt_up > 0;
+        state.supported = vqeaf_state.bt_up >= 0;
+        state.status = vqeaf_state.bt_up > 0 ? "Đang bật" :
+                       vqeaf_state.bt_up == 0 ? "Đang tắt" : "Không có thiết bị";
+        break;
+    case CTL_ROTATE:
+        state.on = vqeaf_ui_auto_rotate();
+        state.supported = 1;
+        state.status = state.on ? "Tự động" : "Đang tắt";
+        break;
+    case CTL_DARK:
+        state.on = vqeaf_theme_get() == VQEAF_THEME_DARK;
+        state.supported = 1;
+        state.status = state.on ? "Đang bật" : "Đang tắt";
+        break;
+    case CTL_NAVKEYS:
+        state.on = vqeaf_ui_virtual_keys();
+        state.supported = 1;
+        state.status = state.on ? "Đang bật" : "Cử chỉ";
+        break;
+    case CTL_SHOT:
+        state.supported = 1;
+        state.status = "Lưu vào Pictures";
+        break;
+    case CTL_RECORD:
+        state.on = vio_rec_active();
+        state.supported = 1;
+        state.status = state.on ? "Đang quay" : "10 giây, 8 fps";
+        break;
+    default:
+        break;
     }
-    else {
-        lv_obj_t *edit = vqeaf_label(head, "Sửa", VQEAF_FONT_BODY,
-                                     VQEAF_C_ACCENT);
-        vqeaf_on_click(edit, control_edit_cb, NULL);
-    }
+    return state;
+}
 
-    const size_t tile_count = sizeof(control_tiles) / sizeof(control_tiles[0]);
-    for(int group = 0;
-        group < (int)(sizeof(control_groups) / sizeof(control_groups[0]));
-        group++) {
-        int visible = 0;
-        for(size_t i = 0; i < tile_count; i++)
-            if(control_tiles[i].group == group &&
-               !g_control_hidden[control_tiles[i].kind]) visible++;
-        if(visible == 0) continue;
+static void control_set_translate_y(void *var, int32_t value)
+{
+    lv_obj_set_style_translate_y((lv_obj_t *)var, value, LV_PART_MAIN);
+}
 
-        lv_obj_t *section = vqeaf_row(root);
-        lv_obj_set_style_pad_top(section, 6, 0);
-        vqeaf_label(section, control_groups[group], VQEAF_FONT_TITLE,
-                    VQEAF_C_TEXT);
-        if(g_control_edit)
-            vqeaf_label(section, "Chạm vào ô để bỏ", VQEAF_FONT_CAPTION,
-                        VQEAF_C_TEXT_MUTE);
+static void control_set_opa(void *var, int32_t value)
+{
+    lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)value, LV_PART_MAIN);
+}
 
-        lv_obj_t *grid = vqeaf_obj(root);
-        lv_obj_set_width(grid, lv_pct(100));
-        lv_obj_set_height(grid, LV_SIZE_CONTENT);
-        lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
-        lv_obj_set_style_pad_column(grid, 16, 0);
-        lv_obj_set_style_pad_row(grid, 16, 0);
+static void control_reveal(lv_obj_t *obj, uint32_t delay)
+{
+    lv_anim_t anim;
+    lv_obj_set_style_translate_y(obj, 18, LV_PART_MAIN);
+    lv_obj_set_style_opa(obj, LV_OPA_TRANSP, LV_PART_MAIN);
 
-        for(size_t i = 0; i < tile_count; i++) {
-            const ctl_def_t *def = &control_tiles[i];
-            if(def->group != group || g_control_hidden[def->kind]) continue;
-            int on = 0;
-            int supported = 1;
-            const char *status = "Không hỗ trợ";
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, obj);
+    lv_anim_set_exec_cb(&anim, control_set_translate_y);
+    lv_anim_set_values(&anim, 18, 0);
+    lv_anim_set_duration(&anim, VQEAF_M3_MOTION_MEDIUM);
+    lv_anim_set_delay(&anim, delay);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_start(&anim);
 
-            switch(def->kind) {
-            case CTL_WIFI:
-                on = vqeaf_state.wifi_up > 0;
-                supported = vqeaf_state.wifi_up >= 0;
-                status = wifi_text();
-                break;
-            case CTL_BLUETOOTH:
-                on = vqeaf_state.bt_up > 0;
-                supported = vqeaf_state.bt_up >= 0;
-                status = vqeaf_state.bt_up > 0 ? "Đang bật" :
-                         vqeaf_state.bt_up == 0 ? "Đang tắt" :
-                         "Không có thiết bị";
-                break;
-            case CTL_ROTATE:
-                on = vqeaf_ui_auto_rotate();
-                status = on ? "Tự động" : "Đang tắt";
-                break;
-            case CTL_DARK:
-                on = vqeaf_theme_get() == VQEAF_THEME_DARK;
-                status = on ? "Đang bật" : "Đang tắt";
-                break;
-            case CTL_NAVKEYS:
-                on = vqeaf_ui_virtual_keys();
-                status = on ? "Đang bật" : "Cử chỉ";
-                break;
-            case CTL_SHOT:
-                status = "Lưu vào Pictures";
-                break;
-            case CTL_RECORD:
-                on = vio_rec_active();
-                status = on ? "Đang quay" : "10 giây, 8 fps";
-                break;
-            default:
-                supported = 0;
-                status = "Không hỗ trợ";
-                break;
-            }
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, obj);
+    lv_anim_set_exec_cb(&anim, control_set_opa);
+    lv_anim_set_values(&anim, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_duration(&anim, VQEAF_M3_MOTION_SHORT);
+    lv_anim_set_delay(&anim, delay);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_start(&anim);
+}
 
-            lv_obj_t *tile = vqeaf_obj(grid);
-            lv_obj_set_size(tile, 328, 128);
-            lv_obj_set_style_bg_color(tile, on ? lv_color_hex(0x0F3B36) :
-                                      VQEAF_C_SURFACE, 0);
-            lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
-            lv_obj_set_style_radius(tile, 30, 0);
-            lv_obj_set_style_border_width(tile, 1, 0);
-            lv_obj_set_style_border_color(tile, on ? VQEAF_C_ACCENT :
-                                          VQEAF_C_LINE, 0);
-            lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_ROW);
-            lv_obj_set_flex_align(tile, LV_FLEX_ALIGN_START,
+static lv_obj_t *control_header_button(lv_obj_t *parent, const char *text,
+                                       lv_event_cb_t cb, uint32_t accent)
+{
+    lv_obj_t *button = vqeaf_obj(parent);
+    lv_obj_set_height(button, 46);
+    lv_obj_set_style_pad_hor(button, 16, 0);
+    lv_obj_set_style_bg_color(button,
+        accent ? lv_color_mix(VQEAF_C_SURFACE_2, VQEAF_C_ACCENT, 24) :
+                 VQEAF_C_SURFACE_2, 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_70, 0);
+    lv_obj_set_style_radius(button, 23, 0);
+    lv_obj_set_flex_flow(button, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(button, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *label = vqeaf_label(button, text, VQEAF_FONT_BODY,
+                                  accent ? VQEAF_C_ACCENT : VQEAF_C_TEXT);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    if(cb != NULL) lv_obj_add_event_cb(button, cb, LV_EVENT_CLICKED, NULL);
+    vqeaf_m3_ripple(button);
+    return button;
+}
+
+static lv_obj_t *control_wide_button(lv_obj_t *parent, const ctl_def_t *def)
+{
+    control_state_t state = control_tile_state(def->kind);
+    lv_obj_t *button = vqeaf_obj(parent);
+    lv_obj_set_size(button, lv_pct(48), 112);
+    lv_obj_set_style_bg_color(button,
+        state.on ? lv_color_mix(VQEAF_C_SURFACE, VQEAF_C_ACCENT, 28) :
+                   VQEAF_C_SURFACE, 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_80, 0);
+    lv_obj_set_style_radius(button, 32, 0);
+    lv_obj_set_style_border_width(button, 1, 0);
+    lv_obj_set_style_border_color(button,
+        state.on ? VQEAF_C_ACCENT : VQEAF_C_LINE, 0);
+    lv_obj_set_style_border_opa(button, LV_OPA_40, 0);
+    lv_obj_set_flex_flow(button, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(button, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(button, 16, 0);
+    lv_obj_set_style_pad_hor(button, 20, 0);
+    vqeaf_tile(button, def->symbol,
+               state.on ? VQEAF_C_ACCENT : VQEAF_C_SURFACE_3,
+               state.on ? VQEAF_C_BG : VQEAF_C_TEXT_DIM, 64, 18);
+    lv_obj_t *text = vqeaf_column(button);
+    lv_obj_set_flex_grow(text, 1);
+    lv_obj_set_style_pad_row(text, 5, 0);
+    vqeaf_label(text, def->name, VQEAF_FONT_BODY, VQEAF_C_TEXT);
+    lv_obj_t *status = vqeaf_label(text, state.status, VQEAF_FONT_CAPTION,
+                                   VQEAF_C_TEXT_MUTE);
+    lv_obj_set_width(status, lv_pct(100));
+    lv_label_set_long_mode(status, LV_LABEL_LONG_DOT);
+    lv_obj_add_flag(button, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(button, control_tile_cb, LV_EVENT_SHORT_CLICKED,
+                        (void *)(intptr_t)def->kind);
+    vqeaf_m3_ripple(button);
+    return button;
+}
+
+static lv_obj_t *control_grid(lv_obj_t *parent, int expanded)
+{
+    lv_obj_t *grid = vqeaf_obj(parent);
+    lv_obj_set_size(grid, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(grid, 16, 0);
+
+    control_order_init();
+    for(int i = 0; i < (int)CTL_COUNT; i++) {
+        ctl_kind_t kind = g_control_order[i];
+        const ctl_def_t *def = control_def(kind);
+        if(def == NULL || g_control_hidden[kind]) continue;
+        if(!expanded && !control_compact_has(kind)) continue;
+
+        control_state_t state = control_tile_state(def->kind);
+        lv_obj_t *cell = vqeaf_obj(grid);
+        lv_obj_set_size(cell, lv_pct(19), 148);
+        lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_row(cell, 8, 0);
+
+        lv_obj_t *circle = vqeaf_obj(cell);
+        lv_obj_set_size(circle, 84, 84);
+        lv_obj_set_style_bg_color(circle,
+            state.on ? VQEAF_C_ACCENT :
+            state.supported ? VQEAF_C_SURFACE_2 : VQEAF_C_SURFACE, 0);
+        lv_obj_set_style_bg_opa(circle,
+            state.on ? 235 : (state.supported ? 150 : 90), 0);
+        lv_obj_set_style_radius(circle, 26, 0);
+        lv_obj_set_style_border_width(circle, state.on ? 0 : 1, 0);
+        lv_obj_set_style_border_color(circle, lv_color_hex(0xEAF5FF), 0);
+        lv_obj_set_style_border_opa(circle, (lv_opa_t)55, 0);
+        lv_obj_set_flex_flow(circle, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(circle, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        vqeaf_glyph(circle, def->symbol, VQEAF_ICON,
+                    state.on ? VQEAF_C_BG :
+                    state.supported ? VQEAF_C_TEXT : VQEAF_C_TEXT_MUTE);
+
+        lv_obj_t *name = vqeaf_label(cell, def->name, VQEAF_FONT_CAPTION_BOLD,
+                                     state.supported ? VQEAF_C_TEXT : VQEAF_C_TEXT_MUTE);
+        lv_obj_set_width(name, lv_pct(100));
+        lv_obj_set_height(name, 20);
+        lv_obj_set_style_text_align(name, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+        lv_obj_set_user_data(cell, (void *)(intptr_t)kind);
+        if(g_control_edit) {
+            lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+            vqeaf_drag_attach(cell, (int)kind, def->symbol, control_drag_target,
+                              control_drag_commit, NULL, grid);
+            lv_obj_t *badge = vqeaf_obj(circle);
+            lv_obj_add_flag(badge, LV_OBJ_FLAG_IGNORE_LAYOUT);
+            lv_obj_set_size(badge, 32, 32);
+            lv_obj_set_pos(badge, 54, -4);
+            lv_obj_set_style_bg_color(badge, lv_color_hex(0xE85A68), 0);
+            lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_flex_flow(badge, LV_FLEX_FLOW_ROW);
+            lv_obj_set_flex_align(badge, LV_FLEX_ALIGN_CENTER,
                                   LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-            lv_obj_set_style_pad_left(tile, 18, 0);
-            lv_obj_set_style_pad_column(tile, 16, 0);
-
-            vqeaf_tile(tile, def->symbol,
-                       on ? lv_color_hex(0x123F3A) : VQEAF_C_SURFACE_3,
-                       on ? VQEAF_C_ACCENT :
-                       (supported ? VQEAF_C_TEXT_DIM : VQEAF_C_TEXT_MUTE),
-                       66, 18);
-            lv_obj_t *labels = vqeaf_column(tile);
-            lv_obj_set_flex_grow(labels, 1);
-            lv_obj_set_style_pad_row(labels, 4, 0);
-            vqeaf_label(labels, def->name, VQEAF_FONT_BODY,
-                        supported ? VQEAF_C_TEXT : VQEAF_C_TEXT_MUTE);
-            if(g_control_edit) {
-                lv_obj_t *remove = vqeaf_label(labels, "× Bỏ",
-                                               VQEAF_FONT_CAPTION,
-                                               VQEAF_C_ACCENT);
-                vqeaf_on_click(remove, control_remove_cb,
-                               (void *)(intptr_t)def->kind);
-            }
-            else {
-                vqeaf_label(labels, status, VQEAF_FONT_CAPTION,
-                            supported ? VQEAF_C_TEXT_MUTE : VQEAF_C_TEXT_MUTE);
-                lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
-                vqeaf_on_click(tile, control_tile_cb,
-                               (void *)(intptr_t)def->kind);
-                vqeaf_m3_ripple(tile);
-            }
+            vqeaf_glyph(badge, VQEAF_SYM_REMOVE, VQEAF_ICON_SM,
+                        lv_color_hex(0xFFFFFF));
+            lv_obj_add_flag(badge, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_event_cb(badge, control_remove_cb, LV_EVENT_SHORT_CLICKED,
+                                (void *)(intptr_t)def->kind);
+            vqeaf_m3_ripple(badge);
+        }
+        else {
+            lv_obj_t *status = vqeaf_label(cell, state.status, VQEAF_FONT_CAPTION,
+                                           VQEAF_C_TEXT_MUTE);
+            lv_obj_set_width(status, lv_pct(100));
+            lv_obj_set_height(status, 20);
+            lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
+            lv_label_set_long_mode(status, LV_LABEL_LONG_DOT);
+            lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_event_cb(cell, control_tile_cb, LV_EVENT_SHORT_CLICKED,
+                                (void *)(intptr_t)def->kind);
+            vqeaf_m3_ripple(cell);
         }
     }
+    return grid;
+}
 
-    /* Backlight and volume in one card: both write real state (the backlight
-     * sysfs node, the shell's volume model). There is no audio codec, so the
-     * volume slider drives the HUD only and the card says that. */
-    lv_obj_t *audio = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(audio, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(audio, 8, 0);
+static lv_obj_t *control_slider_card(lv_obj_t *parent, const char *symbol,
+                                     const char *title, int value,
+                                     lv_event_cb_t cb, const char *note)
+{
+    lv_obj_t *card = vqeaf_card(parent, lv_pct(48), 166);
+    if(vqeaf_theme_liquid_glass())
+        vqeaf_glass_surface(card, 28, (lv_opa_t)105);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(card, 18, 0);
+    lv_obj_set_style_pad_row(card, 10, 0);
+    lv_obj_t *head = vqeaf_row(card);
+    lv_obj_set_style_pad_column(head, 10, 0);
+    vqeaf_glyph(head, symbol, VQEAF_ICON_SM, VQEAF_C_TEXT_DIM);
+    vqeaf_label(head, title, VQEAF_FONT_BODY, VQEAF_C_TEXT);
+    char text[8];
+    snprintf(text, sizeof(text), "%d%%", value);
+    lv_obj_t *value_label = vqeaf_label(head, text, VQEAF_FONT_BODY,
+                                        VQEAF_C_ACCENT);
+    lv_obj_t *slider = vqeaf_m3_slider(card, value);
+    lv_obj_add_event_cb(slider, cb, LV_EVENT_VALUE_CHANGED, value_label);
+    lv_obj_t *note_label = vqeaf_label(card, note, VQEAF_FONT_CAPTION,
+                                       VQEAF_C_TEXT_MUTE);
+    return note_label;
+}
 
-    lv_obj_t *bright_head = vqeaf_row(audio);
-    vqeaf_label(bright_head, "Độ sáng màn hình", VQEAF_FONT_BODY,
-                VQEAF_C_TEXT);
-    char bright_text[8];
-    snprintf(bright_text, sizeof(bright_text), "%d%%", vqeaf_state.brightness);
-    lv_obj_t *bright_value = vqeaf_label(bright_head, bright_text,
-                                         VQEAF_FONT_BODY, VQEAF_C_ACCENT);
-    lv_obj_t *slider = vqeaf_m3_slider(audio, vqeaf_state.brightness);
-    lv_obj_add_event_cb(slider, brightness_cb, LV_EVENT_VALUE_CHANGED,
-                        bright_value);
+static lv_obj_t *control_media_card(lv_obj_t *parent,
+                                    const vqeaf_ui_media_session_t *session)
+{
+    const char *kind;
+    const char *symbol;
 
-    lv_obj_t *vol_head = vqeaf_row(audio);
-    vqeaf_label(vol_head, "Âm lượng", VQEAF_FONT_BODY, VQEAF_C_TEXT);
-    char vol_text[8];
-    snprintf(vol_text, sizeof(vol_text), "%d%%", vqeaf_state.volume);
-    lv_obj_t *vol_value = vqeaf_label(vol_head, vol_text, VQEAF_FONT_BODY,
-                                      VQEAF_C_ACCENT);
-    lv_obj_t *vol_slider = vqeaf_m3_slider(audio, vqeaf_state.volume);
-    lv_obj_add_event_cb(vol_slider, volume_slider_cb,
-                        LV_EVENT_VALUE_CHANGED, vol_value);
-    vqeaf_label(audio, "Không có bộ giải mã âm thanh; mức âm lượng chỉ là HUD.",
-                VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    if(session == NULL) return NULL;
+    switch(session->kind) {
+    case VQEAF_UI_MEDIA_AUDIO:
+        kind = "Âm thanh";
+        symbol = VQEAF_SYM_MUSIC_NOTE;
+        break;
+    case VQEAF_UI_MEDIA_VIDEO:
+        kind = "Video";
+        symbol = VQEAF_SYM_MOVIE;
+        break;
+    default:
+        kind = "Phương tiện";
+        symbol = VQEAF_SYM_IMAGE;
+        break;
+    }
 
-    lv_obj_t *media = vqeaf_card(root, lv_pct(100), 132);
-    lv_obj_set_flex_flow(media, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(media, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(media, 18, 0);
-    vqeaf_tile(media, VQEAF_SYM_MUSIC_NOTE, VQEAF_C_SURFACE_3,
-               VQEAF_C_TEXT_DIM, 68, 20);
-    lv_obj_t *media_text = vqeaf_column(media);
-    lv_obj_set_flex_grow(media_text, 1);
-    lv_obj_set_style_pad_row(media_text, 2, 0);
-    vqeaf_label(media_text, "Phương tiện", VQEAF_FONT_CAPTION,
-                VQEAF_C_TEXT_MUTE);
-    vqeaf_label(media_text, "Không có nhạc đang phát", VQEAF_FONT_BODY,
-                VQEAF_C_TEXT);
-    vqeaf_glyph(media, VQEAF_SYM_PAUSE, VQEAF_ICON, VQEAF_C_TEXT_MUTE);
+    lv_obj_t *card = vqeaf_card(parent, lv_pct(100), 190);
+    if(vqeaf_theme_liquid_glass())
+        vqeaf_glass_surface(card, 32, (lv_opa_t)105);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(card, 20, 0);
+    lv_obj_set_style_pad_hor(card, 20, 0);
+
+    lv_obj_t *art = vqeaf_obj(card);
+    lv_obj_set_size(art, 126, 126);
+    lv_obj_set_style_bg_color(art, lv_color_hex(0x0B4FB3), 0);
+    lv_obj_set_style_bg_grad_color(art, lv_color_hex(0x65AEFF), 0);
+    lv_obj_set_style_bg_grad_dir(art, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_bg_opa(art, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(art, 30, 0);
+    lv_obj_set_flex_flow(art, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(art, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    vqeaf_glyph(art, symbol, VQEAF_ICON, lv_color_hex(0xFFFFFF));
+
+    lv_obj_t *text = vqeaf_column(card);
+    lv_obj_set_width(text, 0);
+    lv_obj_set_flex_grow(text, 1);
+    lv_obj_set_style_pad_row(text, 6, 0);
+    vqeaf_label(text, kind, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    lv_obj_t *title = vqeaf_label(text, session->title, VQEAF_FONT_BODY,
+                                  VQEAF_C_TEXT);
+    lv_obj_set_width(title, lv_pct(100));
+    lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_DOTS);
+    if(session->detail[0] != '\0') {
+        lv_obj_t *detail = vqeaf_label(text, session->detail,
+                                       VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+        lv_obj_set_width(detail, lv_pct(100));
+        lv_label_set_long_mode(detail, LV_LABEL_LONG_MODE_DOTS);
+    }
+    lv_obj_t *status = vqeaf_row(text);
+    lv_obj_set_style_pad_column(status, 8, 0);
+    vqeaf_glyph(status, VQEAF_SYM_PLAY_ARROW, VQEAF_ICON_SM, VQEAF_C_ACCENT);
+    vqeaf_label(status, "Đang phát", VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    return card;
+}
+
+static void control_scroll_cb(lv_event_t *event)
+{
+    lv_obj_t *target = lv_event_get_user_data(event);
+    if(target != NULL) lv_obj_scroll_to_view(target, LV_ANIM_ON);
+}
+
+static lv_obj_t *control_round_action(lv_obj_t *parent, const char *symbol,
+                                      const char *label, lv_event_cb_t cb,
+                                      void *user_data)
+{
+    lv_obj_t *cell = vqeaf_obj(parent);
+    lv_obj_set_size(cell, 116, 108);
+    lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(cell, 8, 0);
+    lv_obj_t *circle = vqeaf_obj(cell);
+    lv_obj_set_size(circle, 64, 64);
+    lv_obj_set_style_bg_color(circle, VQEAF_C_SURFACE_2, 0);
+    lv_obj_set_style_bg_opa(circle, LV_OPA_80, 0);
+    lv_obj_set_style_radius(circle, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_flex_flow(circle, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(circle, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    vqeaf_glyph(circle, symbol, VQEAF_ICON, VQEAF_C_TEXT);
+    lv_obj_t *caption = vqeaf_label(cell, label, VQEAF_FONT_CAPTION,
+                                    VQEAF_C_TEXT_DIM);
+    lv_obj_set_style_text_align(caption, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(cell, cb, LV_EVENT_SHORT_CLICKED, user_data);
+    vqeaf_m3_ripple(cell);
+    return cell;
+}
+
+static void build_control(lv_obj_t *content)
+{
+    int32_t width = lv_display_get_horizontal_resolution(NULL);
+    int32_t height = lv_display_get_vertical_resolution(NULL);
+    const ctl_def_t *record = NULL;
+    const ctl_def_t *shot = NULL;
+
+    vqeaf_wallpaper(content);
+    lv_obj_t *shade = vqeaf_obj(content);
+    lv_obj_set_size(shade, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_color(shade,
+        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? lv_color_white() :
+                                                lv_color_hex(0x061B4E), 0);
+    lv_obj_set_style_bg_opa(shade,
+        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? 70 : 80, 0);
+
+    lv_obj_t *panel = vqeaf_obj(content);
+    lv_obj_set_pos(panel, 12, VQEAF_STATUS_H + 8);
+    lv_obj_set_size(panel, width - 24, height - VQEAF_STATUS_H - 24);
+    if(vqeaf_theme_liquid_glass())
+        vqeaf_glass_surface(panel, 44, (lv_opa_t)185);
+    else {
+        lv_obj_set_style_bg_color(panel, VQEAF_C_SURFACE, 0);
+        lv_obj_set_style_bg_grad_color(panel, VQEAF_C_SURFACE_2, 0);
+        lv_obj_set_style_bg_grad_dir(panel, LV_GRAD_DIR_VER, 0);
+        lv_obj_set_style_bg_opa(panel, 242, 0);
+        lv_obj_set_style_radius(panel, 44, 0);
+        lv_obj_set_style_border_width(panel, 1, 0);
+        lv_obj_set_style_border_color(panel, VQEAF_C_LINE, 0);
+        lv_obj_set_style_border_opa(panel, 55, 0);
+        lv_obj_set_style_shadow_width(panel, 22, 0);
+        lv_obj_set_style_shadow_opa(panel, 48, 0);
+    }
+    lv_obj_add_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(panel, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(panel, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_style_pad_all(panel, 22, 0);
+    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+
+    lv_obj_t *root = vqeaf_obj(panel);
+    lv_obj_set_size(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(root, 18, 0);
+
+    lv_obj_t *head = vqeaf_row(root);
+    lv_obj_set_flex_align(head, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *heading = vqeaf_column(head);
+    lv_obj_set_width(heading, 0);
+    lv_obj_set_flex_grow(heading, 1);
+    lv_obj_set_style_pad_row(heading, 2, 0);
+    page_clock = vqeaf_label(heading, vqeaf_state.clock_text,
+                             VQEAF_FONT_TITLE_BOLD, VQEAF_C_TEXT);
+    page_date = vqeaf_label(heading, vqeaf_state.date_text,
+                            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    vqeaf_label(heading, "Trung tâm điều khiển", VQEAF_FONT_BODY,
+                VQEAF_C_TEXT_DIM);
+
+    lv_obj_t *head_actions = vqeaf_row(head);
+    lv_obj_set_width(head_actions, g_control_edit ? 270 : 292);
+    lv_obj_set_flex_align(head_actions, LV_FLEX_ALIGN_END,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(head_actions, 8, 0);
+    if(g_control_edit) {
+        lv_obj_t *reset = control_header_button(head_actions, "Đặt lại",
+                                                control_reset_cb, 0);
+        lv_obj_t *done = control_header_button(head_actions, "Xong",
+                                               control_done_cb, 1);
+        lv_obj_set_width(reset, 110);
+        lv_obj_set_width(done, 82);
+    }
+    else {
+        lv_obj_t *expand = control_header_button(head_actions,
+            g_control_expanded ? "Thu gọn" : "Mở rộng", control_expand_cb, 0);
+        lv_obj_t *edit = control_header_button(head_actions, "Sửa",
+                                               control_edit_cb, 1);
+        lv_obj_set_width(expand, 124);
+        lv_obj_set_width(edit, 82);
+    }
+    lv_obj_t *close = control_header_button(head_actions, "×",
+                                            control_close_cb, 0);
+    lv_obj_set_width(close, 50);
+
+    for(size_t i = 0; i < sizeof(control_tiles) / sizeof(control_tiles[0]); i++) {
+        if(control_tiles[i].kind == CTL_RECORD) record = &control_tiles[i];
+        if(control_tiles[i].kind == CTL_SHOT) shot = &control_tiles[i];
+    }
+    lv_obj_t *quick = vqeaf_row(root);
+    lv_obj_set_flex_align(quick, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    if(record != NULL) control_wide_button(quick, record);
+    if(shot != NULL) control_wide_button(quick, shot);
+
+    lv_obj_t *grid = control_grid(root, g_control_expanded || g_control_edit);
+    control_reveal(head, 0);
+    control_reveal(quick, 40);
+    control_reveal(grid, 80);
+
+    if(g_control_edit) {
+        lv_obj_t *edit_note = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(edit_note, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(edit_note, 8, 0);
+        vqeaf_label(edit_note, "Sắp xếp bảng nhanh", VQEAF_FONT_TITLE,
+                    VQEAF_C_TEXT);
+        vqeaf_label(edit_note,
+            "Giữ rồi kéo để sắp xếp ô; chạm dấu trừ để bỏ khỏi bảng thu gọn. Thay đổi chỉ có hiệu lực trong phiên này.",
+            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+        vqeaf_label(edit_note, "Chạm Xong để trở về bảng 5×2.",
+                    VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+        return;
+    }
+
+    const vqeaf_ui_media_session_t *media_session = vqeaf_ui_media_session();
+    lv_obj_t *media = control_media_card(root, media_session);
+    lv_obj_t *sliders = vqeaf_row(root);
+    lv_obj_set_flex_align(sliders, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    control_slider_card(sliders, VQEAF_SYM_BRIGHTNESS_6, "Độ sáng",
+                        vqeaf_state.brightness, brightness_cb,
+                        vqeaf_state.backlight_present ? "Ghi vào đèn nền" :
+                                                        "Không có đèn nền");
+    live_sound_status = control_slider_card(
+        sliders, VQEAF_SYM_VOLUME_UP, "Âm lượng",
+        vqeaf_state.volume, volume_slider_cb, vqeaf_sound_status());
+    if(media != NULL) control_reveal(media, 120);
+    control_reveal(sliders, 160);
 
     /* ---- Customise -------------------------------------------------------
      * Controls mirror the familiar Customise layout, but every switch below
@@ -4376,12 +5200,16 @@ static void build_control(lv_obj_t *content)
     }
 
     lv_obj_t *actions = vqeaf_row(root);
-    lv_obj_t *settings = vqeaf_m3_button(actions, "Cài đặt",
-                                         VQEAF_M3_TONAL);
-    lv_obj_add_event_cb(settings, nav_cb, LV_EVENT_CLICKED,
-                        (void *)(intptr_t)VQEAF_PAGE_SETTINGS);
-    lv_obj_t *power = vqeaf_m3_button(actions, "Nguồn", VQEAF_M3_ELEVATED);
-    lv_obj_add_event_cb(power, control_power_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_set_flex_align(actions, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    control_round_action(actions, VQEAF_SYM_SETTINGS, "Cài đặt", nav_cb,
+                         (void *)(intptr_t)VQEAF_PAGE_SETTINGS);
+    control_round_action(actions, VQEAF_SYM_NOTIFICATIONS, "Thông báo",
+                         control_scroll_cb, note_head);
+    control_round_action(actions, VQEAF_SYM_POWER_SETTINGS_NEW, "Nguồn",
+                         control_power_cb, NULL);
+    control_round_action(actions, VQEAF_SYM_CLOSE, "Đóng",
+                         control_close_cb, NULL);
 }
 
 /* ---- settings ------------------------------------------------------------ */
@@ -4700,6 +5528,123 @@ static void m3_check_event_cb(lv_event_t *event)
     lv_label_set_text(m3_check_status, text);
 }
 
+static void m3_lg_action_cb(lv_event_t *event)
+{
+    (void)event;
+    show_toast("Demo thành phần: đã nhận thao tác");
+}
+
+static void m3_lg_selection_cb(lv_event_t *event)
+{
+    lv_obj_t *control = lv_event_get_current_target_obj(event);
+    int index = vqeaf_lg_selected_index(control);
+    char text[64];
+
+    if(index < 0) index = vqeaf_lg_tabs_selected(control);
+    if(index < 0) index = vqeaf_lg_button_group_selected(control);
+    snprintf(text, sizeof(text), "Demo: đã chọn mục %d", index + 1);
+    show_toast(text);
+}
+
+static void m3_lg_state_cb(lv_event_t *event)
+{
+    lv_obj_t *control = lv_event_get_current_target_obj(event);
+    int value = vqeaf_lg_switch_get(control) || vqeaf_lg_checkbox_get(control) ||
+                vqeaf_lg_slide_confirmed(control);
+    show_toast(value ? "Demo: trạng thái đã bật/xác nhận"
+                     : "Demo: trạng thái đã tắt/đặt lại");
+}
+
+static void m3_lg_slider_cb(lv_event_t *event)
+{
+    lv_obj_t *control = lv_event_get_current_target_obj(event);
+    char text[48];
+
+    snprintf(text, sizeof(text), "Demo: giá trị %d%%", vqeaf_lg_slider_get(control));
+    show_toast(text);
+}
+
+static lv_obj_t *m3_lg_section(lv_obj_t *parent, const char *title)
+{
+    lv_obj_t *card = vqeaf_lg_card(parent, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(card, 18, 0);
+    lv_obj_set_style_pad_row(card, 14, 0);
+    vqeaf_label(card, title, VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    return card;
+}
+
+static void build_m3_liquid_glass(lv_obj_t *body)
+{
+    static const char *const tab_labels[] = { "Tổng quan", "Chạm", "Chuyển động" };
+    static const char *const group_labels[] = { "Một", "Hai", "Ba" };
+    static const vqeaf_component_item_t choices[] = {
+        { "Tự động", VQEAF_SYM_SMARTPHONE, 0 },
+        { "Sáng", VQEAF_SYM_WB_SUNNY, 0 },
+        { "Tối", VQEAF_SYM_BRIGHTNESS_6, 0 },
+        { "Theo thiết bị", NULL, 1 },
+    };
+    static const vqeaf_component_item_t actions[] = {
+        { "Xem lại bộ thành phần", VQEAF_SYM_LIST, 0 },
+        { "Đặt lại demo", VQEAF_SYM_REFRESH, 0 },
+        { "Thông tin", VQEAF_SYM_INFO, 0 },
+    };
+    lv_obj_t *card = m3_lg_section(body, "Liquid Glass · nút, thẻ và chất liệu");
+    lv_obj_t *row = vqeaf_row(card);
+    lv_obj_set_style_pad_column(row, 12, 0);
+    lv_obj_add_event_cb(vqeaf_lg_button(row, "Chạm thử", VQEAF_M3_FILLED),
+                        m3_lg_action_cb, LV_EVENT_CLICKED, NULL);
+    vqeaf_lg_action_button(row, VQEAF_SYM_ARROW_FORWARD,
+                           m3_lg_action_cb, NULL);
+    vqeaf_lg_badge(row, "12 demo");
+    vqeaf_label(card,
+        "Hiệu ứng kính mô phỏng bằng gradient, scale, alpha và rim; "
+        "renderer chưa có backdrop blur thật.",
+        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    lv_obj_set_width(lv_obj_get_child(card, lv_obj_get_child_count(card) - 1),
+                     lv_pct(100));
+
+    card = m3_lg_section(body, "Tabs · thấu kính di chuyển");
+    lv_obj_add_event_cb(vqeaf_lg_tabs(card, tab_labels, 3, 0),
+                        m3_lg_selection_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    card = m3_lg_section(body, "Slider · thấu kính giãn theo chuyển động");
+    lv_obj_t *slider = vqeaf_lg_slider(card, 50);
+    lv_obj_set_style_pad_hor(slider, 12, 0);
+    lv_obj_add_event_cb(slider, m3_lg_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    card = m3_lg_section(body, "Switch & Checkbox · nút kính luôn rõ");
+    row = vqeaf_row(card);
+    lv_obj_set_style_pad_column(row, 24, 0);
+    lv_obj_add_event_cb(vqeaf_lg_switch(row, 0), m3_lg_state_cb,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(vqeaf_lg_checkbox(row, "Cho phép demo", 1),
+                        m3_lg_state_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    card = m3_lg_section(body, "Slide to Confirm · kéo hết để xác nhận");
+    lv_obj_add_event_cb(vqeaf_lg_slide_confirm(card, "Trượt để xác nhận",
+                                               NULL, NULL),
+                        m3_lg_state_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    card = m3_lg_section(body, "Select · một bề mặt lỏng");
+    vqeaf_lg_select(card, choices, 4, 0, m3_lg_selection_cb, NULL);
+
+    card = m3_lg_section(body, "Button Group · nhiều nút, một thân kính");
+    lv_obj_add_event_cb(vqeaf_lg_button_group(card, group_labels, 3, 0),
+                        m3_lg_selection_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    card = m3_lg_section(body, "Dropdown · hành động đổ ra từ nút");
+    vqeaf_lg_dropdown(card, "Hành động", actions, 3, m3_lg_action_cb, NULL);
+
+    card = m3_lg_section(body, "Popover · bề mặt mở ngay tại nút");
+    vqeaf_lg_popover(card, "Ghi chú demo",
+                     "Đây là nội dung popover, không phải trạng thái thiết bị.",
+                     "Đã hiểu");
+
+    card = m3_lg_section(body, "Menu · bề mặt lớn về phía menu");
+    vqeaf_lg_menu(card, "Menu bên phải", actions, 3, 1, m3_lg_action_cb, NULL);
+}
+
 static void build_m3_layout(lv_obj_t *content)
 {
     int32_t body_h;
@@ -4866,6 +5811,8 @@ static void build_m3_layout(lv_obj_t *content)
                             (void *)(intptr_t)4);
     }
 
+    build_m3_liquid_glass(body);
+
     /* The FAB is created after the body, so it paints above it: level 3 over a
      * level 0..1 surface is the whole point of the elevation scale. */
     lv_obj_t *fab = vqeaf_m3_fab_extended(content, VQEAF_SYM_ADD, "Tạo");
@@ -4899,6 +5846,7 @@ static void usb_row_cb(lv_event_t *event)
 static void build_settings(lv_obj_t *content)
 {
     static char wifi_status[32];
+    static char qeapp_status[64];
     lv_obj_t *root = page_root(content);
     /* The dock floats over the bottom of the scroll area: leave enough tail
      * padding that the timeout note can be scrolled fully above it. */
@@ -4912,6 +5860,9 @@ static void build_settings(lv_obj_t *content)
         snprintf(wifi_status, sizeof(wifi_status), "Đang tắt");
     else
         snprintf(wifi_status, sizeof(wifi_status), "Không có thiết bị");
+    snprintf(qeapp_status, sizeof(qeapp_status), "API QEAPP v%u · %zu đã cài",
+             (unsigned)vqeaf_qeapp_package_api_version(),
+             vqeaf_qeapp_package_count());
 
     {
         lv_obj_t *usb_row = vqeaf_card(root, lv_pct(100), 124);
@@ -4953,6 +5904,7 @@ static void build_settings(lv_obj_t *content)
         { VQEAF_SYM_SECURITY,         "Bảo mật",           "PIN · vân tay · khóa túi", 0x1A5A3A, VQEAF_PAGE_SECURITY },
         { VQEAF_SYM_APPS,             "Ứng dụng mặc định", "Trình duyệt · nhạc · ảnh · tệp", 0x1A3A5A, VQEAF_PAGE_DEFAULT_APPS },
         { VQEAF_SYM_APPS,             "Ứng dụng",          NULL,               0x1A3A5A, VQEAF_PAGE_APPS },
+        { VQEAF_SYM_DOWNLOAD,         "Cài đặt .qeapp",    qeapp_status,       0x1A2A46, VQEAF_PAGE_INSTALLER },
         { VQEAF_SYM_MEMORY,           "Hệ thống",          "Chưa có dịch vụ",  0x3A3A3A, VQEAF_PAGE_COUNT },
         { VQEAF_SYM_LOCK,             "Màn hình khóa",     "Đồng hồ, font & màu", 0x2A1A3E, VQEAF_PAGE_LOCK_THEME },
         { VQEAF_SYM_PALETTE,          "Bộ thành phần QEAF", "App bar · thẻ · FAB · hộp thoại", 0x2A1A3E, VQEAF_PAGE_M3 },
@@ -5360,14 +6312,14 @@ typedef struct {
 static const kb_theme_t kb_themes[] = {
     { "Nightfall", "Ocean",     0x0C1A22, 0x1B3B4A, 0x2F9BD8, 5,
       { 0x4C8DFF, 0x2FBF71, 0xE8A33D, 0xE86A8A, 0x9B6BFF }, 0 },
-    { "Pastel",    "Snow",      0xE8F0F8, 0xFFFFFF, 0x3B82D6, 5,
-      { 0x3B82D6, 0x2FBF71, 0xE86A8A, 0xC9A227, 0x38BDF8 }, 0 },
+    { "Pastel",    "Warm sand", 0xE8E0D6, 0xF8F5EF, 0xD96C4F, 5,
+      { 0xD96C4F, 0xE7A33D, 0x6B8E7B, 0x8E7CC3, 0x5C8DAF }, 1 },
     { "Gradients", "Deep sea",  0x0A2540, 0x123C63, 0x1E88E5, 4,
       { 0x1E88E5, 0xE85D3D, 0x2FBF71, 0x8B5CF6, 0 }, 0 },
     { "Bubble",    "Mint",      0x0B211A, 0x123A2C, 0x17C3A2, 4,
       { 0x17C3A2, 0x2FBF71, 0x38BDF8, 0xA78BFA, 0 }, 1 },
-    { "Facet",     "Graphite",  0x1A1D1F, 0x2C3134, 0x9AA0A6, 4,
-      { 0x9AA0A6, 0x6B7280, 0x38BDF8, 0xE8A33D, 0 }, 1 },
+    { "Facet",     "Ember",     0x111214, 0x292B2F, 0xE7A33D, 4,
+      { 0xE7A33D, 0xD96C4F, 0x6B7280, 0xF2C66D, 0 }, 1 },
     { "Frost",     "Frost",     0x1D3F8F, 0x3F6FD1, 0x7FB2FF, 4,
       { 0x3B82F6, 0x1E88E5, 0x38BDF8, 0xA78BFA, 0 }, 1 },
 };
@@ -5375,8 +6327,9 @@ static const kb_theme_t kb_themes[] = {
 /* g_kb_theme is the previewed card; g_kb_theme_applied is what every real
  * LVGL keyboard in the OS uses. Both are session-only: the initramfs root has
  * no persistent prefs partition, so a reboot restores Nightfall. */
-static int g_kb_theme;
-static int g_kb_theme_applied;
+/* Ember is the default: charcoal keys with amber and coral action accents. */
+static int g_kb_theme = 4;
+static int g_kb_theme_applied = 4;
 static lv_obj_t *g_applied_label;
 #define VQEAF_LIVE_KEYBOARDS 4
 static lv_obj_t *g_live_keyboards[VQEAF_LIVE_KEYBOARDS];
@@ -5391,10 +6344,27 @@ int vqeaf_pages_kb_theme_applied(void)
     return g_kb_theme_applied;
 }
 
+int vqeaf_pages_kb_theme_default(void)
+{
+    return 4;   /* Ember is the shipped first-boot keyboard theme. */
+}
+
 uint32_t vqeaf_pages_kb_theme_key_color(int index)
 {
     if(index < 0 || index >= vqeaf_pages_kb_theme_count()) return 0;
     return kb_themes[index].key;
+}
+
+uint32_t vqeaf_pages_kb_theme_bg_color(int index)
+{
+    if(index < 0 || index >= vqeaf_pages_kb_theme_count()) return 0;
+    return kb_themes[index].bg;
+}
+
+uint32_t vqeaf_pages_kb_theme_accent_color(int index)
+{
+    if(index < 0 || index >= vqeaf_pages_kb_theme_count()) return 0;
+    return kb_themes[index].accent;
 }
 
 /* Light keys need dark glyphs (Pastel), dark keys need light glyphs. */
@@ -5866,12 +6836,23 @@ static const char *bool_text(int value)
     return value ? "Có" : "Không";
 }
 
+static vqeaf_wifi_status_t g_wifi_status;
+static int g_wifi_status_rc = -1;
+
 static const char *wifi_state_text(void)
 {
     if(!vqeaf_state.wifi_if_present)
         return vqeaf_state.wifi_driver_loaded ?
-               "Không có giao diện mạng" : "Không có thiết bị";
-    return vqeaf_state.wifi_up > 0 ? "Đang kết nối" : "Đang tắt";
+               "Chưa có wlan0" : "Không có thiết bị";
+    if(g_wifi_status_rc != 0) return "Dịch vụ WPA chưa sẵn sàng";
+    if(g_wifi_status.connected) return "Đã kết nối";
+    if(strcmp(g_wifi_status.state, "ASSOCIATING") == 0 ||
+       strcmp(g_wifi_status.state, "4WAY_HANDSHAKE") == 0 ||
+       strcmp(g_wifi_status.state, "AUTHENTICATING") == 0)
+        return "Đang xác thực";
+    if(strcmp(g_wifi_status.state, "SCANNING") == 0)
+        return "Đang quét";
+    return "Chưa kết nối";
 }
 
 static int g_wifi_count;
@@ -5900,6 +6881,7 @@ static vqeaf_wifi_net_t g_wifi_pick;
 static void wifi_scan_now(void)
 {
     int count = vqeaf_wifi_scan(g_wifi_nets, VQEAF_WIFI_MAX);
+    g_wifi_status_rc = vqeaf_wifi_get_status(&g_wifi_status);
 
     if(count < 0) {
         g_wifi_count = 0;
@@ -5942,7 +6924,7 @@ static void wifi_modal_connect_cb(lv_event_t *event)
         lv_label_set_text(g_wifi_modal_status, "Nhập mật khẩu Wi-Fi.");
         return;
     }
-    rc = vqeaf_wifi_connect(g_wifi_pick.ssid, password);
+    rc = vqeaf_wifi_connect(g_wifi_pick.ssid, password, g_wifi_pick.enc);
     if(rc == 0) {
         wifi_modal_close();
         vqeaf_ui_show(VQEAF_PAGE_WIFI);
@@ -6060,7 +7042,8 @@ static void wifi_network_cb(lv_event_t *event)
         wifi_open_modal(&g_wifi_nets[index]);
     }
     else {
-        int rc = vqeaf_wifi_connect(g_wifi_nets[index].ssid, "");
+        int rc = vqeaf_wifi_connect(g_wifi_nets[index].ssid, "",
+                                       g_wifi_nets[index].enc);
         if(rc != 0) {
             snprintf(g_wifi_scan_note, sizeof(g_wifi_scan_note), "%s",
                      vqeaf_wifi_error(rc));
@@ -6068,6 +7051,19 @@ static void wifi_network_cb(lv_event_t *event)
         }
         else vqeaf_ui_show(VQEAF_PAGE_WIFI);
     }
+}
+
+static void wifi_disconnect_cb(lv_event_t *event)
+{
+    int rc;
+    (void)event;
+    rc = vqeaf_wifi_disconnect();
+    if(rc != 0)
+        snprintf(g_wifi_scan_note, sizeof(g_wifi_scan_note), "%s",
+                 vqeaf_wifi_error(rc));
+    else
+        g_wifi_scan_note[0] = '\0';
+    vqeaf_ui_show(VQEAF_PAGE_WIFI);
 }
 
 static void wifi_rescan_cb(lv_event_t *event)
@@ -6082,7 +7078,9 @@ static void build_wifi(lv_obj_t *content)
     char text[96];
     lv_obj_t *root = page_root(content);
 
-    detail_header(root, "Wi-Fi");
+    detail_header_back(root, "Wi-Fi",
+        vqeaf_setup_subpage_active(VQEAF_PAGE_WIFI) ?
+        VQEAF_PAGE_SETUP : VQEAF_PAGE_SETTINGS);
     wifi_scan_now();
 
     lv_obj_t *hero = vqeaf_card(root, lv_pct(100), 186);
@@ -6122,7 +7120,23 @@ static void build_wifi(lv_obj_t *content)
     snprintf(text, sizeof(text), "%d%%", vqeaf_state.wifi_link);
     info_row(link, "Chất lượng liên kết",
              vqeaf_state.wifi_if_present ? text : "--");
-    info_row(link, "SSID", "Chưa có supplicant");
+    info_row(link, "SSID",
+             g_wifi_status.connected && g_wifi_status.ssid[0] ?
+             g_wifi_status.ssid :
+             (g_wifi_status_rc == 0 ? "Chưa kết nối" :
+                                      "WPA supplicant chưa chạy"));
+    info_row(link, "Địa chỉ IP",
+             g_wifi_status.connected && g_wifi_status.ip_address[0] ?
+             g_wifi_status.ip_address : "Chưa được cấp");
+    info_row(link, "BSSID",
+             g_wifi_status.connected && g_wifi_status.bssid[0] ?
+             g_wifi_status.bssid : "--");
+    if(g_wifi_status_rc == 0 && g_wifi_status.connected) {
+        lv_obj_t *disconnect = info_row(link, "Ngắt kết nối", "Chạm để ngắt");
+        lv_obj_add_flag(disconnect, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(disconnect, wifi_disconnect_cb,
+                            LV_EVENT_CLICKED, NULL);
+    }
     {
         const char *mode = wifi_gateway_mode();
         lv_obj_t *gw = info_row(link, "Chế độ Gateway",
@@ -6213,6 +7227,470 @@ static void build_wifi(lv_obj_t *content)
         "wifi-stack.md.",
         VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
     lv_obj_set_width(note, lv_pct(100));
+}
+
+/* ---- first-boot setup ---------------------------------------------------- */
+
+static char g_pin_entry[16];
+static char g_pin_pending[16];
+static int  g_pin_mode;
+static int  g_pin_setup_flow;
+
+#define SETUP_COMPLETE_KEY "setup.complete"
+#define SETUP_STEP_COUNT 5
+
+static int g_setup_step;
+static vqeaf_page_t g_setup_subpage = VQEAF_PAGE_COUNT;
+
+int vqeaf_setup_required(void)
+{
+    return !vqeaf_settings_get_bool(SETUP_COMPLETE_KEY, 0);
+}
+
+int vqeaf_setup_subpage_active(vqeaf_page_t page)
+{
+    return vqeaf_setup_required() && page == g_setup_subpage;
+}
+
+void vqeaf_setup_show_step(int step)
+{
+    if(step < 0) step = 0;
+    if(step >= SETUP_STEP_COUNT) step = SETUP_STEP_COUNT - 1;
+    g_setup_step = step;
+    g_setup_subpage = VQEAF_PAGE_COUNT;
+    vqeaf_ui_show(VQEAF_PAGE_SETUP);
+}
+
+void vqeaf_setup_reset(void)
+{
+    g_setup_step = 0;
+    g_setup_subpage = VQEAF_PAGE_COUNT;
+    g_pin_setup_flow = 0;
+    g_pin_mode = 0;
+    g_pin_entry[0] = '\0';
+    g_pin_pending[0] = '\0';
+    vqeaf_settings_set_bool(SETUP_COMPLETE_KEY, 0);
+}
+
+int vqeaf_setup_complete(void)
+{
+    int result = vqeaf_settings_set_bool(SETUP_COMPLETE_KEY, 1);
+    if(!vqeaf_settings_get_bool(SETUP_COMPLETE_KEY, 0)) return -1;
+    return result < 0 ? 1 : 0;
+}
+
+static lv_color_t setup_ink(void) { return lv_color_hex(0x172033); }
+static lv_color_t setup_muted(void) { return lv_color_hex(0x667085); }
+static lv_color_t setup_line(void) { return lv_color_hex(0xE1E6EF); }
+static lv_color_t setup_accent(void) { return lv_color_hex(0x2F6FED); }
+
+static lv_obj_t *setup_root(lv_obj_t *content)
+{
+    lv_display_t *display = lv_obj_get_display(content);
+    lv_obj_t *root = vqeaf_obj(content);
+    int32_t width = lv_display_get_horizontal_resolution(display);
+    int32_t height = lv_display_get_vertical_resolution(display);
+    int32_t pad = width < 600 ? 24 : 48;
+
+    lv_obj_set_size(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_min_height(root, height, 0);
+    lv_obj_set_style_bg_color(root, lv_color_hex(0xF6F8FC), 0);
+    lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_left(root, pad, 0);
+    lv_obj_set_style_pad_right(root, pad, 0);
+    lv_obj_set_style_pad_top(root, 36, 0);
+    lv_obj_set_style_pad_bottom(root, 36, 0);
+    lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(root, 20, 0);
+    lv_obj_remove_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    return root;
+}
+
+static lv_obj_t *setup_card(lv_obj_t *parent, int32_t height)
+{
+    lv_obj_t *card = vqeaf_obj(parent);
+    lv_obj_set_size(card, lv_pct(100), height);
+    lv_obj_set_style_bg_color(card, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 28, 0);
+    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_style_border_color(card, setup_line(), 0);
+    lv_obj_set_style_pad_all(card, 24, 0);
+    return card;
+}
+
+static lv_obj_t *setup_button(lv_obj_t *parent, const char *text, int primary,
+                              lv_event_cb_t cb, void *data)
+{
+    lv_obj_t *button = vqeaf_obj(parent);
+    lv_obj_set_size(button, lv_pct(100), 76);
+    lv_obj_set_style_bg_color(button,
+        primary ? setup_ink() : lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(button, 38, 0);
+    lv_obj_set_style_border_width(button, primary ? 0 : 1, 0);
+    lv_obj_set_style_border_color(button, setup_line(), 0);
+    lv_obj_set_flex_flow(button, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(button, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    vqeaf_label(button, text, VQEAF_FONT_BODY_BOLD,
+                primary ? lv_color_white() : setup_ink());
+    vqeaf_on_click(button, cb, data);
+    return button;
+}
+
+static void setup_step_cb(lv_event_t *event)
+{
+    vqeaf_setup_show_step((int)(intptr_t)lv_event_get_user_data(event));
+}
+
+static void setup_emergency_cb(lv_event_t *event)
+{
+    (void)event;
+    show_toast("Chưa có dịch vụ thoại hoặc modem khả dụng trên thiết bị này.");
+}
+
+static void setup_pin_cb(lv_event_t *event)
+{
+    (void)event;
+    g_pin_setup_flow = 1;
+    g_pin_mode = 1;
+    g_pin_entry[0] = '\0';
+    g_pin_pending[0] = '\0';
+    g_setup_subpage = VQEAF_PAGE_PIN;
+    vqeaf_ui_show(VQEAF_PAGE_PIN);
+}
+
+static void setup_wifi_cb(lv_event_t *event)
+{
+    (void)event;
+    g_setup_subpage = VQEAF_PAGE_WIFI;
+    vqeaf_ui_show(VQEAF_PAGE_WIFI);
+}
+
+static void setup_wifi_back_cb(lv_event_t *event)
+{
+    (void)event;
+    vqeaf_setup_show_step(2);
+}
+
+static void setup_theme_cb(lv_event_t *event)
+{
+    vqeaf_theme_mode_t mode = (vqeaf_theme_mode_t)(intptr_t)
+                              lv_event_get_user_data(event);
+    vqeaf_ui_set_theme(mode);
+}
+
+static void setup_finish_cb(lv_event_t *event)
+{
+    int result;
+    (void)event;
+    result = vqeaf_setup_complete();
+    if(result < 0) {
+        show_toast("Settings Service không lưu được trạng thái hoàn tất.");
+        return;
+    }
+    g_setup_subpage = VQEAF_PAGE_COUNT;
+    if(result > 0)
+        show_toast("Setup chỉ hoàn tất trong phiên; chưa lưu bền vững.");
+    vqeaf_ui_show(VQEAF_PAGE_LOCK);
+}
+
+static void setup_progress(lv_obj_t *parent, int step)
+{
+    lv_obj_t *row = vqeaf_weighted_row(parent);
+    lv_obj_set_size(row, lv_pct(100), 8);
+    lv_obj_set_style_pad_column(row, 8, 0);
+    for(int i = 0; i < SETUP_STEP_COUNT; i++) {
+        lv_obj_t *segment = vqeaf_obj(row);
+        vqeaf_weight(segment, 1);
+        lv_obj_set_height(segment, 8);
+        lv_obj_set_style_radius(segment, 4, 0);
+        lv_obj_set_style_bg_color(segment,
+            i <= step ? setup_accent() : setup_line(), 0);
+        lv_obj_set_style_bg_opa(segment, LV_OPA_COVER, 0);
+    }
+}
+
+static void setup_header(lv_obj_t *root, int step, const char *title,
+                         const char *subtitle)
+{
+    lv_obj_t *row = vqeaf_row(root);
+    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 16, 0);
+    if(step > 0) {
+        lv_obj_t *back = vqeaf_tile(row, VQEAF_SYM_ARROW_BACK,
+            lv_color_white(), setup_ink(), 64, 20);
+        vqeaf_on_click(back, setup_step_cb,
+                       (void *)(intptr_t)(step - 1));
+    } else {
+        lv_obj_t *dot = vqeaf_obj(row);
+        lv_obj_set_size(dot, 14, 14);
+        lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(dot, setup_accent(), 0);
+        lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+        vqeaf_label(row, "QEAFIVELS OS", VQEAF_FONT_CAPTION_BOLD,
+                    setup_muted());
+    }
+    lv_obj_t *heading = vqeaf_column(row);
+    lv_obj_set_flex_grow(heading, 1);
+    lv_obj_set_style_pad_row(heading, 2, 0);
+    vqeaf_label(heading, title, VQEAF_FONT_HEADLINE_BOLD, setup_ink());
+    vqeaf_label(heading, subtitle, VQEAF_FONT_BODY, setup_muted());
+    setup_progress(root, step);
+}
+
+static lv_obj_t *setup_info_line(lv_obj_t *parent, const char *key,
+                                 const char *value)
+{
+    lv_obj_t *row = vqeaf_obj(parent);
+    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 20, 0);
+    vqeaf_label(row, key, VQEAF_FONT_BODY, setup_muted());
+    lv_obj_t *label = vqeaf_label(row, value, VQEAF_FONT_BODY_BOLD,
+                                  setup_ink());
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_flex_grow(label, 1);
+    return label;
+}
+
+static lv_obj_t *setup_smile(lv_obj_t *parent)
+{
+    lv_obj_t *face = vqeaf_obj(parent);
+    lv_obj_set_size(face, 144, 144);
+    lv_obj_set_style_radius(face, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(face, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(face, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(face, 6, 0);
+    lv_obj_set_style_border_color(face, setup_ink(), 0);
+    for(int i = 0; i < 2; i++) {
+        lv_obj_t *eye = vqeaf_obj(face);
+        lv_obj_set_size(eye, 12, 12);
+        lv_obj_set_style_radius(eye, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(eye, setup_ink(), 0);
+        lv_obj_set_style_bg_opa(eye, LV_OPA_COVER, 0);
+        lv_obj_align(eye, LV_ALIGN_TOP_MID, i == 0 ? -28 : 28, 38);
+    }
+    static const lv_point_t smile_points[] = {
+        { 48, 92 }, { 57, 103 }, { 72, 108 }, { 87, 103 }, { 96, 92 }
+    };
+    lv_obj_t *smile = lv_line_create(face);
+    lv_line_set_points(smile, smile_points, 5);
+    lv_obj_set_style_line_width(smile, 6, LV_PART_MAIN);
+    lv_obj_set_style_line_color(smile, setup_ink(), LV_PART_MAIN);
+    lv_obj_set_style_line_rounded(smile, true, LV_PART_MAIN);
+    lv_obj_clear_flag(smile, LV_OBJ_FLAG_CLICKABLE);
+    return face;
+}
+
+static void build_setup_welcome(lv_obj_t *root)
+{
+    lv_obj_set_flex_align(root, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_row(root, 24, 0);
+    lv_obj_t *brand = vqeaf_row(root);
+    lv_obj_set_width(brand, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_column(brand, 10, 0);
+    lv_obj_t *dot = vqeaf_obj(brand);
+    lv_obj_set_size(dot, 12, 12);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dot, setup_accent(), 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    vqeaf_label(brand, "QEAFIVELS OS", VQEAF_FONT_CAPTION_BOLD,
+                setup_muted());
+    lv_obj_t *greeting = vqeaf_label(root, "Xin chào!",
+                                     VQEAF_FONT_HEADLINE_BOLD, setup_ink());
+    lv_obj_set_style_text_align(greeting, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_t *subtitle = vqeaf_label(root,
+        "Hãy bắt đầu với QEAFIVELS OS", VQEAF_FONT_BODY, setup_muted());
+    lv_obj_set_style_text_align(subtitle, LV_TEXT_ALIGN_CENTER, 0);
+    setup_smile(root);
+    lv_obj_t *start = setup_button(root, "Bắt đầu", 1, setup_step_cb,
+                                   (void *)(intptr_t)1);
+    lv_obj_set_width(start, 420);
+    lv_obj_t *emergency = vqeaf_label(root, "Gọi khẩn cấp",
+                                      VQEAF_FONT_BODY, setup_muted());
+    lv_obj_set_style_text_decor(emergency, LV_TEXT_DECOR_UNDERLINE, 0);
+    vqeaf_on_click(emergency, setup_emergency_cb, NULL);
+    vqeaf_label(root, "Thiết lập lần đầu · Tiếng Việt",
+                VQEAF_FONT_CAPTION, setup_muted());
+}
+
+static void build_setup_security(lv_obj_t *root)
+{
+    char status[64];
+    setup_header(root, 1, "Bảo mật", "PIN tùy chọn cho màn hình khóa");
+    snprintf(status, sizeof(status), "%s", pin_enabled() ?
+             "Đã đặt PIN trong phiên này" : "Chưa đặt PIN");
+    lv_obj_t *card = setup_card(root, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(card, 14, 0);
+    vqeaf_tile(card, VQEAF_SYM_LOCK, lv_color_hex(0xEAF0FF),
+               setup_accent(), 72, 22);
+    vqeaf_label(card, "PIN màn hình khóa", VQEAF_FONT_TITLE_BOLD,
+                setup_ink());
+    vqeaf_label(card, status, VQEAF_FONT_BODY, setup_muted());
+    lv_obj_t *note = vqeaf_label(card,
+        "PIN bốn số được lưu qua Settings Service. Hiện chưa có backend "
+        "bền vững trên Violet nên PIN sẽ mất sau khi khởi động lại.",
+        VQEAF_FONT_CAPTION, setup_muted());
+    lv_obj_set_width(note, lv_pct(100));
+    lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+    setup_button(root, pin_enabled() ? "Đổi PIN" : "Tạo PIN", 0,
+                 setup_pin_cb, NULL);
+    setup_button(root, "Tiếp tục", 1, setup_step_cb,
+                 (void *)(intptr_t)2);
+}
+
+static void build_setup_network(lv_obj_t *root)
+{
+    char detail[96];
+    setup_header(root, 2, "Mạng", "Kiểm tra Wi-Fi theo trạng thái thật");
+    wifi_scan_now();
+    lv_obj_t *card = setup_card(root, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(card, 14, 0);
+    vqeaf_tile(card, VQEAF_SYM_WIFI, lv_color_hex(0xEAF0FF),
+               setup_accent(), 72, 22);
+    vqeaf_label(card, "Wi-Fi", VQEAF_FONT_TITLE_BOLD, setup_ink());
+    vqeaf_label(card, wifi_state_text(), VQEAF_FONT_BODY, setup_muted());
+    setup_info_line(card, "Giao diện", vqeaf_state.wifi_if_present ?
+                    vqeaf_state.wifi_ifname : "Không có");
+    setup_info_line(card, "Driver wlan", vqeaf_state.wifi_driver_loaded ?
+                    "Đã nạp" : "Không có");
+    setup_info_line(card, "Firmware", vqeaf_state.wifi_firmware_present ?
+                    "Có" : "Thiếu");
+    if(g_wifi_scan_note[0] != '\0') {
+        snprintf(detail, sizeof(detail), "%s", g_wifi_scan_note);
+    } else {
+        snprintf(detail, sizeof(detail), "%d mạng tìm thấy", g_wifi_count);
+    }
+    lv_obj_t *scan = vqeaf_label(card, detail, VQEAF_FONT_CAPTION,
+                                 setup_muted());
+    lv_obj_set_width(scan, lv_pct(100));
+    lv_label_set_long_mode(scan, LV_LABEL_LONG_WRAP);
+    setup_button(root, "Xem trạng thái Wi-Fi", 0, setup_wifi_cb, NULL);
+    lv_obj_t *note = vqeaf_label(root,
+        "Có thể bỏ qua bước này và thiết lập mạng sau trong Cài đặt.",
+        VQEAF_FONT_CAPTION, setup_muted());
+    lv_obj_set_width(note, lv_pct(100));
+    setup_button(root, "Tiếp tục", 1, setup_step_cb,
+                 (void *)(intptr_t)3);
+}
+
+static lv_obj_t *setup_theme_preview(lv_obj_t *parent, int light,
+                                     lv_event_cb_t cb)
+{
+    lv_obj_t *card = vqeaf_obj(parent);
+    vqeaf_weight(card, 1);
+    lv_obj_set_height(card, 250);
+    lv_obj_set_style_bg_color(card, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(card, 24, 0);
+    lv_obj_set_style_border_width(card,
+        vqeaf_theme_get() == (light ? VQEAF_THEME_LIGHT : VQEAF_THEME_DARK) ?
+        3 : 1, 0);
+    lv_obj_set_style_border_color(card,
+        vqeaf_theme_get() == (light ? VQEAF_THEME_LIGHT : VQEAF_THEME_DARK) ?
+        setup_accent() : setup_line(), 0);
+    lv_obj_set_style_pad_all(card, 14, 0);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(card, 12, 0);
+    lv_obj_t *preview = vqeaf_obj(card);
+    lv_obj_set_size(preview, lv_pct(100), 150);
+    lv_obj_set_style_radius(preview, 16, 0);
+    lv_obj_set_style_bg_color(preview,
+        lv_color_hex(light ? 0xEAF3FF : 0x071D4A), 0);
+    lv_obj_set_style_bg_opa(preview, LV_OPA_COVER, 0);
+    lv_obj_t *bar = vqeaf_obj(preview);
+    lv_obj_set_size(bar, lv_pct(70), 12);
+    lv_obj_align(bar, LV_ALIGN_TOP_LEFT, 16, 18);
+    lv_obj_set_style_radius(bar, 6, 0);
+    lv_obj_set_style_bg_color(bar,
+        light ? lv_color_hex(0x1663D6) : lv_color_hex(0x5EA0FF), 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    for(int i = 0; i < 3; i++) {
+        lv_obj_t *tile = vqeaf_obj(preview);
+        lv_obj_set_size(tile, 56, 56);
+        lv_obj_set_style_radius(tile, 14, 0);
+        lv_obj_set_style_bg_color(tile,
+            light ? lv_color_hex(0xFFFFFF) : lv_color_hex(0x123C7A), 0);
+        lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+        lv_obj_align(tile, LV_ALIGN_BOTTOM_LEFT, 16 + i * 68, -18);
+    }
+    vqeaf_label(card, light ? "Sáng" : "Tối", VQEAF_FONT_BODY_BOLD,
+                setup_ink());
+    vqeaf_on_click(card, cb,
+        (void *)(intptr_t)(light ? VQEAF_THEME_LIGHT : VQEAF_THEME_DARK));
+    return card;
+}
+
+static void build_setup_appearance(lv_obj_t *root)
+{
+    setup_header(root, 3, "Giao diện", "Chọn phong cách dễ nhìn nhất");
+    lv_obj_t *row = vqeaf_weighted_row(root);
+    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_column(row, 16, 0);
+    setup_theme_preview(row, 0, setup_theme_cb);
+    setup_theme_preview(row, 1, setup_theme_cb);
+    lv_obj_t *note = vqeaf_label(root,
+        "Lựa chọn áp dụng ngay qua bảng màu QEAF và chỉ tồn tại trong phiên "
+        "hiện tại trên Violet.", VQEAF_FONT_CAPTION, setup_muted());
+    lv_obj_set_width(note, lv_pct(100));
+    lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+    setup_button(root, "Hoàn tất", 1, setup_step_cb,
+                 (void *)(intptr_t)4);
+}
+
+static void build_setup_ready(lv_obj_t *root)
+{
+    char pin_status[64];
+    lv_obj_set_flex_align(root, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER);
+    setup_header(root, 4, "Hoàn tất", "Kiểm tra lại trước khi vào hệ điều hành");
+    lv_obj_t *badge = vqeaf_tile(root, VQEAF_SYM_CHECK_CIRCLE,
+        lv_color_hex(0xE7F6EC), lv_color_hex(0x218739), 104, 32);
+    lv_obj_set_style_border_width(badge, 0, 0);
+    lv_obj_t *title = vqeaf_label(root, "Sẵn sàng!", VQEAF_FONT_HEADLINE_BOLD,
+                                  setup_ink());
+    lv_obj_set_width(title, lv_pct(100));
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_t *card = setup_card(root, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(card, 18, 0);
+    snprintf(pin_status, sizeof(pin_status), "%s", pin_enabled() ?
+             "Đã đặt (phiên)" : "Không đặt");
+    setup_info_line(card, "PIN", pin_status);
+    setup_info_line(card, "Wi-Fi", wifi_state_text());
+    setup_info_line(card, "Giao diện", vqeaf_theme_get() == VQEAF_THEME_LIGHT ?
+                    "Sáng" : "Tối");
+    lv_obj_t *persistence = vqeaf_label(card,
+        vqeaf_settings_persistent() ?
+        "Settings Service có backend bền vững; kết quả lưu sẽ được kiểm tra "
+        "khi hoàn tất." :
+        "Violet chưa có backend cấu hình bền vững. Setup, PIN và giao diện "
+        "sẽ đặt lại sau khi khởi động lại.",
+        VQEAF_FONT_CAPTION, setup_muted());
+    lv_obj_set_width(persistence, lv_pct(100));
+    lv_label_set_long_mode(persistence, LV_LABEL_LONG_WRAP);
+    setup_button(root, "Vào hệ điều hành", 1, setup_finish_cb, NULL);
+}
+
+static void build_setup(lv_obj_t *content)
+{
+    lv_obj_t *root = setup_root(content);
+    switch(g_setup_step) {
+    case 1: build_setup_security(root); break;
+    case 2: build_setup_network(root); break;
+    case 3: build_setup_appearance(root); break;
+    case 4: build_setup_ready(root); break;
+    default: build_setup_welcome(root); break;
+    }
 }
 
 /* ---- drivers and drives -------------------------------------------------- */
@@ -7068,23 +8546,24 @@ static int files_is_qeapp(const char *name)
 }
 
 /* ---- .qeapp package installer --------------------------------------------
- * A three-state confirmation flow modelled on a package installer: confirm
- * (real package identity + declared permissions) -> installing (indeterminate
- * busy bar while the signed install runs) -> done (open the launcher) or error.
- * Identity comes from vqeaf_qeapp_preview, which verifies and parses without
- * committing; the install itself re-verifies the bytes, so a package swapped
- * after the preview is still caught. */
+ * Confirm (real package identity + declared permissions) -> installing
+ * (indeterminate busy bar) -> durable/session-only result or error. The public
+ * package API verifies and parses without committing; install accepts only the
+ * exact package digest shown by that preview. */
 typedef enum {
     INSTALL_CONFIRM = 0,
     INSTALL_BUSY,
     INSTALL_DONE,
-    INSTALL_ERROR
+    INSTALL_ERROR,
+    INSTALL_SESSION_ONLY
 } install_state_t;
 
 static lv_obj_t *g_install_modal;
 static int g_install_state;
-static vqeaf_qeapp_preview_t g_install_preview;
+static vqeaf_qeapp_package_info_t g_install_preview;
+static vqeaf_qeapp_package_result_t g_install_result;
 static lv_image_dsc_t g_install_icon_dsc;
+static uint8_t g_install_icon_render[64 * 64 * 4];
 static char g_install_path[512];
 static char g_install_error[160];
 static lv_timer_t *g_install_timer;
@@ -7129,17 +8608,23 @@ static void install_open_cb(lv_event_t *event)
  * indeterminate: the install is atomic, so there is no honest percentage. */
 static void install_run_cb(lv_timer_t *timer)
 {
+    int status;
     (void)timer;
-    char error[160];
 
     g_install_timer = NULL;
-    error[0] = '\0';
-    if(vqeaf_qeapp_install(g_install_path, error, sizeof(error)) == 0) {
+    status = vqeaf_qeapp_package_install_verified(
+        g_install_path, g_install_preview.package_hash, &g_install_result);
+    if(status == VQEAF_QEAPP_PACKAGE_OK) {
         g_install_state = INSTALL_DONE;
+    }
+    else if(status == VQEAF_QEAPP_PACKAGE_OK_SESSION_ONLY) {
+        g_install_state = INSTALL_SESSION_ONLY;
     }
     else {
         g_install_state = INSTALL_ERROR;
-        snprintf(g_install_error, sizeof(g_install_error), "%s", error);
+        snprintf(g_install_error, sizeof(g_install_error), "%s",
+                 status == VQEAF_QEAPP_PACKAGE_UNSUPPORTED ?
+                 "Host không có backend cài đặt QEAPP" : g_install_result.message);
     }
     install_modal_rebuild();
 }
@@ -7156,7 +8641,11 @@ static void install_confirm_cb(lv_event_t *event)
 static lv_obj_t *install_icon(lv_obj_t *parent, int32_t size)
 {
     const lv_image_dsc_t *dsc;
-    if(g_install_preview.has_icon) {
+    if(g_install_preview.has_icon &&
+       vqeaf_qeapp_icon_display_copy(g_install_icon_render,
+                                     sizeof(g_install_icon_render),
+                                     g_install_preview.icon,
+                                     sizeof(g_install_preview.icon)) == 0) {
         memset(&g_install_icon_dsc, 0, sizeof(g_install_icon_dsc));
         g_install_icon_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
         g_install_icon_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
@@ -7164,7 +8653,7 @@ static lv_obj_t *install_icon(lv_obj_t *parent, int32_t size)
         g_install_icon_dsc.header.h = 64;
         g_install_icon_dsc.header.stride = 64 * 4;
         g_install_icon_dsc.data_size = 64u * 64u * 4u;
-        g_install_icon_dsc.data = g_install_preview.icon;
+        g_install_icon_dsc.data = g_install_icon_render;
         dsc = &g_install_icon_dsc;
     }
     else {
@@ -7324,15 +8813,26 @@ static void install_modal_rebuild(void)
         lv_obj_t *buttons = install_buttons(card);
         install_button(buttons, "HỦY", 0, install_cancel_cb);
     }
-    else if(g_install_state == INSTALL_DONE) {
+    else if(g_install_state == INSTALL_DONE ||
+            g_install_state == INSTALL_SESSION_ONLY) {
+        int durable = g_install_state == INSTALL_DONE;
         lv_obj_t *glyph = vqeaf_glyph(card, VQEAF_SYM_CHECK_CIRCLE,
                                       VQEAF_ICON, VQEAF_C_ACCENT);
         lv_obj_set_width(glyph, lv_pct(100));
         lv_obj_set_style_text_align(glyph, LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_t *t = vqeaf_label(card, "Ứng dụng đã được cài đặt.",
-                                  VQEAF_FONT_TITLE, VQEAF_C_ACCENT);
+        lv_obj_t *t = vqeaf_label(card,
+            durable ? "Đã cài và lưu vào kho p77." :
+                     "Đã cài trong phiên hiện tại.",
+            VQEAF_FONT_TITLE, VQEAF_C_ACCENT);
         lv_obj_set_width(t, lv_pct(100));
         lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_t *detail = vqeaf_label(card,
+            durable ? "Ứng dụng sẽ có lại sau khi khởi động lại." :
+                     "Chưa lưu vào kho p77; ứng dụng sẽ mất sau khi khởi động lại.",
+            VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+        lv_obj_set_width(detail, lv_pct(100));
+        lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, 0);
+        lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
         snprintf(meta, sizeof(meta), "%s · v%s", g_install_preview.name,
                  g_install_preview.version);
         lv_obj_t *m = vqeaf_label(card, meta, VQEAF_FONT_CAPTION,
@@ -7366,19 +8866,22 @@ static void install_modal_rebuild(void)
  * show the same name/version/permissions before anything is written. */
 static void install_prompt_path(const char *path)
 {
-    char error[160];
+    vqeaf_qeapp_package_result_t result;
+    int status;
 
     if(path == NULL || path[0] == '\0') return;
     snprintf(g_install_path, sizeof(g_install_path), "%s", path);
-    error[0] = '\0';
-    if(vqeaf_qeapp_preview(path, &g_install_preview, error,
-                           sizeof(error)) == 0) {
+    status = vqeaf_qeapp_package_preview(path, &g_install_preview, &result);
+    if(status == VQEAF_QEAPP_PACKAGE_OK) {
         g_install_state = INSTALL_CONFIRM;
         g_install_error[0] = '\0';
     }
     else {
         g_install_state = INSTALL_ERROR;
-        snprintf(g_install_error, sizeof(g_install_error), "%s", error);
+        snprintf(g_install_error, sizeof(g_install_error), "%s",
+                 status == VQEAF_QEAPP_PACKAGE_UNSUPPORTED ?
+                 "Host chỉ xem trước giao diện, không có backend .qeapp" :
+                 result.message);
     }
     install_modal_rebuild();
 }
@@ -7449,6 +8952,15 @@ static void build_installer(lv_obj_t *content)
     lv_obj_t *root = page_root(content);
 
     page_title(root, "Trình cài đặt");
+    {
+        char api_badge[80];
+        snprintf(api_badge, sizeof(api_badge), "API QEAPP v%u · %zu đã cài",
+                 (unsigned)vqeaf_qeapp_package_api_version(),
+                 vqeaf_qeapp_package_count());
+        lv_obj_t *badge = vqeaf_label(root, api_badge, VQEAF_FONT_CAPTION,
+                                      VQEAF_C_ACCENT);
+        lv_obj_set_width(badge, lv_pct(100));
+    }
     g_installer_count = 0;
     installer_scan("/", 0);
 
@@ -7502,17 +9014,21 @@ static void build_installer(lv_obj_t *content)
 
     vqeaf_label(root, "Lần cài gần đây", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
     {
-        int installed = vqeaf_qeapp_count();
+        size_t installed = vqeaf_qeapp_package_count();
         int shown = 0;
-        if(installed <= 0)
+        vqeaf_qeapp_package_info_t info;
+        vqeaf_qeapp_package_result_t result;
+        if(installed == 0)
             vqeaf_label(root, "Chưa cài ứng dụng nào.", VQEAF_FONT_CAPTION,
                         VQEAF_C_TEXT_DIM);
-        for(int i = installed - 1; i >= 0 && shown < 5; i--, shown++) {
-            const vqeaf_qeapp_t *app = vqeaf_qeapp_at(i);
+        for(size_t i = installed; i > 0 && shown < 5; i--, shown++) {
+            size_t index = i - 1;
             char meta[160];
             lv_obj_t *row;
             lv_obj_t *text;
-            if(app == NULL) continue;
+            if(vqeaf_qeapp_package_get(index, &info, &result) !=
+               VQEAF_QEAPP_PACKAGE_OK)
+                continue;
             row = vqeaf_card(root, lv_pct(100), 92);
             lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
             lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START,
@@ -7525,25 +9041,44 @@ static void build_installer(lv_obj_t *content)
             lv_obj_set_height(text, LV_SIZE_CONTENT);
             lv_obj_set_flex_flow(text, LV_FLEX_FLOW_COLUMN);
             lv_obj_set_style_pad_row(text, 2, 0);
-            vqeaf_label(text, app->name, VQEAF_FONT_BODY, VQEAF_C_TEXT);
+            vqeaf_label(text, info.name, VQEAF_FONT_BODY, VQEAF_C_TEXT);
             snprintf(meta, sizeof(meta), "v%s · %s",
-                     app->version[0] ? app->version : "?", app->id);
+                     info.version[0] ? info.version : "?", info.id);
             vqeaf_label(text, meta, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
             vqeaf_label(row, "Mở", VQEAF_FONT_CAPTION, VQEAF_C_ACCENT);
-            vqeaf_on_click(row, qeapp_open_cb, (void *)(intptr_t)i);
+            vqeaf_on_click(row, qeapp_open_cb, (void *)(intptr_t)index);
         }
     }
 }
 
 #ifndef __linux__
 /* Host render harness only: drive the installer overlay into a given state
- * with the seeded demo package so the confirm/busy/done/error layouts can be
- * inspected without a phone. Never compiled into the device image. */
+ * with the seeded public-API record. The host cannot verify/install packages;
+ * these are layout fixtures, never device installation evidence. */
 void vqeaf_install_render(int state)
 {
-    char error[160];
+    vqeaf_qeapp_package_result_t result;
 
-    vqeaf_qeapp_preview("demo.qeapp", &g_install_preview, error, sizeof(error));
+    if(vqeaf_qeapp_package_get(0, &g_install_preview, &result) !=
+       VQEAF_QEAPP_PACKAGE_OK) {
+        memset(&g_install_preview, 0, sizeof(g_install_preview));
+        snprintf(g_install_preview.name, sizeof(g_install_preview.name),
+                 "QEAPP demo");
+        snprintf(g_install_preview.version, sizeof(g_install_preview.version),
+                 "1.0.0");
+    }
+    memset(&g_install_result, 0, sizeof(g_install_result));
+    g_install_result.struct_size = sizeof(g_install_result);
+    g_install_result.api_version = VQEAF_QEAPP_PACKAGE_API_VERSION;
+    g_install_result.updated = 0;
+    if(state == INSTALL_DONE) {
+        g_install_result.status = VQEAF_QEAPP_PACKAGE_OK;
+        g_install_result.persisted = 1;
+    }
+    else if(state == INSTALL_SESSION_ONLY) {
+        g_install_result.status = VQEAF_QEAPP_PACKAGE_OK_SESSION_ONLY;
+        g_install_result.persisted = 0;
+    }
     snprintf(g_install_path, sizeof(g_install_path), "demo.qeapp");
     g_install_state = state;
     if(state == INSTALL_ERROR)
@@ -7810,15 +9345,14 @@ static void build_lock_theme(lv_obj_t *content)
 
     const lv_font_t *preview_font = lock_fonts[g_lock_font].font;
     if(landscape && g_lock_font == 0) preview_font = lock_fonts[1].font;
+    lv_obj_t *date = vqeaf_label(preview, vqeaf_state.date_text,
+                                  VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    lv_obj_align(date, LV_ALIGN_TOP_MID, 0, 18);
     lv_obj_t *clock = vqeaf_label(preview, "01:49", preview_font,
                                   lv_color_hex(lock_clock_rgb()));
-    lv_obj_align(clock, LV_ALIGN_TOP_MID, 0, 24);
+    lv_obj_align(clock, LV_ALIGN_TOP_MID, 0, landscape ? 58 : 56);
     lv_obj_set_style_opa(clock, (lv_opa_t)(g_lock_weight * 255 / 100), 0);
     g_lock_preview_clock = clock;
-    lv_obj_t *date = vqeaf_label(preview, "Thứ 3, 10 Tháng 11",
-                                  VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
-    lv_obj_align(date, LV_ALIGN_TOP_MID, 0,
-                 landscape ? 120 : 174);
 
     for(int i = 0; i < (landscape ? 0 : 2); i++) {
         lv_obj_t *pill = vqeaf_obj(preview);
@@ -7863,8 +9397,8 @@ static void build_lock_theme(lv_obj_t *content)
         lv_obj_set_flex_flow(chip, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(chip, LV_FLEX_ALIGN_CENTER,
                               LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_t *sample = vqeaf_label(chip, "12", lock_fonts[i].font,
-                                       VQEAF_C_TEXT);
+        lv_obj_t *sample = vqeaf_label(chip, "12",
+            i == 0 ? &vqeaf_font_bold_56 : lock_fonts[i].font, VQEAF_C_TEXT);
         lv_obj_set_style_opa(sample, 220, 0);
         vqeaf_label(chip, lock_fonts[i].name, VQEAF_FONT_CAPTION,
                     selected ? VQEAF_C_ACCENT : VQEAF_C_TEXT_DIM);
@@ -7920,9 +9454,6 @@ static void build_lock_theme(lv_obj_t *content)
 
 /* PIN entry is a real numeric keypad. The same page serves three flows:
  * 0 = unlock the phone, 1 = choose a new PIN, 2 = confirm the new PIN. */
-static char g_pin_entry[16];
-static char g_pin_pending[16];
-static int  g_pin_mode;
 static lv_obj_t *g_pin_dots;
 static lv_obj_t *g_pin_prompt;
 
@@ -7971,11 +9502,27 @@ static void pin_flow_done(int ok)
     }
     /* mode 2: confirm */
     if(ok && strcmp(g_pin_pending, g_pin_entry) == 0) {
-        pin_store(g_pin_pending);
-        show_toast("Đã đặt PIN cho màn hình khóa");
+        int result = pin_store(g_pin_pending);
+        if(!pin_store_accepted(g_pin_pending)) {
+            g_pin_entry[0] = '\0';
+            pin_update_dots();
+            if(g_pin_prompt != NULL)
+                lv_label_set_text(g_pin_prompt,
+                    "Settings Service từ chối PIN. Thử lại sau.");
+            return;
+        }
+        show_toast(result < 0 ?
+            "PIN chỉ lưu trong phiên; không ghi được cấu hình bền vững." :
+            "Đã đặt PIN cho màn hình khóa");
         g_pin_mode = 0;
         g_pin_entry[0] = '\0';
-        vqeaf_ui_show(VQEAF_PAGE_SECURITY);
+        g_pin_pending[0] = '\0';
+        if(g_pin_setup_flow) {
+            g_pin_setup_flow = 0;
+            vqeaf_setup_show_step(2);
+        } else {
+            vqeaf_ui_show(VQEAF_PAGE_SECURITY);
+        }
     } else {
         g_pin_mode = 1;
         g_pin_entry[0] = '\0';
@@ -8015,7 +9562,12 @@ static void pin_cancel_cb(lv_event_t *event)
 {
     (void)event;
     g_pin_entry[0] = '\0';
-    if(g_pin_mode != 0) {
+    g_pin_pending[0] = '\0';
+    if(g_pin_setup_flow) {
+        g_pin_setup_flow = 0;
+        g_pin_mode = 0;
+        vqeaf_setup_show_step(1);
+    } else if(g_pin_mode != 0) {
         g_pin_mode = 0;
         vqeaf_ui_show(VQEAF_PAGE_SECURITY);
     } else {
@@ -8026,18 +9578,27 @@ static void pin_cancel_cb(lv_event_t *event)
 static void pin_set_from_security(lv_event_t *event)
 {
     (void)event;
+    g_pin_setup_flow = 0;
     g_pin_mode = 1;
     g_pin_entry[0] = '\0';
+    g_pin_pending[0] = '\0';
     vqeaf_ui_show(VQEAF_PAGE_PIN);
 }
 
 static void pin_clear_cb(lv_event_t *event)
 {
+    int result;
     (void)event;
-    pin_store("");
+    result = pin_store("");
+    if(!pin_store_accepted("")) {
+        show_toast("Settings Service không xóa được PIN.");
+        return;
+    }
     g_pin_mode = 0;
     g_pin_entry[0] = '\0';
-    show_toast("Đã xóa PIN");
+    g_pin_pending[0] = '\0';
+    show_toast(result < 0 ?
+        "PIN đã xóa trong phiên; chưa lưu được thay đổi." : "Đã xóa PIN");
     vqeaf_ui_show(VQEAF_PAGE_SECURITY);
 }
 
@@ -8049,7 +9610,7 @@ static void build_pin(lv_obj_t *content)
     lv_obj_t *root = page_root(content);
     lv_obj_t *card;
 
-    page_title(root, "Nhập PIN");
+    page_title(root, g_pin_setup_flow ? "Tạo PIN" : "Nhập PIN");
 
     if(g_pin_prompt == NULL || lv_obj_get_parent(g_pin_prompt) != root) {
         g_pin_prompt = vqeaf_label(root,
@@ -8103,6 +9664,41 @@ static void security_bool_row_cb(lv_event_t *event)
     show_toast("Tính năng này cần phần cứng/driver mà thiết bị không có.");
 }
 
+static lv_obj_t *security_subpage_header(lv_obj_t *root, const char *title,
+                                         vqeaf_page_t back_page)
+{
+    lv_obj_t *row = vqeaf_row(root);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 18, 0);
+    lv_obj_t *back = vqeaf_tile(row, VQEAF_SYM_ARROW_BACK, VQEAF_C_SURFACE,
+                                VQEAF_C_TEXT, 72, 24);
+    vqeaf_on_click(back, nav_cb, (void *)(intptr_t)back_page);
+    vqeaf_label(row, title, VQEAF_FONT_HEADLINE, VQEAF_C_TEXT);
+    return row;
+}
+
+static lv_obj_t *security_tool_row(lv_obj_t *parent, const char *symbol,
+                                   uint32_t color, const char *title,
+                                   const char *detail, vqeaf_page_t page)
+{
+    lv_obj_t *row = vqeaf_card(parent, lv_pct(100), 122);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 16, 0);
+    vqeaf_tile(row, symbol, lv_color_hex(color), VQEAF_C_ACCENT, 66, 20);
+    lv_obj_t *text = vqeaf_column(row);
+    lv_obj_set_flex_grow(text, 1);
+    lv_obj_set_style_pad_row(text, 2, 0);
+    vqeaf_label(text, title, VQEAF_FONT_BODY, VQEAF_C_TEXT);
+    vqeaf_label(text, detail, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    vqeaf_glyph(row, VQEAF_SYM_CHEVRON_RIGHT, VQEAF_ICON_SM, VQEAF_C_TEXT_MUTE);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    vqeaf_on_click(row, nav_cb, (void *)(intptr_t)page);
+    return row;
+}
+
 static void build_security(lv_obj_t *content)
 {
     lv_obj_t *root = page_root(content);
@@ -8111,6 +9707,38 @@ static void build_security(lv_obj_t *content)
 
     page_title(root, "Bảo mật");
 
+    lv_obj_t *hero = vqeaf_card(root, lv_pct(100), 168);
+    lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(hero, 18, 0);
+    vqeaf_tile(hero, VQEAF_SYM_SECURITY, lv_color_hex(0x1A5A3A),
+               VQEAF_C_ACCENT, 82, 26);
+    lv_obj_t *hero_text = vqeaf_column(hero);
+    lv_obj_set_flex_grow(hero_text, 1);
+    lv_obj_set_style_pad_row(hero_text, 4, 0);
+    vqeaf_label(hero_text, "Trung tâm bảo mật", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    vqeaf_label(hero_text, "Kiểm tra thụ động · CVE ngoại tuyến",
+                VQEAF_FONT_BODY, VQEAF_C_TEXT_DIM);
+    vqeaf_label(hero_text, "Không root · không mã khai thác",
+                VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+
+    security_tool_row(root, VQEAF_SYM_WIFI, 0x1A5A6A,
+        "Kiểm tra Wi-Fi",
+        vqeaf_state.wifi_if_present ? "Quét và đánh giá cấu hình quảng bá" :
+                                      "Wi-Fi chưa sẵn sàng",
+        VQEAF_PAGE_WIFI_AUDIT);
+    security_tool_row(root, VQEAF_SYM_STORAGE, 0x3A2A5A,
+        "Cơ sở dữ liệu lỗ hổng", "Tìm CVE, sản phẩm và hướng khắc phục",
+        VQEAF_PAGE_ADVISORIES);
+
+    lv_obj_t *scope = vqeaf_label(root,
+        "Phạm vi: người xem mạng lân cận và dữ liệu advisory công khai. "
+        "Không gửi dữ liệu ra ngoài, không tấn công điểm cuối.",
+        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    lv_obj_set_width(scope, lv_pct(100));
+
+    vqeaf_label(root, "Thiết bị", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
     snprintf(pin_status, sizeof(pin_status), "%s",
              pin_enabled() ? "Đã đặt PIN" : "Chưa đặt PIN");
     row = vqeaf_card(root, lv_pct(100), 96);
@@ -8134,11 +9762,10 @@ static void build_security(lv_obj_t *content)
         lv_obj_add_event_cb(clear, pin_clear_cb, LV_EVENT_CLICKED, NULL);
     }
 
-    /* Hardware-gated features are reported honestly, never faked. */
     static const struct { const char *sym; const char *name;
                           const char *detail; uint32_t color; } hw[] = {
         { VQEAF_SYM_LOCK, "Mở khóa bằng vân tay",
-          "Không có driver/driver vân tay trên kernel này", 0x1A5A6A },
+          "Không có driver vân tay trên kernel này", 0x1A5A6A },
         { VQEAF_SYM_SECURITY, "Khóa chạm trong túi",
           "Không có cảm biến tiệm cận được xuất ra", 0x3A2A5A },
         { VQEAF_SYM_VOLUME_UP, "Rung khi chạm",
@@ -8165,6 +9792,373 @@ static void build_security(lv_obj_t *content)
         "cấu hình nên khởi động lại sẽ xóa PIN.",
         VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
     lv_obj_set_width(note, lv_pct(100));
+}
+
+static const char *wifi_audit_risk(const vqeaf_wifi_net_t *net,
+                                   lv_color_t *color)
+{
+    if(!net->secure) {
+        *color = VQEAF_C_WARN;
+        return "Mạng mở";
+    }
+    if(net->enc == VQEAF_WIFI_ENC_WEP) {
+        *color = VQEAF_C_WARN;
+        return "WEP lỗi thời";
+    }
+    if(net->enc == VQEAF_WIFI_ENC_WPA ||
+       net->enc == VQEAF_WIFI_ENC_WPA_WPA2) {
+        *color = VQEAF_C_ACCENT;
+        return "Cần rà soát";
+    }
+    if(net->enc == VQEAF_WIFI_ENC_WPA2_PSK) {
+        *color = VQEAF_C_GREEN;
+        return "WPA2";
+    }
+    *color = VQEAF_C_TEXT_MUTE;
+    return "Chưa xác định";
+}
+
+static void wifi_audit_rescan_cb(lv_event_t *event)
+{
+    (void)event;
+    wifi_scan_now();
+    vqeaf_ui_show(VQEAF_PAGE_WIFI_AUDIT);
+}
+
+static void build_wifi_audit(lv_obj_t *content)
+{
+    lv_obj_t *root = page_root(content);
+    char text[128];
+    int open_count = 0;
+    int legacy_count = 0;
+    int transition_count = 0;
+
+    security_subpage_header(root, "Kiểm tra Wi-Fi", VQEAF_PAGE_SECURITY);
+    wifi_scan_now();
+
+    lv_obj_t *hero = vqeaf_card(root, lv_pct(100), 166);
+    lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(hero, 18, 0);
+    vqeaf_tile(hero, VQEAF_SYM_WIFI, lv_color_hex(0x1A5A6A),
+               vqeaf_state.wifi_if_present ? VQEAF_C_ACCENT : VQEAF_C_TEXT_MUTE,
+               82, 26);
+    lv_obj_t *hero_text = vqeaf_column(hero);
+    lv_obj_set_flex_grow(hero_text, 1);
+    lv_obj_set_style_pad_row(hero_text, 3, 0);
+    vqeaf_label(hero_text, "Quét mạng thụ động", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    vqeaf_label(hero_text,
+        vqeaf_state.wifi_if_present ? "Giao diện Wi-Fi đã sẵn sàng" :
+                                      "Wi-Fi chưa sẵn sàng",
+        VQEAF_FONT_BODY, VQEAF_C_TEXT_DIM);
+    vqeaf_label(hero_text, "Không kết nối · không tấn công",
+                VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+
+    lv_obj_t *scan = vqeaf_m3_button(root, "Quét lại", VQEAF_M3_FILLED);
+    lv_obj_set_width(scan, lv_pct(100));
+    lv_obj_add_event_cb(scan, wifi_audit_rescan_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *info = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(info, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(info, 16, 0);
+    info_row(info, "Giao diện",
+             vqeaf_state.wifi_if_present ? vqeaf_state.wifi_ifname : "Không có");
+    info_row(info, "Chế độ", "Chỉ đọc");
+    if(g_wifi_count > 0)
+        snprintf(text, sizeof(text), "%d mạng", g_wifi_count);
+    else
+        snprintf(text, sizeof(text), "Không có kết quả");
+    info_row(info, "Kết quả quét", text);
+
+    if(g_wifi_scan_note[0] != '\0') {
+        lv_obj_t *error = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+        lv_obj_set_style_border_color(error, VQEAF_C_WARN, 0);
+        lv_obj_t *message = vqeaf_label(error, g_wifi_scan_note,
+                                        VQEAF_FONT_CAPTION, VQEAF_C_WARN);
+        lv_obj_set_width(message, lv_pct(100));
+    }
+
+    if(g_wifi_count > 0) {
+        for(int i = 0; i < g_wifi_count; i++) {
+            if(!g_wifi_nets[i].secure) open_count++;
+            else if(g_wifi_nets[i].enc == VQEAF_WIFI_ENC_WEP) legacy_count++;
+            else if(g_wifi_nets[i].enc == VQEAF_WIFI_ENC_WPA ||
+                    g_wifi_nets[i].enc == VQEAF_WIFI_ENC_WPA_WPA2)
+                transition_count++;
+        }
+        snprintf(text, sizeof(text), "Mở: %d · WEP: %d · WPA/WPA2: %d",
+                 open_count, legacy_count, transition_count);
+        vqeaf_label(root, text, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+        vqeaf_label(root, "Mạng phát hiện", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+
+        for(int i = 0; i < g_wifi_count; i++) {
+            lv_color_t risk_color;
+            const char *risk = wifi_audit_risk(&g_wifi_nets[i], &risk_color);
+            lv_obj_t *row = vqeaf_card(root, lv_pct(100), 148);
+            lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+            lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START,
+                                  LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            lv_obj_set_style_pad_column(row, 14, 0);
+            vqeaf_tile(row, VQEAF_SYM_WIFI, lv_color_hex(0x1A5A6A),
+                       risk_color, 62, 20);
+            lv_obj_t *text_col = vqeaf_column(row);
+            lv_obj_set_flex_grow(text_col, 1);
+            lv_obj_set_style_pad_row(text_col, 2, 0);
+            lv_obj_t *name = vqeaf_label(text_col,
+                g_wifi_nets[i].ssid[0] ? g_wifi_nets[i].ssid : "Mạng ẩn",
+                VQEAF_FONT_BODY, VQEAF_C_TEXT);
+            lv_obj_set_width(name, lv_pct(100));
+            lv_label_set_long_mode(name, LV_LABEL_LONG_MODE_DOTS);
+            snprintf(text, sizeof(text), "%s · %d%% · %s",
+                     g_wifi_nets[i].bssid, g_wifi_nets[i].signal,
+                     vqeaf_wifi_enc_name(g_wifi_nets[i].enc));
+            lv_obj_t *sub = vqeaf_label(text_col, text, VQEAF_FONT_CAPTION,
+                                        VQEAF_C_TEXT_DIM);
+            lv_obj_set_width(sub, lv_pct(100));
+            lv_label_set_long_mode(sub, LV_LABEL_LONG_MODE_DOTS);
+            vqeaf_label(text_col, risk, VQEAF_FONT_CAPTION, risk_color);
+        }
+    }
+
+    lv_obj_t *note = vqeaf_label(root,
+        "Đánh giá chỉ dựa trên thông tin mạng quảng bá. Không kiểm tra mật khẩu, "
+        "WPS, khả năng khai thác hoặc thiết bị khác.",
+        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    lv_obj_set_width(note, lv_pct(100));
+}
+
+static char g_advisory_query[96] = "";
+static size_t g_advisory_selected;
+static size_t g_advisory_matches[VQEAF_ADVISORY_SEARCH_MAX];
+static int g_advisory_match_count;
+static lv_obj_t *g_advisory_results;
+
+void vqeaf_pages_advisory_query_set(const char *query)
+{
+    snprintf(g_advisory_query, sizeof(g_advisory_query), "%s",
+             query != NULL ? query : "");
+}
+
+static const char *advisory_severity_text(const vqeaf_advisory_t *record)
+{
+    return strcmp(record->severity, "Critical") == 0 ?
+           "Nghiêm trọng" : record->severity;
+}
+
+static lv_color_t advisory_severity_color(const vqeaf_advisory_t *record)
+{
+    return strcmp(record->severity, "Critical") == 0 ?
+           VQEAF_C_WARN : VQEAF_C_ACCENT;
+}
+
+static void advisory_result_cb(lv_event_t *event);
+
+static void advisory_refresh_results(void)
+{
+    char text[96];
+
+    if(g_advisory_results == NULL) return;
+    lv_obj_clean(g_advisory_results);
+    g_advisory_match_count = vqeaf_advisory_search(g_advisory_query,
+        g_advisory_matches, VQEAF_ADVISORY_SEARCH_MAX);
+    if(g_advisory_match_count < 0) {
+        vqeaf_label(g_advisory_results, "Từ khóa quá dài hoặc không hợp lệ.",
+                    VQEAF_FONT_CAPTION, VQEAF_C_WARN);
+        g_advisory_match_count = 0;
+        return;
+    }
+    snprintf(text, sizeof(text), "%d kết quả · Dữ liệu %s",
+             g_advisory_match_count, vqeaf_advisory_catalog_revision());
+    vqeaf_label(g_advisory_results, text, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    if(g_advisory_match_count == 0) {
+        vqeaf_label(g_advisory_results, "Không tìm thấy advisory phù hợp.",
+                    VQEAF_FONT_BODY, VQEAF_C_TEXT_MUTE);
+        return;
+    }
+
+    for(int i = 0; i < g_advisory_match_count; i++) {
+        size_t index = g_advisory_matches[i];
+        const vqeaf_advisory_t *record = vqeaf_advisory_at(index);
+        if(record == NULL) continue;
+        lv_obj_t *card = vqeaf_card(g_advisory_results, lv_pct(100), 166);
+        lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_row(card, 5, 0);
+        lv_obj_t *top = vqeaf_row(card);
+        vqeaf_label(top, record->id, VQEAF_FONT_CAPTION_BOLD,
+                    advisory_severity_color(record));
+        vqeaf_label(top, advisory_severity_text(record), VQEAF_FONT_CAPTION,
+                    advisory_severity_color(record));
+        lv_obj_t *title = vqeaf_label(card, record->title, VQEAF_FONT_BODY,
+                                      VQEAF_C_TEXT);
+        lv_obj_set_width(title, lv_pct(100));
+        lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_WRAP);
+        lv_obj_t *product = vqeaf_label(card, record->product,
+                                        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+        lv_obj_set_width(product, lv_pct(100));
+        lv_label_set_long_mode(product, LV_LABEL_LONG_MODE_DOTS);
+        snprintf(text, sizeof(text), "%s · Nguồn: %s", record->published,
+                 record->source);
+        vqeaf_label(card, text, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+        lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(card, advisory_result_cb, LV_EVENT_CLICKED,
+                            (void *)(intptr_t)index);
+    }
+}
+
+static void advisory_result_cb(lv_event_t *event)
+{
+    size_t index = (size_t)(intptr_t)lv_event_get_user_data(event);
+    if(index >= vqeaf_advisory_count()) return;
+    g_advisory_selected = index;
+    vqeaf_ime_hide();
+    vqeaf_ui_show(VQEAF_PAGE_ADVISORY_DETAIL);
+}
+
+static void advisory_query_changed_cb(lv_event_t *event)
+{
+    lv_obj_t *textarea = lv_event_get_target(event);
+    vqeaf_pages_advisory_query_set(lv_textarea_get_text(textarea));
+    advisory_refresh_results();
+}
+
+static void advisory_search_cb(lv_event_t *event)
+{
+    (void)event;
+    advisory_refresh_results();
+    vqeaf_ime_hide();
+}
+
+static void advisory_list_cb(lv_event_t *event)
+{
+    (void)event;
+    vqeaf_ui_show(VQEAF_PAGE_ADVISORIES);
+}
+
+static void build_advisories(lv_obj_t *content)
+{
+    lv_obj_t *root = page_root(content);
+    char text[96];
+
+    security_subpage_header(root, "Cơ sở dữ liệu lỗ hổng", VQEAF_PAGE_SECURITY);
+    lv_obj_t *hero = vqeaf_card(root, lv_pct(100), 132);
+    lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(hero, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(hero, 16, 0);
+    vqeaf_tile(hero, VQEAF_SYM_STORAGE, lv_color_hex(0x3A2A5A),
+               VQEAF_C_ACCENT, 70, 22);
+    lv_obj_t *hero_text = vqeaf_column(hero);
+    lv_obj_set_flex_grow(hero_text, 1);
+    vqeaf_label(hero_text, "Advisory CVE ngoại tuyến", VQEAF_FONT_TITLE,
+                VQEAF_C_TEXT);
+    snprintf(text, sizeof(text), "%u bản ghi · Bản dữ liệu %s",
+             (unsigned)vqeaf_advisory_count(),
+             vqeaf_advisory_catalog_revision());
+    vqeaf_label(hero_text, text, VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+
+    lv_obj_t *search = lv_textarea_create(root);
+    lv_obj_set_size(search, lv_pct(100), 82);
+    lv_textarea_set_one_line(search, true);
+    lv_textarea_set_max_length(search, 95);
+    lv_textarea_set_placeholder_text(search, "Tìm CVE, sản phẩm, từ khóa…");
+    lv_textarea_set_text(search, g_advisory_query);
+    lv_obj_set_style_bg_color(search, VQEAF_C_SURFACE_3, 0);
+    lv_obj_set_style_bg_opa(search, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(search, VQEAF_C_ACCENT, 0);
+    lv_obj_set_style_border_width(search, 1, 0);
+    lv_obj_set_style_radius(search, 20, 0);
+    lv_obj_set_style_text_color(search, VQEAF_C_TEXT, 0);
+    lv_obj_set_style_text_font(search, VQEAF_FONT_BODY, 0);
+    lv_obj_set_style_pad_left(search, 18, 0);
+    lv_obj_set_style_pad_right(search, 18, 0);
+    lv_obj_add_event_cb(search, ime_focus_cb, LV_EVENT_FOCUSED, root);
+    lv_obj_add_event_cb(search, ime_defocus_cb, LV_EVENT_DEFOCUSED, NULL);
+    lv_obj_add_event_cb(search, advisory_query_changed_cb,
+                        LV_EVENT_VALUE_CHANGED, NULL);
+    lv_obj_add_event_cb(search, advisory_search_cb, LV_EVENT_READY, NULL);
+
+    lv_obj_t *button = vqeaf_m3_button(root, "Tìm kiếm", VQEAF_M3_FILLED);
+    lv_obj_set_width(button, lv_pct(100));
+    lv_obj_add_event_cb(button, advisory_search_cb, LV_EVENT_CLICKED, NULL);
+
+    g_advisory_results = vqeaf_obj(root);
+    lv_obj_set_width(g_advisory_results, lv_pct(100));
+    lv_obj_set_height(g_advisory_results, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(g_advisory_results, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(g_advisory_results, 14, 0);
+    advisory_refresh_results();
+
+    lv_obj_t *note = vqeaf_label(root,
+        "Chỉ metadata và hướng khắc phục. Không có payload, lệnh khai thác "
+        "hoặc kết nối mạng.",
+        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    lv_obj_set_width(note, lv_pct(100));
+}
+
+static void build_advisory_detail(lv_obj_t *content)
+{
+    lv_obj_t *root = page_root(content);
+    const vqeaf_advisory_t *record = vqeaf_advisory_at(g_advisory_selected);
+    char text[96];
+
+    security_subpage_header(root, "Chi tiết advisory", VQEAF_PAGE_ADVISORIES);
+    if(record == NULL) {
+        vqeaf_card(root, lv_pct(100), 120);
+        vqeaf_label(root, "Chưa chọn advisory.", VQEAF_FONT_BODY,
+                    VQEAF_C_TEXT_MUTE);
+        return;
+    }
+
+    lv_obj_t *hero = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(hero, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(hero, 10, 0);
+    lv_obj_t *badge = vqeaf_row(hero);
+    vqeaf_label(badge, record->id, VQEAF_FONT_CAPTION_BOLD,
+                advisory_severity_color(record));
+    vqeaf_label(badge, advisory_severity_text(record), VQEAF_FONT_CAPTION,
+                advisory_severity_color(record));
+    lv_obj_t *title = vqeaf_label(hero, record->title, VQEAF_FONT_TITLE,
+                                  VQEAF_C_TEXT);
+    lv_obj_set_width(title, lv_pct(100));
+    lv_label_set_long_mode(title, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_t *product = vqeaf_label(hero, record->product, VQEAF_FONT_BODY,
+                                    VQEAF_C_TEXT_DIM);
+    lv_obj_set_width(product, lv_pct(100));
+
+    lv_obj_t *meta = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(meta, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(meta, 16, 0);
+    info_row(meta, "Mã CVE", record->id);
+    info_row(meta, "Ngày công bố", record->published);
+    info_row(meta, "Nguồn", record->source);
+
+    lv_obj_t *summary = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(summary, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(summary, 10, 0);
+    vqeaf_label(summary, "Tóm tắt", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    lv_obj_t *summary_text = vqeaf_label(summary, record->summary,
+                                         VQEAF_FONT_BODY, VQEAF_C_TEXT_DIM);
+    lv_obj_set_width(summary_text, lv_pct(100));
+    lv_label_set_long_mode(summary_text, LV_LABEL_LONG_MODE_WRAP);
+
+    lv_obj_t *fix = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(fix, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(fix, 10, 0);
+    vqeaf_label(fix, "Khắc phục", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    lv_obj_t *fix_text = vqeaf_label(fix, record->remediation,
+                                     VQEAF_FONT_BODY, VQEAF_C_TEXT_DIM);
+    lv_obj_set_width(fix_text, lv_pct(100));
+    lv_label_set_long_mode(fix_text, LV_LABEL_LONG_MODE_WRAP);
+
+    snprintf(text, sizeof(text), "Dữ liệu ngoại tuyến %s · Không mã khai thác",
+             vqeaf_advisory_catalog_revision());
+    lv_obj_t *note = vqeaf_label(root, text, VQEAF_FONT_CAPTION,
+                                 VQEAF_C_TEXT_MUTE);
+    lv_obj_set_width(note, lv_pct(100));
+    lv_obj_t *back = vqeaf_m3_button(root, "Danh sách advisory", VQEAF_M3_FILLED);
+    lv_obj_set_width(back, lv_pct(100));
+    lv_obj_add_event_cb(back, advisory_list_cb, LV_EVENT_CLICKED, NULL);
 }
 
 /* ---- Default apps ---------------------------------------------------------
@@ -8422,6 +10416,7 @@ static char g_term_cwd[128] = "/data/qeaf";   /* virtual session cwd */
 static lv_obj_t *g_term_view;
 static lv_obj_t *g_term_scroll;
 static lv_obj_t *g_term_input;
+static lv_obj_t *g_term_keys;
 static lv_obj_t *g_term_cwd_label;
 
 static const char *const term_commands[] = {
@@ -8429,7 +10424,7 @@ static const char *const term_commands[] = {
     "apps", "defaults", "default", "theme", "page", "echo", "clear",
     "scan", "gateway", "connect", "rec",
     "pwd", "ls", "cat", "cd", "whoami", "uname", "env", "which",
-    "history"
+    "history", "mem", "ps"
 };
 
 static void term_print(const char *line)
@@ -8454,6 +10449,66 @@ static void term_printf(const char *fmt, ...)
     term_print(buf);
 }
 
+/* `mem`: real /proc/meminfo totals; the host render says so instead of
+ * inventing numbers. */
+static void term_mem(void)
+{
+#if defined(__linux__)
+    FILE *f = fopen("/proc/meminfo", "r");
+    char line[160];
+    int found = 0;
+    if(f == NULL) { term_print("mem: /proc/meminfo unavailable"); return; }
+    while(fgets(line, sizeof(line), f) != NULL && found < 3) {
+        if(strncmp(line, "MemTotal:", 9) == 0 ||
+           strncmp(line, "MemFree:", 8) == 0 ||
+           strncmp(line, "MemAvailable:", 13) == 0) {
+            size_t len = strlen(line);
+            while(len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+                line[--len] = '\0';
+            term_print(line);
+            found++;
+        }
+    }
+    fclose(f);
+    if(found == 0) term_print("mem: no memory fields in /proc/meminfo");
+#else
+    term_print("mem: host render (no /proc)");
+#endif
+}
+
+/* `ps`: walks /proc and lists pid + comm for up to 32 processes. */
+static void term_ps(void)
+{
+#if defined(__linux__)
+    DIR *d = opendir("/proc");
+    struct dirent *e;
+    int n = 0;
+    if(d == NULL) { term_print("ps: /proc unavailable"); return; }
+    while((e = readdir(d)) != NULL && n < 32) {
+        char path[64], comm[64];
+        FILE *f;
+        char *tail;
+        if(e->d_name[0] < '0' || e->d_name[0] > '9') continue;
+        snprintf(path, sizeof(path), "/proc/%s/comm", e->d_name);
+        f = fopen(path, "r");
+        if(f == NULL) continue;
+        if(fgets(comm, sizeof(comm), f) != NULL) {
+            size_t len = strlen(comm);
+            while(len > 0 && (comm[len - 1] == '\n' || comm[len - 1] == '\r'))
+                comm[--len] = '\0';
+            term_printf("%6s  %s", e->d_name, comm);
+            n++;
+        }
+        (void)tail;
+        fclose(f);
+    }
+    closedir(d);
+    if(n == 0) term_print("ps: no processes visible");
+#else
+    term_print("ps: host render (no /proc)");
+#endif
+}
+
 static void term_sync(void)
 {
     if(g_term_view != NULL) lv_label_set_text(g_term_view, g_term_out);
@@ -8469,8 +10524,8 @@ static void term_help(void)
     term_print("  help status date uptime battery storage wifi apps");
     term_print("  defaults default theme page echo clear");
     term_print("  theme dark|light|fluent|glass|classic");
-    term_print("  pwd ls cat cd whoami uname env which history");
-    term_print("Keys: TAB complete  UP/DOWN history  CTRL+C cancel  ENTER run");
+    term_print("  pwd ls cat cd whoami uname env which history mem ps");
+    term_print("Keys: TAB complete  ^C cancel  ENTER run  ^/v history");
 }
 
 static void term_status(void)
@@ -8567,7 +10622,12 @@ static void term_run(const char *line)
     }
     g_term_hist_pos = g_term_hist_n;
 
-    term_printf("> vqeaf@violet:%s$ %s", g_term_cwd, line);
+    {
+        char safe[128];
+        snprintf(safe, sizeof(safe), "%s", line);
+        for(char *p = safe; *p; p++) if(*p == '#') *p = '_';
+        term_printf("#34D8B2 vqeaf@violet# #FFB74D ~># %s", safe);
+    }
     if(strcmp(cmd, "help") == 0) {
         term_help();
     } else if(strcmp(cmd, "status") == 0) {
@@ -8620,7 +10680,7 @@ static void term_run(const char *line)
     } else if(strcmp(cmd, "connect") == 0 && argc >= 2) {
         /* Secured networks must be joined from Settings so the password is
          * entered through the IME and never appears in terminal history. */
-        int rc = vqeaf_wifi_connect(arg, "");
+        int rc = vqeaf_wifi_connect(arg, "", VQEAF_WIFI_ENC_OPEN);
         term_printf("connect %s: %s", arg,
                     rc == 0 ? "OK" : vqeaf_wifi_error(rc));
     } else if(strcmp(cmd, "rec") == 0) {
@@ -8718,6 +10778,10 @@ static void term_run(const char *line)
     } else if(strcmp(cmd, "history") == 0) {
         for(int i = 0; i < g_term_hist_n; i++)
             term_printf("%3d  %s", i + 1, g_term_hist[i]);
+    } else if(strcmp(cmd, "mem") == 0) {
+        term_mem();
+    } else if(strcmp(cmd, "ps") == 0) {
+        term_ps();
     } else {
         term_printf("%s: command not found (go 'help')", cmd);
     }
@@ -8726,13 +10790,28 @@ static void term_run(const char *line)
 
 void vqeaf_terminal_run(const char *line) { term_run(line); }
 
+static void term_console_tap_cb(lv_event_t *event)
+{
+    if(g_term_input == NULL) return;
+    /* A tap anywhere on the console raises the keyboard: focus the inline
+     * input line and let the IME window follow it. */
+    if(!lv_obj_has_state(g_term_input, LV_STATE_FOCUSED))
+        lv_obj_add_state(g_term_input, LV_STATE_FOCUSED);
+    lv_textarea_set_cursor_pos(g_term_input, LV_TEXTAREA_CURSOR_LAST);
+    /* FOCUSED already opens the IME. Only the blank-console path needs this
+     * fallback; never bind/measure the content twice during one tap. */
+    if(!vqeaf_ime_visible())
+        vqeaf_ime_show(g_term_input, lv_event_get_user_data(event));
+}
+
 static void term_submit(void)
 {
     if(g_term_input == NULL) return;
     char line[128];
     snprintf(line, sizeof(line), "%s", lv_textarea_get_text(g_term_input));
     lv_textarea_set_text(g_term_input, "");
-    vqeaf_ime_hide();
+    /* Termux parity: ENTER keeps the keyboard open so the next command can
+     * be typed immediately; the keyboard closes only on defocus/back. */
     term_run(line);
 }
 
@@ -8766,6 +10845,12 @@ static void term_key_cb(lv_event_t *event)
         term_sync();
     } else if(id == 4) {                /* ENTER */
         term_submit();
+    } else if(id == 5 || id == 6 || id == 7) {   /* "-" "/" "." */
+        lv_textarea_add_char(g_term_input, id == 5 ? '-' : id == 6 ? '/' : '.');
+    } else if(id == 8) {                /* cursor left */
+        lv_textarea_cursor_left(g_term_input);
+    } else if(id == 9) {                /* cursor right */
+        lv_textarea_cursor_right(g_term_input);
     }
 }
 
@@ -8775,94 +10860,161 @@ static void term_ready_cb(lv_event_t *event)
     term_submit();
 }
 
+void vqeaf_pages_terminal_ime_state(int visible)
+{
+    if(g_term_keys == NULL) return;
+    if(visible) lv_obj_clear_flag(g_term_keys, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(g_term_keys, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* Floating accessory keybar drawn right above the IME, matching the terminal
+ * screenshot: a row of dark pill keys on a darker strip. */
 static lv_obj_t *term_key(lv_obj_t *parent, const char *label, int id)
 {
     lv_obj_t *btn = vqeaf_obj(parent);
-    lv_obj_set_size(btn, 120, 68);
-    lv_obj_set_style_bg_color(btn, lv_color_hex(0x1C2B2A), 0);
+    lv_obj_set_flex_grow(btn, 1);
+    lv_obj_set_height(btn, 76);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x2C2C31), 0);
     lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(btn, 1, 0);
-    lv_obj_set_style_border_color(btn, lv_color_hex(0x2E5F55), 0);
-    lv_obj_set_style_radius(btn, 12, 0);
+    lv_obj_set_style_radius(btn, 16, 0);
+    lv_obj_set_style_border_width(btn, 0, 0);
     lv_obj_set_flex_flow(btn, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(btn, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_t *l = vqeaf_label(btn, label, VQEAF_FONT_CAPTION,
-                              lv_color_hex(0x8ED3));
-    lv_obj_center(l);
+    if((unsigned char)label[0] == 0xEE)
+        vqeaf_glyph(btn, label, VQEAF_ICON_SM, lv_color_hex(0xE6E7EB));
+    else
+        vqeaf_label(btn, label, VQEAF_FONT_TITLE, lv_color_hex(0xE6E7EB));
     lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(btn, term_key_cb, LV_EVENT_CLICKED,
                         (void *)(intptr_t)id);
     return btn;
 }
 
+static void term_delete_cb(lv_event_t *event)
+{
+    lv_obj_t *target = lv_event_get_target_obj(event);
+    if(target == g_term_scroll) {
+        g_term_scroll = NULL;
+        g_term_view = NULL;
+        g_term_cwd_label = NULL;
+        g_term_input = NULL;
+        g_term_keys = NULL;
+    }
+}
+
 static void build_terminal(lv_obj_t *content)
 {
     lv_obj_t *root = page_root(content);
     lv_obj_set_height(root, lv_pct(100));   /* full console height, not content-sized */
-    lv_obj_set_style_pad_all(root, 16, 0);
-    lv_obj_set_style_pad_row(root, 10, 0);
+    lv_obj_set_style_pad_all(root, 0, 0);
+    lv_obj_set_style_pad_row(root, 0, 0);
 
-    /* Termux-like full dark console, independent of the OS wallpaper/theme. */
-    lv_obj_set_style_bg_color(root, lv_color_hex(0x0B1514), 0);
+    /* Full black console, independent of the OS wallpaper/theme. */
+    lv_obj_set_style_bg_color(root, lv_color_hex(0x121214), 0);
     lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
 
+    /* Header: drawer button on the left, centered session title "~". */
     lv_obj_t *head = vqeaf_row(root);
-    vqeaf_label(head, "termux@violet", VQEAF_FONT_TITLE,
-                lv_color_hex(0x8ED3));
-    vqeaf_label(head, "  ~ /data/qeaf", VQEAF_FONT_CAPTION,
-                lv_color_hex(0x5E8F86));
+    lv_obj_set_height(head, 112);
+    lv_obj_set_style_pad_hor(head, 24, 0);
+    lv_obj_set_style_pad_row(head, 0, 0);
+    lv_obj_t *drawer = vqeaf_obj(head);
+    lv_obj_set_size(drawer, 64, 64);
+    lv_obj_set_style_radius(drawer, 32, 0);
+    lv_obj_set_style_bg_color(drawer, lv_color_hex(0x1E1E22), 0);
+    lv_obj_set_style_bg_opa(drawer, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(drawer, 1, 0);
+    lv_obj_set_style_border_color(drawer, lv_color_hex(0x35353B), 0);
+    lv_obj_set_flex_flow(drawer, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(drawer, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    vqeaf_glyph(drawer, VQEAF_SYM_APPS, VQEAF_ICON_SM, lv_color_hex(0xC9CCD1));
+    lv_obj_add_flag(drawer, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(drawer, ime_focus_cb, LV_EVENT_FOCUSED, content);
+    lv_obj_add_event_cb(drawer, ime_defocus_cb, LV_EVENT_DEFOCUSED, NULL);
+    lv_obj_t *title = vqeaf_label(head, "~", VQEAF_FONT_TITLE_BOLD,
+                                  lv_color_hex(0xB9BDC3));
+    lv_obj_add_flag(title, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_center(title);
 
     g_term_scroll = vqeaf_obj(root);
     lv_obj_set_width(g_term_scroll, lv_pct(100));
     lv_obj_set_flex_grow(g_term_scroll, 1);
     lv_obj_add_flag(g_term_scroll, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(g_term_scroll, LV_DIR_VER);
-    lv_obj_set_style_bg_color(g_term_scroll, lv_color_hex(0x0B1514), 0);
+    lv_obj_set_style_pad_all(g_term_scroll, 18, 0);
+    lv_obj_set_style_bg_color(g_term_scroll, lv_color_hex(0x121214), 0);
     lv_obj_set_style_bg_opa(g_term_scroll, LV_OPA_COVER, 0);
+    lv_obj_add_event_cb(g_term_scroll, term_delete_cb, LV_EVENT_DELETE, NULL);
+    lv_obj_add_flag(g_term_scroll, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(g_term_scroll, term_console_tap_cb, LV_EVENT_CLICKED,
+                        content);
 
     g_term_view = vqeaf_label(g_term_scroll, "", VQEAF_FONT_CAPTION,
-                              lv_color_hex(0xEAF7F5));
+                              lv_color_hex(0xC8CCD0));
     lv_obj_set_width(g_term_view, lv_pct(100));
     lv_label_set_long_mode(g_term_view, LV_LABEL_LONG_WRAP);
+    lv_label_set_recolor(g_term_view, true);
 
-    g_term_cwd_label = vqeaf_label(root, g_term_cwd, VQEAF_FONT_CAPTION,
-                                   lv_color_hex(0x5E8F86));
+    g_term_cwd_label = NULL;   /* cwd lives in the prompt line now */
 
-    g_term_input = lv_textarea_create(root);
+    /* Inline input line: amber "~>" prefix plus a borderless field that
+     * blends into the console, like the screenshot. */
+    lv_obj_t *inrow = vqeaf_row(root);
+    lv_obj_set_height(inrow, 84);
+    lv_obj_set_style_pad_hor(inrow, 18, 0);
+    lv_obj_set_style_pad_row(inrow, 0, 0);
+    lv_obj_set_style_bg_color(inrow, lv_color_hex(0x121214), 0);
+    lv_obj_set_style_bg_opa(inrow, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_top(inrow, 4, 0);
+    lv_obj_set_style_pad_bottom(inrow, 10, 0);
+    vqeaf_label(inrow, "~>", VQEAF_FONT_BODY, lv_color_hex(0xFFB74D));
+    g_term_input = lv_textarea_create(inrow);
     lv_obj_remove_style_all(g_term_input);
-    lv_obj_set_width(g_term_input, lv_pct(100));
-    lv_obj_set_height(g_term_input, 84);
-    lv_obj_set_style_pad_all(g_term_input, 12, 0);
-    lv_obj_set_style_bg_color(g_term_input, lv_color_hex(0x12211F), 0);
-    lv_obj_set_style_bg_opa(g_term_input, LV_OPA_COVER, 0);
+    lv_obj_set_flex_grow(g_term_input, 1);
+    lv_obj_set_height(g_term_input, 64);
+    lv_obj_set_style_bg_opa(g_term_input, LV_OPA_TRANSP, 0);
     lv_obj_set_style_text_font(g_term_input, VQEAF_FONT_BODY, 0);
-    lv_obj_set_style_text_color(g_term_input, lv_color_hex(0x8ED3), 0);
-    lv_obj_set_style_border_width(g_term_input, 1, 0);
-    lv_obj_set_style_border_color(g_term_input, lv_color_hex(0x2E5F55), 0);
-    lv_obj_set_style_radius(g_term_input, 10, 0);
-    lv_textarea_set_placeholder_text(g_term_input, "command...");
+    lv_obj_set_style_text_color(g_term_input, lv_color_hex(0xE8EAED), 0);
+    lv_obj_set_style_border_width(g_term_input, 0, 0);
+    lv_textarea_set_placeholder_text(g_term_input, "help");
     lv_textarea_set_one_line(g_term_input, true);
+    lv_textarea_set_max_length(g_term_input, 127);
+    lv_textarea_set_cursor_click_pos(g_term_input, false);
     lv_obj_add_event_cb(g_term_input, ime_focus_cb, LV_EVENT_FOCUSED, content);
     lv_obj_add_event_cb(g_term_input, term_ready_cb, LV_EVENT_READY, NULL);
     lv_obj_add_event_cb(g_term_input, ime_defocus_cb, LV_EVENT_DEFOCUSED, NULL);
-
+    /* Accessory keybar: dark strip with ten pill keys, sits directly above
+     * the IME once it slides in (the IME shrinks this content). */
     lv_obj_t *keys = vqeaf_obj(root);
+    g_term_keys = keys;
+    lv_obj_add_flag(keys, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_width(keys, lv_pct(100));
-    lv_obj_set_flex_flow(keys, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(keys, LV_FLEX_ALIGN_SPACE_EVENLY,
+    lv_obj_set_style_bg_color(keys, lv_color_hex(0x0A0A0C), 0);
+    lv_obj_set_style_bg_opa(keys, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(keys, 22, 0);
+    lv_obj_set_style_pad_all(keys, 8, 0);
+    lv_obj_set_style_pad_column(keys, 6, 0);
+    lv_obj_set_flex_flow(keys, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(keys, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(keys, 8, 0);
-    term_key(keys, "TAB", 0);
-    term_key(keys, "UP", 1);
-    term_key(keys, "DOWN", 2);
-    term_key(keys, "CTRL+C", 3);
-    term_key(keys, "ENTER", 4);
+    term_key(keys, "\xEE\x97\x95", 0);      /* Material refresh: TAB-complete */
+    term_key(keys, "\xE2\x86\x92", 4);      /* →  ENTER */
+    term_key(keys, "^", 3);               /* ^C cancel */
+    term_key(keys, "-", 5);
+    term_key(keys, "/", 6);
+    term_key(keys, ".", 7);
+    term_key(keys, "\xEE\x97\x84", 8);      /* ◀ cursor left */
+    term_key(keys, "\xEE\x97\x98", 1);      /* ▲ history up */
+    term_key(keys, "\xEE\x8C\x93", 2);      /* ▼ history down */
+    term_key(keys, "\xEE\x97\x88", 9);      /* ▶ cursor right */
+
 
     if(g_term_out[0] == '\0')
         snprintf(g_term_out, sizeof(g_term_out),
-                 "QEAFIVELS OS Terminal - live framework state only.\n"
-                 "Type 'help' and press ENTER. TAB completes, UP/DOWN recall.");
+                 "Welcome to qeaf-term, the friendly interactive shell\n"
+                 "Type #34D8B2 help# for instructions on how to use qeaf-term\n");
     term_sync();
 }
 
@@ -8885,6 +11037,20 @@ void vqeaf_pages_build(vqeaf_page_t page, lv_obj_t *content)
     live_usb = NULL;
     live_wifi = NULL;
     live_brightness = NULL;
+    live_sound_status = NULL;
+    lock_battery_icon = NULL;
+    lock_battery_value = NULL;
+    lock_battery_caption = NULL;
+    lock_wifi_icon = NULL;
+    lock_wifi_value = NULL;
+    lock_wifi_caption = NULL;
+    lock_storage_value = NULL;
+    lock_storage_caption = NULL;
+    lock_notification_card = NULL;
+    lock_notification_count = NULL;
+    lock_notification_title = NULL;
+    lock_notification_body = NULL;
+    g_lock_preview_clock = NULL;
 
     switch(page) {
     case VQEAF_PAGE_LOCK:     build_lock(content); break;
@@ -8905,7 +11071,11 @@ void vqeaf_pages_build(vqeaf_page_t page, lv_obj_t *content)
     case VQEAF_PAGE_APPS_EDIT: build_apps_edit(content); break;
     case VQEAF_PAGE_QEAPP_STORE: build_qeapp_store(content); break;
     case VQEAF_PAGE_SECURITY: build_security(content); break;
+    case VQEAF_PAGE_WIFI_AUDIT: build_wifi_audit(content); break;
+    case VQEAF_PAGE_ADVISORIES: build_advisories(content); break;
+    case VQEAF_PAGE_ADVISORY_DETAIL: build_advisory_detail(content); break;
     case VQEAF_PAGE_PIN:     build_pin(content); break;
+    case VQEAF_PAGE_SETUP:   build_setup(content); break;
     case VQEAF_PAGE_DEFAULT_APPS: build_default_apps(content); break;
     case VQEAF_PAGE_TERMINAL: build_terminal(content); break;
     case VQEAF_PAGE_NTFS_SEARCH: vqeaf_tools_build_ntfs_search(content); break;

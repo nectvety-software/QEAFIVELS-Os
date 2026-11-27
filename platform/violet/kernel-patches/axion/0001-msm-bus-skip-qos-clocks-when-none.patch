@@ -1,0 +1,30 @@
+From f0861798d3f8ad3fd5a168d4caf6cfe037795dbc Mon Sep 17 00:00:00 2001
+From: Sultan Alsawaf <sultan@kerneltoast.com>
+Date: Thu, 29 Nov 2018 23:23:49 -0800
+Subject: [PATCH] msm: msm_bus: Don't enable QoS clocks when none are present
+
+There's no point in enabling QoS clocks when are none of them for certain
+clients.
+
+Signed-off-by: Sultan Alsawaf <sultan@kerneltoast.com>
+Signed-off-by: Vaisakh Murali <mvaisakh@statixos.com>
+Signed-off-by: Cyber Knight <cyberknight755@gmail.com>
+Backport-source: AxionAOSP-devices/android_kernel_xiaomi_violet@f0861798d3f8ad3fd5a168d4caf6cfe037795dbc
+Target-base: MiCode/Xiaomi_Kernel_OpenSource@1488fa3d05e2f9be5fc62e0bb16ad85d96db2076
+---
+ drivers/soc/qcom/msm_bus/msm_bus_fabric_rpmh.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/soc/qcom/msm_bus/msm_bus_fabric_rpmh.c b/drivers/soc/qcom/msm_bus/msm_bus_fabric_rpmh.c
+index 708713f92762..220cb43282de 100644
+--- a/drivers/soc/qcom/msm_bus/msm_bus_fabric_rpmh.c
++++ b/drivers/soc/qcom/msm_bus/msm_bus_fabric_rpmh.c
+@@ -984,7 +984,7 @@ static int msm_bus_dev_init_qos(struct device *dev, void *data)
+ 		goto exit_init_qos;
+ 	}
+ 
+-	if (node_dev->ap_owned) {
++	if (node_dev->ap_owned && node_dev->num_node_qos_clks) {
+ 		struct msm_bus_node_device_type *bus_node_info;
+ 
+ 		bus_node_info =

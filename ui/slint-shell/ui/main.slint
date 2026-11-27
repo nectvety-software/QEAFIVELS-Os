@@ -1,0 +1,112 @@
+component AppIcon inherits Rectangle {
+    in property <string> glyph: "";
+    in property <string> caption: "";
+    in property <color> tone: #ffffff;
+    in property <bool> dark: false;
+    width: 68px;
+    height: 90px;
+    background: transparent;
+    Rectangle {
+        x: 4px; y: 0px; width: 60px; height: 60px;
+        border-radius: 16px;
+        background: root.tone;
+        Text { x: 0px; y: 7px; width: 60px; horizontal-alignment: center; text: root.glyph; color: root.dark ? #4b5660 : white; font-size: 29px; font-weight: 700; }
+    }
+    Text { x: 0px; y: 65px; width: 68px; horizontal-alignment: center; text: root.caption; color: white; font-size: 10px; }
+}
+
+export component MainWindow inherits Window {
+    title: "QEAFIVELS";
+    width: 393px;
+    height: 852px;
+    background: #78c9e7;
+    in-out property <int> page: 0;
+    in-out property <bool> wifi-on: true;
+    in-out property <bool> bluetooth-on: true;
+    in-out property <int> brightness: 72;
+    in-out property <int> volume: 58;
+
+    if page == 0 || page == 1 : Rectangle {
+        background: #79cbe8;
+        // Swipe down from the top-right edge to open Control Center.
+        home-gesture := TouchArea { enabled: root.page == 0; x: 0px; y: 0px; width: 393px; height: 852px;
+            moved => { if (home-gesture.pressed && home-gesture.pressed-x > 260px && home-gesture.pressed-y < 70px && home-gesture.mouse-y - home-gesture.pressed-y > 55px) { root.page = 1; } }
+        }
+        // Diagonal wallpaper is a resolution-independent SVG asset.
+        Image { source: @image-url("wallpaper.svg"); x: 0px; y: 0px; width: 393px; height: 852px; }
+        Text { x: 22px; y: 14px; text: "09:00"; color: white; font-size: 15px; font-weight: 700; }
+        Text { x: 286px; y: 14px; text: "▮▮  Wi-Fi  81%"; color: white; font-size: 12px; }
+        Rectangle { x: 18px; y: 60px; width: 170px; height: 142px; border-radius: 24px; background: #ffffff; opacity: 0.94;
+            Text { x: 16px; y: 112px; text: "Weather"; color: #526b79; font-size: 13px; }
+        }
+        Rectangle { x: 204px; y: 60px; width: 170px; height: 142px; border-radius: 24px; background: #ffffff; opacity: 0.94;
+            Text { x: 16px; y: 112px; text: "Calendar"; color: #526b79; font-size: 13px; }
+        }
+        AppIcon { x: 18px; y: 230px; glyph: "◉"; caption: "Phone"; tone: #31cf70; }
+        AppIcon { x: 106px; y: 230px; glyph: "31"; caption: "Calendar"; tone: #ffffff; dark: true; }
+        AppIcon { x: 194px; y: 230px; glyph: "✿"; caption: "Photos"; tone: #f8f8fa; dark: true; }
+        AppIcon { x: 282px; y: 230px; glyph: "✉"; caption: "Mail"; tone: #ffffff; dark: true; }
+        AppIcon { x: 18px; y: 330px; glyph: "▤"; caption: "Notes"; tone: #fffefa; dark: true; }
+        AppIcon { x: 106px; y: 330px; glyph: "◷"; caption: "Clock"; tone: #f8f8fa; dark: true; }
+        AppIcon { x: 194px; y: 330px; glyph: "A"; caption: "Store"; tone: #168fe0; }
+        AppIcon { x: 282px; y: 330px; glyph: "♥"; caption: "Health"; tone: #ffffff; dark: true; }
+        AppIcon { x: 18px; y: 430px; glyph: "▣"; caption: "Wallet"; tone: #252b36; }
+        AppIcon { x: 106px; y: 430px; glyph: "⚙"; caption: "Settings"; tone: #c9d0d6; dark: true; }
+        AppIcon { x: 194px; y: 430px; glyph: "›"; caption: "Terminal"; tone: #24242a; }
+        Rectangle { x: 18px; y: 755px; width: 357px; height: 82px; border-radius: 28px; background: #ffffff; opacity: 0.35; }
+        Text { x: 65px; y: 772px; text: "☎"; color: white; font-size: 34px; }
+        Text { x: 175px; y: 772px; text: "◎"; color: white; font-size: 34px; }
+        Text { x: 285px; y: 772px; text: "●"; color: white; font-size: 34px; }
+        TouchArea { enabled: root.page == 0; x: 270px; y: 0px; width: 123px; height: 52px; clicked => { root.page = 1; } }
+        TouchArea { enabled: root.page == 0; x: 0px; y: 0px; width: 130px; height: 52px; clicked => { root.page = 2; } }
+    }
+
+    if page == 1 : Rectangle {
+        background: #203c4b;
+        opacity: 0.80;
+        // Swipe up from the bottom edge to dismiss the translucent panel.
+        dismiss-gesture := TouchArea { x: 0px; y: 0px; width: 393px; height: 852px;
+            moved => { if (dismiss-gesture.pressed && dismiss-gesture.pressed-y > 700px && dismiss-gesture.mouse-y - dismiss-gesture.pressed-y < -55px) { root.page = 0; } }
+        }
+        Text { x: 24px; y: 22px; text: "‹ Control Center"; color: white; font-size: 22px; font-weight: 700; }
+        Rectangle { x: 18px; y: 88px; width: 170px; height: 176px; border-radius: 28px; background: #ffffff; opacity: 0.22; }
+        Rectangle { x: 205px; y: 88px; width: 170px; height: 176px; border-radius: 28px; background: #ffffff; opacity: 0.22; }
+        Rectangle { x: 30px; y: 102px; width: 64px; height: 64px; border-radius: 32px; background: wifi-on ? #2c9ed0 : #687983;
+            Text { x: 0px; y: 20px; width: 64px; horizontal-alignment: center; text: "Wi-Fi"; color: white; font-size: 13px; }
+        }
+        TouchArea { x: 30px; y: 102px; width: 64px; height: 64px; clicked => { root.wifi-on = !root.wifi-on; } }
+        Rectangle { x: 110px; y: 102px; width: 64px; height: 64px; border-radius: 32px; background: bluetooth-on ? #2c9ed0 : #687983;
+            Text { x: 0px; y: 20px; width: 64px; horizontal-alignment: center; text: "Bluetooth"; color: white; font-size: 10px; }
+        }
+        TouchArea { x: 110px; y: 102px; width: 64px; height: 64px; clicked => { root.bluetooth-on = !root.bluetooth-on; } }
+        Rectangle { x: 30px; y: 184px; width: 64px; height: 64px; border-radius: 32px; background: #526b78; Text { x: 0px; y: 20px; width: 64px; horizontal-alignment: center; text: "Air"; color: white; } }
+        Rectangle { x: 110px; y: 184px; width: 64px; height: 64px; border-radius: 32px; background: #526b78; Text { x: 0px; y: 20px; width: 64px; horizontal-alignment: center; text: "Focus"; color: white; } }
+        Text { x: 205px; y: 158px; width: 170px; horizontal-alignment: center; text: "Not Playing"; color: white; font-size: 15px; }
+        Text { x: 205px; y: 196px; width: 170px; horizontal-alignment: center; text: "◀    ▶    ▶"; color: white; font-size: 20px; }
+        Text { x: 24px; y: 300px; text: "Brightness"; color: white; font-size: 15px; }
+        Rectangle { x: 24px; y: 330px; width: 345px; height: 46px; border-radius: 23px; background: #ffffff; opacity: 0.22; }
+        Rectangle { x: 24px; y: 330px; width: 345px * brightness / 100; height: 46px; border-radius: 23px; background: #ffffff; opacity: 0.76; }
+        TouchArea { x: 24px; y: 330px; width: 345px; height: 46px; clicked => { root.brightness = Math.mod(root.brightness + 20, 101); } }
+        Text { x: 24px; y: 400px; text: "Volume"; color: white; font-size: 15px; }
+        Rectangle { x: 24px; y: 430px; width: 345px; height: 46px; border-radius: 23px; background: #ffffff; opacity: 0.22; }
+        Rectangle { x: 24px; y: 430px; width: 345px * volume / 100; height: 46px; border-radius: 23px; background: #ffffff; opacity: 0.76; }
+        TouchArea { x: 24px; y: 430px; width: 345px; height: 46px; clicked => { root.volume = Math.mod(root.volume + 20, 101); } }
+        Text { x: 24px; y: 520px; text: "Quick Actions"; color: white; font-size: 15px; }
+        Rectangle { x: 24px; y: 550px; width: 74px; height: 74px; border-radius: 37px; background: #ffffff; opacity: 0.2; Text { x: 0px; y: 22px; width: 74px; horizontal-alignment: center; text: "◷"; color: white; font-size: 26px; } }
+        Rectangle { x: 112px; y: 550px; width: 74px; height: 74px; border-radius: 37px; background: #ffffff; opacity: 0.2; Text { x: 0px; y: 22px; width: 74px; horizontal-alignment: center; text: "▦"; color: white; font-size: 26px; } }
+        Rectangle { x: 200px; y: 550px; width: 74px; height: 74px; border-radius: 37px; background: #ffffff; opacity: 0.2; Text { x: 0px; y: 22px; width: 74px; horizontal-alignment: center; text: "◎"; color: white; font-size: 26px; } }
+        Rectangle { x: 288px; y: 550px; width: 74px; height: 74px; border-radius: 37px; background: #ffffff; opacity: 0.2; Text { x: 0px; y: 22px; width: 74px; horizontal-alignment: center; text: "▣"; color: white; font-size: 26px; } }
+        TouchArea { x: 0px; y: 0px; width: 100px; height: 64px; clicked => { root.page = 0; } }
+    }
+
+    if page == 2 : Rectangle {
+        background: #79cbe8;
+        Image { source: @image-url("wallpaper.svg"); x: 0px; y: 0px; width: 393px; height: 852px; }
+        lock-gesture := TouchArea { x: 0px; y: 0px; width: 393px; height: 852px;
+            moved => { if (lock-gesture.pressed && lock-gesture.pressed-y > 600px && lock-gesture.mouse-y - lock-gesture.pressed-y < -55px) { root.page = 0; } }
+        }
+        Text { x: 0px; y: 112px; width: 393px; horizontal-alignment: center; text: "Thu 26 Nov"; color: white; font-size: 21px; }
+        Text { x: 0px; y: 158px; width: 393px; horizontal-alignment: center; text: "09:00"; color: #e3ffff; font-size: 76px; font-weight: 700; }
+        Text { x: 0px; y: 690px; width: 393px; horizontal-alignment: center; text: "Tap to unlock"; color: white; font-size: 14px; }
+    }
+}

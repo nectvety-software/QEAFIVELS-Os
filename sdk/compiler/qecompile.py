@@ -63,6 +63,14 @@ def load_qenlink():
     return module
 
 
+def load_qenrust():
+    source = Path(__file__).resolve().with_name("qenrust.py")
+    spec = importlib.util.spec_from_file_location("qeaf_qenrust", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def find_zig():
     env = os.environ.get("ZIG")
     if env and Path(env).is_file():
@@ -131,6 +139,7 @@ def compile_project(project, mode, sdk):
         raise ValueError("\n".join(errors))
     entry = manifest["entry"]
     native = manifest.get("runtime") == "native" or str(entry).endswith(".qen")
+    language = None
     if native:
         if not entry or entry.startswith("/") or ".." in Path(entry).parts:
             raise ValueError("Unsafe native entry path")
@@ -173,13 +182,30 @@ def compile_project(project, mode, sdk):
         if abi_version not in (2, 3, 4, 5):
             raise ValueError("native abi_version must be 2, 3, 4 or 5, got %s"
                              % abi_version)
+        language = config.get("language")
+        if language not in (None, "c", "rust"):
+            raise ValueError("Packaging language must be c or rust")
         c_sources = []
+        rust_sources = []
         if (project / "src").is_dir():
-            for file in sorted((project / "src").rglob("*.c")):
-                project_file(project, file.relative_to(project).as_posix())
-                c_sources.append(file)
+            for pattern, destination in (("*.c", c_sources), ("*.rs", rust_sources)):
+                for file in sorted((project / "src").rglob(pattern)):
+                    project_file(project, file.relative_to(project).as_posix())
+                    destination.append(file)
+        if c_sources and rust_sources:
+            raise ValueError("Native projects cannot mix C and Rust sources")
+        if language == "rust" and not rust_sources:
+            raise ValueError("Rust native projects require Rust sources under src/")
+        if language == "c" and rust_sources:
+            raise ValueError("C native projects cannot contain Rust sources")
         entry_path = project / entry
-        if c_sources:
+        native_sources = rust_sources if rust_sources else c_sources
+        if rust_sources:
+            local_sdk = project / "sdk" / "rust" / "src"
+            module = load_qenrust().compile_rust(
+                qen, load_qenlink(), sdk, project, arch, entry, abi_version,
+                mode, local_sdk if local_sdk.is_dir() else None)
+        elif c_sources:
             module = compile_native(qen, project, arch, c_sources, entry,
                                     abi_version)
         elif entry_path.is_file():
@@ -191,6 +217,10 @@ def compile_project(project, mode, sdk):
         module_errors = qen.validate_module(module, arch)
         if module_errors:
             raise ValueError("\n".join("%s: %s" % (entry, e) for e in module_errors))
+        sources = [file.relative_to(project).as_posix()
+                   for file in native_sources]
+        originals = {name: project_file(project, name).read_text(encoding="utf-8")
+                     for name in sources}
         entries = {"manifest.json": manifest_data,
                    entry: module}
     else:
@@ -228,6 +258,8 @@ def compile_project(project, mode, sdk):
         errors = sdk.validate_package(package)
         if errors:
             raise ValueError("\n".join(errors))
+        if language == "rust":
+            sdk.load_qeapp().preview_package(package)
         package.replace(output)
     print(f"{mode}: compiled {len(sources)} sources, signed and validated {output}")
     return output

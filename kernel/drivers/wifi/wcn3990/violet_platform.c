@@ -13,6 +13,7 @@
 #include "vqeaf/violet_platform.h"
 #include "vqeaf/wcn3990_phase2.h"
 #include "vqeaf/wcn3990.h"
+#include "vqeaf/wcn3990_ce.h"
 
 #define FDT_MAGIC 0xd00dfeedu
 #define FDT_BEGIN_NODE 1u
@@ -20,6 +21,7 @@
 #define FDT_PROP 3u
 #define FDT_NOP 4u
 #define FDT_END 9u
+#define FDT_MAX_NODE_DEPTH 32u
 
 static vqeaf_violet_resources_t g_res;
 static vqeaf_provider_census_t g_prov;
@@ -40,7 +42,8 @@ static int header_ok(const void *blob, size_t size)
     total = rd32(b + 4);
     so = rd32(b + 8); sto = rd32(b + 12);
     ss = rd32(b + 32); sts = rd32(b + 36);
-    if(total > size || so + sts > total || sto + ss > total) return -EINVAL;
+    if(total > size || so > total || sts > total - so ||
+       sto > total || ss > total - sto) return -EINVAL;
     g_strings = b + sto; g_strings_size = ss;
     return 0;
 }
@@ -52,88 +55,6 @@ static const char *str_at(uint32_t off)
     for(i = off; i < g_strings_size; i++)
         if(g_strings[i] == 0) return (const char *)(g_strings + off);
     return NULL;
-}
-
-/* Find the first node whose compatible list contains `want`. Returns a bounded
- * region starting at its BEGIN_NODE token. */
-static int find_node(const void *blob, const char *want,
-                     const uint8_t **out, size_t *out_len)
-{
-    const uint8_t *b = blob;
-    uint32_t so = rd32(b + 8), sts = rd32(b + 36);
-    size_t pos = so, end = so + sts;
-    int depth = 0;
-
-    while(pos + 4u <= end) {
-        uint32_t tok = rd32(b + pos);
-        size_t node_start = pos;  /* exact BEGIN_NODE token for this iteration */
-        pos += 4u;
-        if(tok == FDT_BEGIN_NODE) {
-            size_t n = 0;
-            while(pos + n < end && b[pos + n] != 0) n++;
-            if(pos + n >= end) return -EIO;
-            pos += (n + 1u + 3u) & ~((size_t)3u);
-            depth++;
-            /* Check this node's compatible property immediately. */
-            {
-                size_t p = pos;
-                int d2 = depth;
-                while(p + 4u <= end) {
-                    uint32_t t2 = rd32(b + p);
-                    p += 4u;
-                    if(t2 == FDT_BEGIN_NODE) {
-                        while(p < end && b[p] != 0) p++;
-                        p++; p = (p + 3u) & ~((size_t)3u); d2++;
-                    } else if(t2 == FDT_END_NODE) {
-                        d2--;
-                        if(d2 < depth) break;
-                    } else if(t2 == FDT_PROP) {
-                        uint32_t l, no;
-                        if(p + 8u > end) return -EIO;
-                        l = rd32(b + p); no = rd32(b + p + 4u);
-                        p += 8u;
-                        if(l > end - p) return -EIO;
-                        if(d2 == depth && l > 0) {
-                            const char *nm = str_at(no);
-                            if(nm != NULL && strcmp(nm, "compatible") == 0) {
-                                const char *s = (const char *)(b + p);
-                                uint32_t off = 0;
-                                while(off < l) {
-                                    uint32_t n2 = 0;
-                                    while(off + n2 < l && s[off + n2] != 0) n2++;
-                                    if(n2 > 0 && strlen(want) == n2 &&
-                                       strncmp(s + off, want, n2) == 0) {
-                                        *out = b + node_start;
-                                        *out_len = end - node_start;
-                                        return 0;
-                                    }
-                                    off += n2 + 1u;
-                                }
-                            }
-                        }
-                        p += (l + 3u) & ~((size_t)3u);
-                    } else if(t2 == FDT_END) {
-                        break;
-                    } else if(t2 != FDT_NOP) {
-                        return -EIO;
-                    }
-                }
-            }
-        } else if(tok == FDT_END_NODE) {
-            depth--;
-        } else if(tok == FDT_PROP) {
-            uint32_t l;
-            if(pos + 8u > end) return -EIO;
-            l = rd32(b + pos); pos += 8u;
-            if(l > end - pos) return -EIO;
-            pos += (l + 3u) & ~((size_t)3u);
-        } else if(tok == FDT_END) {
-            break;
-        } else if(tok != FDT_NOP) {
-            return -EIO;
-        }
-    }
-    return -ENODEV;
 }
 
 /* Forward declaration: node_prop works on a property-list region produced by
@@ -220,10 +141,12 @@ static int prop_next(const uint8_t *region, size_t len, size_t *pos,
 
 static int walk_nodes(const uint8_t *base, size_t len, size_t *pos,
                       NodeVisitor cb, void *ctx,
-                      const uint8_t *parent, size_t parent_len)
+                      const uint8_t *parent, size_t parent_len, uint32_t depth)
 {
     char name[128];
     size_t n = 0, own_start, props_end;
+    /* Bound untrusted DT recursion: each frame carries a 128-byte name. */
+    if(depth >= FDT_MAX_NODE_DEPTH) return -EIO;
     if(*pos + 4u > len || rd32(base + *pos) != FDT_BEGIN_NODE) return -EIO;
     *pos += 4u;
     while(*pos + n < len && base[*pos + n] != 0) n++;
@@ -245,7 +168,8 @@ static int walk_nodes(const uint8_t *base, size_t len, size_t *pos,
             /* `pos` is past the token; recursion expects the BEGIN token. */
             size_t child_start = *pos - 4u;
             if(walk_nodes(base, len, &child_start, cb, ctx,
-                          base + own_start, props_end - own_start)) return -EIO;
+                          base + own_start, props_end - own_start,
+                          depth + 1u)) return -EIO;
             *pos = child_start;
         } else if(tok == FDT_END_NODE) {
             cb(ctx, name, base + own_start, props_end - own_start,
@@ -301,11 +225,12 @@ static int find_phandle_node(const void *fdt, uint32_t ph, PhandleCtx *c)
     memset(c, 0, sizeof(*c));
     c->phandle = ph;
     while(pos + 4u <= sts) {
-        if(rd32(b + so + pos) == FDT_BEGIN_NODE)
-            if(walk_nodes(b + so, sts, &pos, visit_phandle, c, NULL, 0))
+        if(rd32(b + so + pos) == FDT_BEGIN_NODE) {
+            if(walk_nodes(b + so, sts, &pos, visit_phandle, c, NULL, 0, 0u))
                 return -EIO;
-        else
+        } else {
             pos += 4u;
+        }
     }
     return c->found ? 0 : -ENODEV;
 }
@@ -393,11 +318,12 @@ static int find_node_ex(const void *fdt, const char *want, CompatCtx *c)
     memset(c, 0, sizeof(*c));
     c->want = want;
     while(pos + 4u <= sts) {
-        if(rd32(b + so + pos) == FDT_BEGIN_NODE)
-            if(walk_nodes(b + so, sts, &pos, visit_compatible, c, NULL, 0))
+        if(rd32(b + so + pos) == FDT_BEGIN_NODE) {
+            if(walk_nodes(b + so, sts, &pos, visit_compatible, c, NULL, 0, 0u))
                 return -EIO;
-        else
+        } else {
             pos += 4u;
+        }
     }
     return c->found ? 0 : -ENODEV;
 }
@@ -437,19 +363,6 @@ static int parse_reg_cells(const uint8_t *own, size_t own_len,
         return 0;
     }
     return -ENOENT;
-}
-
-static void parse_res(const uint8_t *d, uint32_t len, uint64_t out[3][2],
-                      size_t *count)
-{
-    uint32_t off = 0;
-    *count = 0;
-    while(off + 16u <= len && *count < 3u) {
-        out[*count][0] = ((uint64_t)rd32(d + off) << 32) | rd32(d + off + 4u);
-        out[*count][1] = ((uint64_t)rd32(d + off + 8u) << 32) | rd32(d + off + 12u);
-        (*count)++;
-        off += 16u;
-    }
 }
 
 /* GIC_SPI interrupts are <type,irq,flags> (3 cells). Read the cell count
@@ -573,7 +486,6 @@ const vqeaf_provider_census_t *vqeaf_violet_providers(void)
 
 /* Fail-closed ops, one per distinct callback signature. */
 static int op2(void *c, uint64_t a, uint64_t b) { (void)c;(void)a;(void)b; return -ENOSYS; }
-static int op1(void *c, uint64_t a) { (void)c;(void)a; return -ENOSYS; }
 static int op0(void *c) { (void)c; return -ENOSYS; }
 static void opv(void *c) { (void)c; }
 static int opirq(void *c, uint32_t i, uint8_t n) { (void)c;(void)i;(void)n; return -ENOSYS; }
@@ -586,9 +498,11 @@ static int opdma(void *c, uint64_t a, uint64_t b, void **p, uint64_t *d)
 { (void)c;(void)a;(void)b;(void)p;(void)d; return -ENOSYS; }
 static void opdmafree(void *c, uint64_t a, void *p, uint64_t d)
 { (void)c;(void)a;(void)p;(void)d; }
+static VqeafWcn3990Ce g_ce;
 static int opce(void *c, const VqeafWcn3990CeConfig *x, uint64_t a, uint64_t b)
-{ (void)c;(void)x;(void)a;(void)b; return -ENOSYS; }
-static void opcedis(void *c, uint8_t id) { (void)c;(void)id; }
+{ (void)c; return vqeaf_wcn3990_ce_configure(&g_ce, x, a, b); }
+static int opcedis(void *c, uint8_t id)
+{ (void)c; return vqeaf_wcn3990_ce_disable(&g_ce, id); }
 static void op_shutdown(void *c, VqeafWcn3990State s) { (void)c;(void)s; }
 
 static VqeafWcn3990P2Device g_p2;
@@ -596,7 +510,8 @@ int vqeaf_violet_bind_phase2(void)
 {
     VqeafWcn3990P2Ops *o;
     if(!g_res.probed || g_res.mmio_count == 0 || !g_res.msa_resolved ||
-       g_res.msa_size == 0 || g_res.ce_irq_count == 0) return -ENODEV;
+       g_res.msa_size == 0) return -ENODEV;
+    if(g_res.ce_irq_count != VQEAF_WCN3990_CE_MAX) return -EINVAL;
     memset(&g_p2, 0, sizeof(g_p2));
     g_p2.abi = VQEAF_WCN3990_P2_ABI; g_p2.size = sizeof(g_p2);
     g_p2.resources.snoc_base = g_res.mmio[0][0];
@@ -624,6 +539,9 @@ int vqeaf_violet_bind_wcn3990(void)
     VqeafWcn3990Ops *o;
     if(!g_res.probed || g_res.mmio_count == 0 || !g_res.msa_resolved ||
        g_res.msa_size == 0 || g_res.ce_irq_count == 0) return -ENODEV;
+    for(size_t i = 1u; i < g_res.ce_irq_count; i++)
+        if(g_res.ce_irq[i - 1u] == UINT32_MAX ||
+           g_res.ce_irq[i] != g_res.ce_irq[i - 1u] + 1u) return -EINVAL;
     memset(&g_wcn, 0, sizeof(g_wcn));
     g_wcn.abi = VQEAF_WCN3990_DEVICE_ABI; g_wcn.size = sizeof(g_wcn);
     g_wcn.resources.compatible = "qcom,icnss";

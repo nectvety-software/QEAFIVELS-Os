@@ -23,11 +23,12 @@ enum umos_storage_kind {
  * out-of-range kind. */
 const char *storage_name(int kind);
 
-/* -1 when the name is not one of the six. */
+/* -1 when the name is not one of the three OS storage roots. */
 int storage_kind_from_name(const char *name);
 
-/* Writes the six directories into a freshly initialised volume. Returns how
- * many were created, or -1 if the volume could not take them. */
+/* Publishes VQEAF, UserData and Install into a freshly initialised volume,
+ * including the user-media folders below UserData. Returns UMOS_STORAGE_COUNT,
+ * or -1 if a root directory could not be created. */
 int storage_publish(struct fat16_volume *vol);
 
 #endif

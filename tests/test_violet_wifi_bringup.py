@@ -18,6 +18,9 @@ class VioletWifiBringupContractTests(unittest.TestCase):
         cls.listener = PD_LISTEN.read_text(encoding="utf-8")
         cls.builder = BUILD.read_text(encoding="utf-8")
         cls.devnodes = DEVNODES.read_text(encoding="utf-8")
+        start = cls.host.index("void vio_host_services_start_wlan(void)\n{")
+        end = cls.host.index("int vio_host_wlan_ready(void)", start)
+        cls.wlan_start = cls.host[start:end]
 
     def test_rmtfs_uses_kernel_uio_map_not_guessed_address(self):
         self.assertIn('"/dev/qcom_rmtfs_uio%d"', self.sharedmem)
@@ -56,7 +59,56 @@ class VioletWifiBringupContractTests(unittest.TestCase):
     def test_no_fake_wlfw_server_or_qmi_bypass(self):
         self.assertNotIn("qrtr_new_server", self.listener)
         self.assertNotIn("QRTR_TYPE_NEW_SERVER,", self.listener)
+        self.assertNotIn("launch(svc_qwlfgw", self.wlan_start)
         self.assertIn("launch_qrtr_lookup()", self.host)
+
+    def test_real_cnss_is_attempted_before_factory_mac_gate(self):
+        binder = self.wlan_start.index("ensure_binder_node()")
+        cnss = self.wlan_start.index("launch(svc_cnss, kCnssArgs)")
+        mac = self.wlan_start.index("find_factory_mac(")
+        fallback = self.wlan_start.index("launch(svc_wlfw, wlfw_args)")
+        self.assertLess(binder, cnss)
+        self.assertLess(cnss, mac)
+        self.assertLess(mac, fallback)
+
+    def test_successful_cnss_returns_before_custom_wlfw(self):
+        cnss = self.wlan_start.index("if(launch(svc_cnss, kCnssArgs) == 0)")
+        mac = self.wlan_start.index("find_factory_mac(")
+        cnss_block = self.wlan_start[cnss:mac]
+        self.assertIn("return;", cnss_block)
+        self.assertNotIn("launch(svc_wlfw", cnss_block)
+
+    def test_missing_mac_blocks_only_fallback_after_cnss_failure(self):
+        mac = self.wlan_start.index("find_factory_mac(")
+        calibration = self.wlan_start.index("stage_persist_calibration()")
+        missing_mac = self.wlan_start.index("WLFW fallback blocked")
+        self.assertLess(mac, missing_mac)
+        self.assertLess(missing_mac, calibration)
+        self.assertIn("CNSS unavailable; p74 not mounted", self.wlan_start)
+        self.assertNotIn("WLAN blocked", self.wlan_start)
+
+    def test_valid_mac_fallback_still_requires_real_board_files(self):
+        mac = self.wlan_start.index("find_factory_mac(")
+        calibration = self.wlan_start.index("stage_persist_calibration()")
+        board = self.wlan_start.index('find_persist("bdwlan.bin"')
+        fallback = self.wlan_start.index("launch(svc_wlfw, wlfw_args)")
+        self.assertLess(mac, calibration)
+        self.assertLess(calibration, board)
+        self.assertLess(board, fallback)
+        self.assertIn("if(have_board_files)", self.wlan_start)
+
+    def test_regdb_path_does_not_overwrite_mac_source_path(self):
+        self.assertIn("regdbpath[256]", self.wlan_start)
+        self.assertIn('find_persist("regdb.bin", regdbpath', self.wlan_start)
+        self.assertIn('copy_file(regdbpath, WLFW_DIR "/regdb.bin")', self.wlan_start)
+        self.assertIn("using factory WLAN MAC from %s", self.wlan_start)
+        self.assertNotIn('find_persist("regdb.bin", macpath', self.wlan_start)
+
+    def test_mac_validation_rejects_unset_or_non_unicast_data(self):
+        self.assertIn("(mac[0] & 0x01) == 0 && !all_zero && !all_ff", self.host)
+        self.assertIn("(size_t)n == sizeof(bytes)", self.host)
+        self.assertIn("realpath(path, resolved)", self.host)
+        self.assertIn("resolved[root_len] == '/'", self.host)
 
     def test_calibration_is_copied_only_from_real_persist_to_tmpfs(self):
         self.assertIn("persist_path_is_local(source)", self.host)

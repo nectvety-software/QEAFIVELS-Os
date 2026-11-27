@@ -362,6 +362,46 @@ mre_status_t mre_fdt_find_child(const mre_fdt_t *fdt,mre_fdt_node_t parent,
     *cursor=fdt->struct_size; return MRE_E_NOT_FOUND;
 }
 
+mre_status_t mre_fdt_find_descendant_property(const mre_fdt_t *fdt,
+                                               mre_fdt_node_t parent,
+                                               const char *property,
+                                               uint32_t *cursor,
+                                               mre_fdt_node_t *out)
+{
+    uint32_t p, token, next, depth = 0u, start;
+    const void *data;
+    uint32_t length;
+    if (fdt == NULL || property == NULL || cursor == NULL || out == NULL ||
+        parent.offset >= fdt->struct_size || *cursor > fdt->struct_size)
+        return MRE_E_INVALID;
+    if (token_at(fdt, parent.offset, &token, &p) != MRE_OK || token != FDT_BEGIN_NODE)
+        return MRE_E_INVALID;
+    start = *cursor;
+    while (p < fdt->struct_size) {
+        mre_fdt_node_t node;
+        if (token_at(fdt, p, &token, &next) != MRE_OK) return MRE_E_INVALID;
+        if (token == FDT_BEGIN_NODE) {
+            node.offset = p;
+            node.depth = parent.depth + depth + 1u;
+            if (p >= start && mre_fdt_get_property(fdt, node, property,
+                                                   &data, &length) == MRE_OK) {
+                *out = node;
+                *cursor = next;
+                return MRE_OK;
+            }
+            ++depth;
+        } else if (token == FDT_END_NODE) {
+            if (depth == 0u) break;
+            --depth;
+        } else if (token == FDT_END) {
+            break;
+        }
+        p = next;
+    }
+    *cursor = fdt->struct_size;
+    return MRE_E_NOT_FOUND;
+}
+
 static uint64_t be64(const uint8_t *p)
 {
     return ((uint64_t)be32(p)<<32)|(uint64_t)be32(p+4u);

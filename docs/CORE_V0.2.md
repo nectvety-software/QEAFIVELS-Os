@@ -3,6 +3,8 @@
 ## Driver model
 Driver descriptor ABI v1 có probe/remove, phân loại thiết bị và trạng thái instance. Registry có giới hạn 32 driver/instance. Probe failure được lưu thành FAILED và trả lỗi, không giả lập thiết bị.
 
+Bản nâng cấp lõi driver (2026-11-24) thêm ba thứ mà driver thật cần, vẫn trong ABI v1: `match()` tuỳ chọn để chọn driver theo thiết bị; `VQEAF_DRIVER_DEFER` để probe nói tài nguyên chưa sẵn sàng (instance DEFERRED, `vqeaf_driver_retry_deferred()` probe lại) thay vì báo hỏng; và chặn bind trùng cùng thiết bị. `unbind()` chỉ gọi `remove()` khi probe đã thành công, nên lần probe lỗi không bị biến thành thiết bị khoẻ. Registry đọc được qua `vqeaf_driver_count()`, `vqeaf_driver_find()`, `vqeaf_driver_state_name()` và `vqeaf_driver_report()` — hàm báo cáo tự định dạng số nên không kéo `snprintf` vào kernel.
+
 ## Device capability registry
 Registry tối đa 64 capability, trạng thái UNSUPPORTED/PRESENT/READY/DEGRADED/BLOCKED_FIRMWARE/ERROR. Dịch vụ/UI chỉ bật tính năng khi capability READY. Chưa có driver phần cứng điện thoại được khẳng định là hỗ trợ.
 

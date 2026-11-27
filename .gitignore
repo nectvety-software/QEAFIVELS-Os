@@ -17,6 +17,7 @@ __pycache__/
 *.log
 *.img
 *.efi
+sdk/rust/target/
 
 # Windows reparse points (vendored symlinks) cannot be indexed
 platform/violet/hosttools/src/tqftpserv/ci/ubuntu.sh

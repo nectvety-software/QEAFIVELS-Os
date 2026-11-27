@@ -23,6 +23,7 @@
 
 #include <errno.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -68,6 +69,8 @@ static const uint32_t sandbox_allowed[] = {
     167u,      /* prctl */
     169u,      /* gettimeofday */
     172u,      /* getpid */
+    174u,      /* getuid: report the identity actually applied */
+    176u,      /* getgid: report the identity actually applied */
     178u,      /* gettid */
     215u,      /* munmap */
     222u,      /* mmap: the .qen arena */
@@ -97,6 +100,8 @@ static const uint32_t sandbox_allowed[] = {
     28u,   /* madvise */
     35u,   /* nanosleep */
     39u,   /* getpid */
+    102u,  /* getuid: report the identity actually applied */
+    104u,  /* getgid: report the identity actually applied */
     60u,   /* exit */
     96u,   /* gettimeofday */
     131u,  /* sigaltstack */
@@ -212,12 +217,15 @@ int vqeaf_qeapp_sandbox_apply(char *error, size_t cap)
     }
     limit.rlim_cur = 0;
     limit.rlim_max = 0;
-    (void)setrlimit(RLIMIT_CORE, &limit);
+    if(setrlimit(RLIMIT_CORE, &limit) != 0)
+        return sandbox_fail(error, cap, "RLIMIT_CORE", errno);
     limit.rlim_cur = 64;
     limit.rlim_max = 64;
-    (void)setrlimit(RLIMIT_NOFILE, &limit);
+    if(setrlimit(RLIMIT_NOFILE, &limit) != 0)
+        return sandbox_fail(error, cap, "RLIMIT_NOFILE", errno);
     (void)umask(077);
-    (void)chdir("/");
+    if(chdir("/") != 0)
+        return sandbox_fail(error, cap, "chdir", errno);
 
     /* 4. Syscall allowlist last, once every setup call above has run. */
     if(sandbox_filter(error, cap) != 0) return -1;

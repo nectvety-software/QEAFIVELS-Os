@@ -1,9 +1,9 @@
 # QEAFIVELS OS
 
-**Independent OS status:** the x86_64 UEFI/QEMU kernel is a development reference only. The current `platform/violet` Linux-musl PID 1 image runs on the stock Linux kernel and is a legacy transport prototype, not the independent QEAFIVELS OS. A freestanding ARM64 Violet kernel has not yet been brought up. See `docs/INDEPENDENT_OS_CHARTER.md` for the canonical architecture, hardware evidence, safety policy and stage gates.
-Independent native operating-system project by Qeafivels Software.
+**Linux-core status:** QEAFIVELS uses Linux as the kernel core for the whole OS. The Violet production path runs the vendor Linux `4.14.215-azure-Pixel+` kernel with QEAF-owned PID 1, services, framework, UI, QEAPP and rescue. The separate x86_64/QEMU baseline now boots Linux 4.14.215, QEAF PID 1/services and a native Puzzle `.qeapp`; the existing x86_64 UEFI and AArch64 freestanding kernels remain reference tracks. See `docs/ARCHITECTURE.md` and `docs/INDEPENDENT_OS_CHARTER.md` for ownership, evidence, safety and migration gates.
+Independent native userspace and application ecosystem by Qeafivels Software.
 
-VQEAF is an independent OS. It does not use a vendor mobile-platform runtime, vendor framework, ART/Dalvik, APK-style packages, Java/Kotlin, a vendor System UI, a vendor package manager, a vendor SDK, or a vendor debug bridge.
+QEAFIVELS does not use an Android/AOSP/ART runtime, vendor framework, APK-style packages, Java/Kotlin, a vendor System UI, a vendor package manager, a vendor SDK or a vendor debug bridge. Linux is the explicitly approved kernel core; it is not presented as a QEAF-written kernel.
 
 ## Create a QEAPP application
 
@@ -45,17 +45,41 @@ Artifacts:
 - dist/vqeaf-x86_64-recovery.img — standalone Recovery boot media.
 - build/virtio-test.img — deterministic MBR + FAT16 test disk attached as a second QEMU VirtIO drive.
 - build/ahci-test.img — MBR + FAT16 test disk attached to the emulated SATA/AHCI controller (`ide-hd,bus=ide.1`).
+- build/linux-x86_64/ — separate upstream Linux 4.14.215 `bzImage`, effective config, `System.map`, static QEAF init/services/runner, deterministic initramfs, Puzzle package, boot log and provenance manifest. These files are not Violet or freestanding UEFI artifacts.
 
-The normal QEMU test proves Boot Manager -> GOP boot splash -> KERNEL.EFI -> boot protocol v3 (memory map + framebuffer) -> ExitBootServices -> paging -> native UI -> VirtIO PCI controller probe -> interrupt-driven block I/O -> MBR partition discovery -> read-only FAT16 mount -> VFS read -> AHCI/SATA probe -> second FAT16 mount at /storage -> scratch-sector write/readback/restore -> unmount/remount -> preemptive kernel and ring-3 tasks. Recovery is booted separately. The shipped display default is portrait 9:16: the Boot Manager selects a 720x1280 framebuffer (on QEMU through the Bochs VBE registers, because OVMF only advertises landscape GOP modes) and the shell fills it edge to edge. On firmware without a portrait mode or Bochs VBE it falls back to a 450 px centred 9:16 column inside the landscape mode. After boot the native shell is a smartphone UI: lock screen with CMOS time/date, an 8-tile home launcher, quick settings and About/Settings/Storage/Clock apps. Wi-Fi, Bluetooth and battery are shown as unsupported instead of inventing readings. This is still not a complete interactive OS (no touch input, compositor or app runtime).
+## Linux x86_64/QEMU QEAF and QEAPP gate (2026-11-25)
+
+```text
+python scripts/build_linux_x86_64.py --skip-kernel --timeout 60
+python scripts/build_linux_x86_64.py --verify-only
+python -m unittest tests.test_linux_x86_64_baseline
+```
+
+The gate boots Linux 4.14.215 with QEAF PID 1, starts `package-store` and
+`qeapp-preflight`, verifies the real x86_64 Puzzle `.qeapp`, launches it in a
+forked uid/gid 20000 sandbox with `no_new_privs` and seccomp, checks the full
+lifecycle/framebuffer evidence, stops services and powers off cleanly. The
+latest baseline tests are 21/21 PASS and the focused Linux/QEAPP regression
+selection is 66/66 PASS. Three negative QEMU cases also fail closed as expected:
+missing services, missing package and tampered package never reach service
+READY or QEAPP RUN and power off cleanly.
+
+This is a headless emulator baseline, not a complete UI, rescue, persistence or
+update system and not physical x86_64/Violet evidence. The QEAPP arena remains
+RWX, rlimit failures are unchecked, namespaces/chroot/device cgroups/LSM policy
+are absent, and the embedded development HMAC is not publisher authentication.
+Linux 4.14.215 still requires a security backport/CVE review.
+
+The normal QEMU test proves Boot Manager -> GOP boot splash -> KERNEL.EFI -> boot protocol v3 (memory map + framebuffer) -> ExitBootServices -> paging -> native UI -> VirtIO PCI controller probe -> interrupt-driven block I/O -> MBR partition discovery -> read-only FAT16 mount -> VFS read -> AHCI/SATA probe -> second FAT16 mount at /storage -> scratch-sector write/readback/restore -> unmount/remount -> preemptive kernel and ring-3 tasks. Recovery is booted separately. The shipped display default is portrait 9:16: the Boot Manager selects a 720x1280 framebuffer (on QEMU through the Bochs VBE registers, because OVMF only advertises landscape GOP modes) and the shell fills it edge to edge. On firmware without a portrait mode or Bochs VBE it falls back to a 450 px centred 9:16 column inside the landscape mode. After boot the native shell is a smartphone UI: lock screen with CMOS time/date, an 8-tile home launcher, quick settings and About/Settings/Storage/Clock apps. Wi-Fi, Bluetooth and battery are shown as unsupported instead of inventing readings. That freestanding UEFI reference image is still not a complete interactive OS (no touch input, compositor or app runtime).
 
 Phone keys over the QEMU serial console: W/A/S/D move, E or Enter selects, B/Backspace goes back, Q opens quick settings, L locks, P taps power and Shift+P holds power. ESC [ A..D arrows work too.
 
 Storage stack: `kernel/arch/x86_64/pci.c` scans PCI config space (all functions), `kernel/drivers/virtio_blk.c` drives the legacy VirtIO block queue over INTx, `kernel/drivers/ahci.c` drives SATA ports with IDENTIFY and READ/WRITE DMA EXT, and `task_storage` verifies both chains against the test disks. The shell's Storage app shows the live `/storage` mount and file content. See docs/ROADMAP.md for the requested development sequence and what remains for Recovery, Update Engine, Power & Display and Smartphone UI.
 
-## Violet port (Redmi Note 7 Pro) — PID 1 đã boot thật (2026-11-10)
+## Violet Linux-core path (Redmi Note 7 Pro) — PID 1 đã boot thật (2026-11-10)
 
-Cây này có một cổng violet độc lập nằm trong `platform/violet/`: PID 1 tĩnh
-aarch64-musl chạy trên **stock kernel** của máy, dựng LUN cứu hộ QEAFRESCUE,
+Đường chạy production nằm trong `platform/violet/`: PID 1 tĩnh aarch64-musl
+chạy trên **vendor Linux 4.14.215** của máy, dựng LUN cứu hộ QEAFRESCUE,
 trả lời `QEAF.CMD`, và render splash XRGB8888 720x1560 lên panel 1080x2340
 qua DRM/KMS. Không dùng nền tảng di động của nhà sản xuất, không AOSP — cùng nguyên tắc với bản x86_64.
 
@@ -65,11 +89,14 @@ Pipeline (mượn toolchain Zig và kernel tham chiếu từ
     python scripts/build_violet.py      # zig cc -target aarch64-linux-musl -> build/violet/vqeaf-init
     python scripts/package_violet.py    # stage -> cpio.gz -> boot image -> gates
 
-`package_violet.py` xuất `dist/boot-vqeaf-violet.img` và **tự chạy hai gate**
-của QeafdropOs trước khi kết thúc: `validate_bootimg.py` (cấu trúc boot image)
-và `audit_rescue_channel.py` (kênh QEAF.CMD + marker configfs/UDC + driver
-panel/gadget phải nằm trong chính ELF `/init`). Ảnh bị từ chối không bao giờ
-tới được tay người nạp.
+`package_violet.py` xuất `dist/boot-vqeaf-violet.img`, kiểm tra kernel payload
+trùng byte-for-byte với stock reference, xác nhận `/init` static AArch64 và
+**tự chạy hai gate** của QeafdropOs: `validate_bootimg.py` (cấu trúc boot
+image) và `audit_rescue_channel.py` (kênh QEAF.CMD + marker configfs/UDC +
+driver panel/gadget phải nằm trong chính ELF `/init`). Sau khi tất cả PASS,
+script ghi `dist/boot-vqeaf-violet.manifest.json`. Kiểm tra artifact hiện có
+bằng `python scripts/package_violet.py --verify-only`. Ảnh bị từ chối không
+bao giờ tới được tay người nạp.
 
 Nạp và bằng chứng bắt buộc (chỉ p77/recovery, cần đồng ý rõ ràng):
 
@@ -105,16 +132,20 @@ gốc (`/opt/bionic-cnss` trong WSL). Không mock QMI, không báo kết nối g
 
 ## MRE-Os AArch64 integration
 
-The standalone MRE-Os source is preserved under `integrations/MRE-Os/`. FDT/Violet discovery, MMU page-table construction, GICv2/v3 and Generic Timer are now integrated into the QEAF AArch64 build through an explicit Violet bootstrap/IRQ bridge under `kernel/platform/aarch64/violet_*`.
-
-The QEMU-virt kernel path remains separate and unchanged. Violet hardware activation is gated on a verified board DTB, complete RAM/reserved-memory map, correct PMM, MMU build and boot handoff. The current reference DTB is not a Violet board DTB; no firmware has been flashed. See `docs/platforms/VIOLET_NATIVE_BOOT_INTEGRATION.md` and `integrations/MRE-Os/INTEGRATION.md`.
+The standalone MRE-Os source is preserved under `integrations/MRE-Os/` as
+reference material. Its freestanding FDT/MMU/GIC/timer and Violet bootstrap
+work is not the production Linux driver path. Linux owns production hardware;
+QEAF services consume Linux device interfaces. See
+`docs/platforms/VIOLET_NATIVE_BOOT_INTEGRATION.md` and
+`integrations/MRE-Os/INTEGRATION.md` for the retained reference track.
 
 ## Deployment boundary
 
-Đây là một dự án x86_64 UEFI **tham chiếu** chỉ được kiểm chứng trong QEMU,
-cộng một cổng violet ở `platform/violet/` nạp đúng qua p77/recovery với đầy
-đủ gate và đồng ý. Không có signed update hay rollback. Ghi ảnh x86_64 lên
-thiết bị vật lý hoặc nạp ảnh không qua gate lên p77 sẽ phá hủy phân vùng;
+Dự án có đường Violet Linux-core ở `platform/violet/`, đường Linux x86_64/QEMU
+riêng ở `platform/linux-x86_64/`, và các artifact x86_64 UEFI/AArch64
+freestanding **tham chiếu**. Không có signed update hay rollback hoàn chỉnh.
+Ghi ảnh x86_64
+lên thiết bị vật lý hoặc nạp ảnh không qua gate lên p77 sẽ phá hủy phân vùng;
 cả hai đều bị các script từ chối.
 
 Build/test/capture scripts write only inside this project and QEMU virtual machines. They never flash or write physical devices. Any deployment to real hardware requires an explicit target, a full hardware port, and a separate authorisation step.

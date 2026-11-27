@@ -22,6 +22,14 @@ void vqeaf_pages_refresh(void);
 void vqeaf_lock_unlock(void);
 int  vqeaf_lock_pin_enabled(void);
 
+/* ---- first-boot setup ----------------------------------------------------- */
+int vqeaf_setup_required(void);
+int vqeaf_setup_subpage_active(vqeaf_page_t page);
+void vqeaf_setup_show_step(int step);
+void vqeaf_setup_reset(void);
+/* -1 rejected, 0 accepted, 1 accepted in RAM but durable save failed. */
+int vqeaf_setup_complete(void);
+
 /* ---- Default apps -------------------------------------------------------- */
 /* A real router for generic "open" actions: each role maps to a stored app
  * (built-in page or installed QEAPP) in the Settings service. On violet the
@@ -58,7 +66,11 @@ int vqeaf_pages_frame_top_band_empty(const uint32_t *frame);
  * session-only: the initramfs root has no persistent prefs partition. */
 int vqeaf_pages_kb_theme_count(void);
 int vqeaf_pages_kb_theme_applied(void);
+int vqeaf_pages_kb_theme_default(void);
 uint32_t vqeaf_pages_kb_theme_key_color(int index);
+uint32_t vqeaf_pages_kb_theme_bg_color(int index);
+uint32_t vqeaf_pages_kb_theme_accent_color(int index);
+void vqeaf_pages_terminal_ime_state(int visible);
 /* Styles a keyboard with the applied theme and tracks it so a later Apply
  * also restyles keyboards that are already on screen. */
 void vqeaf_pages_kb_theme_style(lv_obj_t *keyboard);
@@ -70,11 +82,13 @@ void vqeaf_pages_kb_theme_style(lv_obj_t *keyboard);
 void vqeaf_pages_music_view_set(int view);
 int vqeaf_pages_music_view(void);
 
-/* ---- app registry and the bottom dock ----------------------------------- */
+void vqeaf_pages_advisory_query_set(const char *query);
 
-/* One launchable entry. The first four entries are the system apps that make
- * up the default dock; the rest is the app drawer. `icon` indexes the
- * VPEPixel bitmap set (vqeaf_app_icons.h); `symbol` stays as the fallback. */
+/* ---- app registry, launcher pages and dock -------------------------------- */
+
+/* One launchable entry. The first four registry entries are system app roles;
+ * the remaining entries form the launcher/app drawer. `icon` indexes the
+ * optional artwork set (vqeaf_app_icons.h); `symbol` stays as the fallback. */
 typedef struct {
     const char *symbol;
     const char *name;
@@ -96,13 +110,24 @@ int vqeaf_pages_apps_page(void);
 int vqeaf_pages_apps_page_count(void);
 void vqeaf_pages_apps_page_set(int page);
 
+/* Home pager. Each page holds 16 real launcher entries in a four-column
+ * portrait grid; no placeholder apps are added to fill unused slots. State is
+ * RAM-only. */
+#define VQEAF_HOME_PER_PAGE 16
+int vqeaf_pages_home_page(void);
+int vqeaf_pages_home_page_count(void);
+void vqeaf_pages_home_page_set(int page);
+/* Session-only launcher permutation. Values are registry app IDs. */
+int vqeaf_pages_home_order_at(int index);
+void vqeaf_pages_home_move(int from, int to);
+
 /* Long-press app info sheet, shared by the page grids and the shell dock. */
 void vqeaf_pages_app_info(int app_id);
 int vqeaf_pages_app_info_visible(void);
 
 /* Dock model: fixed four slots, -1 for an empty slot. The state lives in RAM
  * (the initramfs root is not persistent), so a reboot restores the defaults.
- * Rearrangement goes through the info sheet's "Di chuyển" move mode. */
+ * Hold-drag reorders slots; the info sheet's "Di chuyển" remains tap-to-place. */
 int vqeaf_dock_slot(int slot);
 void vqeaf_dock_move(int from, int to);
 void vqeaf_dock_drop(int app_id, int slot);

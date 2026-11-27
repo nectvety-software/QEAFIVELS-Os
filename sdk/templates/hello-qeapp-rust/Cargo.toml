@@ -1,0 +1,16 @@
+[package]
+name = "hello-qeapp-rust"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+qeapp-sdk = { path = "../../rust" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+opt-level = 2
+codegen-units = 1

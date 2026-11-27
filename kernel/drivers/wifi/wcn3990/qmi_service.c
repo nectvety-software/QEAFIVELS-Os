@@ -140,6 +140,15 @@ int vqeaf_qmi_client_link(const vqeaf_qmi_client_t *c)
     return c == NULL ? VQEAF_QMI_LINK_DOWN : (int)c->link;
 }
 
+void vqeaf_qmi_client_set_indication_handler(vqeaf_qmi_client_t *c,
+                                             vqeaf_qmi_indication_fn fn,
+                                             void *ctx)
+{
+    if(c == NULL) return;
+    c->indication = fn;
+    c->indication_ctx = ctx;
+}
+
 static int pending_take(vqeaf_qmi_client_t *c, uint16_t txn, uint16_t msg_id,
                         uint64_t deadline, uint8_t retries)
 {
@@ -168,6 +177,55 @@ static uint16_t next_txn(vqeaf_qmi_client_t *c)
     uint16_t t = c->next_txn++;
     if(c->next_txn == 0) c->next_txn = 1; /* 0 is reserved */
     return t ? t : (c->next_txn++);
+}
+
+int vqeaf_qmi_wait_indication(vqeaf_qmi_client_t *c, uint16_t msg_id,
+                              uint8_t *out, size_t out_cap, size_t *out_len,
+                              uint32_t timeout_ms)
+{
+    uint64_t deadline;
+    size_t rx_len;
+    int rc;
+
+    if(c == NULL || c->io == NULL || c->io->recv == NULL ||
+       c->now_ms == NULL || out == NULL || out_len == NULL ||
+       timeout_ms == 0) return -EINVAL;
+    if(c->link != VQEAF_QMI_LINK_UP) return -ENODEV;
+    deadline = c->now_ms(c->io->ctx) + timeout_ms;
+
+    for(;;) {
+        uint64_t now = c->now_ms(c->io->ctx);
+        uint32_t slice;
+        vqeaf_qmi_header_t h;
+        if(now >= deadline) return -ETIMEDOUT;
+        slice = (uint32_t)(deadline - now);
+        rx_len = 0;
+        rc = c->io->recv(c->io->ctx, c->rx_buf, sizeof(c->rx_buf),
+                         &rx_len, NULL, slice);
+        if(rc == -EINTR) continue;
+        if(rc == -ENETRESET || rc == -ECONNRESET || rc == -ENODEV) {
+            c->link = VQEAF_QMI_LINK_DOWN;
+            return rc;
+        }
+        if(rc) return rc;
+        if(rx_len == 0) continue;
+        if(rx_len < VQEAF_QMI_HDR_SIZE ||
+           vqeaf_qmi_header_decode(c->rx_buf, rx_len, &h) != 0 ||
+           h.len != rx_len - VQEAF_QMI_HDR_SIZE) {
+            c->bad_responses++;
+            continue;
+        }
+        if(h.type != VQEAF_QMI_IND) continue;
+        c->indications++;
+        if(c->indication != NULL)
+            c->indication(c->indication_ctx, h.msg_id,
+                          c->rx_buf + VQEAF_QMI_HDR_SIZE, h.len);
+        if(h.msg_id != msg_id) continue;
+        if(rx_len > out_cap) return -EMSGSIZE;
+        memcpy(out, c->rx_buf, rx_len);
+        *out_len = rx_len;
+        return 0;
+    }
 }
 
 int vqeaf_qmi_request(vqeaf_qmi_client_t *c, const vqeaf_qrtr_addr_t *dst,
@@ -246,7 +304,13 @@ int vqeaf_qmi_request(vqeaf_qmi_client_t *c, const vqeaf_qrtr_addr_t *dst,
             c->bad_responses++;
             continue; /* malformed bytes are never a successful answer */
         }
-        if(rh.type == VQEAF_QMI_IND) { c->indications++; continue; }
+        if(rh.type == VQEAF_QMI_IND) {
+            c->indications++;
+            if(c->indication != NULL)
+                c->indication(c->indication_ctx, rh.msg_id,
+                              c->rx_buf + VQEAF_QMI_HDR_SIZE, rh.len);
+            continue;
+        }
         if(rh.type != VQEAF_QMI_RESP || rh.msg_id != msg_id ||
            rh.txn_id != txn) {
             c->bad_responses++;

@@ -66,7 +66,7 @@ static int start_locked(uint32_t id,uint32_t caller,int depth){
  Service *s=&services[id];
  if(s->state==VQEAF_SVC_RUNNING)return 0;
  if(s->state==VQEAF_SVC_STARTING)return -2; /* dependency cycle */
- if(depth>VQEAF_SERVICE_MAX)return -2;
+ if(depth>(int)VQEAF_SERVICE_MAX)return -2;
  s->state=VQEAF_SVC_STARTING;
  for(unsigned i=0;i<VQEAF_SERVICE_DEPS;i++){
   if(!s->def.dependencies[i])continue;
@@ -101,6 +101,7 @@ int vqeaf_svc_stop(uint32_t id,uint32_t caller){
  return r;
 }
 int vqeaf_svc_stop_all(uint32_t caller){
+ (void)caller;
  for(uint32_t pass=0;pass<=service_count;pass++){ /* repeated passes settle dependency chains */
   int moved=0;
   for(uint32_t i=service_count;i>0;i--){

@@ -1,0 +1,6 @@
+{
+  "format": "qeapp-packaging",
+  "format_version": 1,
+  "name": "hello-qeapp-rust",
+  "language": "rust"
+}

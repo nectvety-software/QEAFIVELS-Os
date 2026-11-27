@@ -34,6 +34,7 @@
 #include <signal.h>
 #include <unistd.h>
 
+#include "boot_journal.h"
 #include "violet.h"
 
 #define SERVICE_DIR  "/sbin/qeaf"
@@ -60,9 +61,10 @@ static struct host_service services[] = {
     { "wlfwd", -1, 0, 0, 0 },   /* QMI protocol fallback */
     { "cnss-daemon", -1, 0, 0, 0 }, /* Violet Qualcomm service */
     { "qwlfgw", -1, 0, 0, 0 },      /* pure-Linux WLFW 0x45 server */
+    { "wpa_supplicant", -1, 0, 0, 0 }, /* vendor supplicant, launched only with wlan0 */
 };
 static struct host_service *svc_pd, *svc_pd_listen, *svc_tftp, *svc_rmtfs,
-                           *svc_wlfw, *svc_cnss, *svc_qwlfgw;
+                           *svc_wlfw, *svc_cnss, *svc_qwlfgw, *svc_wpa;
 
 static int services_started;
 static int wlan_started;
@@ -77,6 +79,10 @@ static char wlan_note[192] = "not started";
 static char wlfw_mac[32];
 static pthread_t reaper_thread;
 static pthread_t wlan_thread;
+static pthread_t servreg_thread;
+static int servreg_thread_started;
+static pthread_t wpa_thread;
+static int wpa_thread_started;
 
 static struct host_service *find_svc(const char *name)
 {
@@ -89,6 +95,17 @@ static int path_exists(const char *path)
 {
     struct stat st;
     return stat(path, &st) == 0;
+}
+
+static void service_binary_path(const struct host_service *svc,
+                                char *out, size_t cap)
+{
+    const char *path = strcmp(svc->name, "wpa_supplicant") == 0
+        ? "/vendor/bin/hw/wpa_supplicant" : NULL;
+    if(path != NULL)
+        snprintf(out, cap, "%s", path);
+    else
+        snprintf(out, cap, "%s/%s", SERVICE_DIR, svc->name);
 }
 
 static int write_text(const char *path, const char *text)
@@ -653,7 +670,7 @@ static int launch(struct host_service *svc, char *const argv[])
         svc->pid = -1;
         svc->reaped = 0;
     }
-    snprintf(path, sizeof(path), "%s/%s", SERVICE_DIR, svc->name);
+    service_binary_path(svc, path, sizeof(path));
     if(!path_exists(path)) {
         vio_log("hostsvc: %s missing at %s", svc->name, path);
         return -ENOENT;
@@ -686,7 +703,8 @@ static int launch(struct host_service *svc, char *const argv[])
         }
         if(null_fd > STDERR_FILENO) close(null_fd);
         if(log_fd > STDERR_FILENO) close(log_fd);
-        if(strcmp(svc->name, "cnss-daemon") == 0)
+        if(strcmp(svc->name, "cnss-daemon") == 0 ||
+           strcmp(svc->name, "wpa_supplicant") == 0)
             setenv("LD_LIBRARY_PATH", "/system/lib64:/vendor/lib64", 1);
         execv(path, argv);
         child_errno = errno;
@@ -729,6 +747,11 @@ static char *const kRmtfsArgs[] = { "rmtfs", "-P", "-r", "-v", NULL };
  * service vendor.cnss-daemon /vendor/bin/cnss-daemon -n -l
  * -n keeps it in the foreground so stdout/stderr are captured by the launcher. */
 static char *const kCnssArgs[] = { "cnss-daemon", "-n", "-l", NULL };
+static char *const kWpaArgs[] = {
+    "wpa_supplicant", "-i", "wlan0", "-D", "nl80211",
+    "-C", "/run/wpa_supplicant", "-c", "/run/qeaf/wpa_supplicant.conf",
+    NULL
+};
 
 static void rebind_ath10k(void)
 {
@@ -792,6 +815,51 @@ again:
     return NULL;
 }
 
+/* pd-listen already reports the real SERVREG events (NEW_SERVER/DEL_SERVER for
+ * msm/modem/wlan_pd) to /tmp/hostsvc-pd-listen.log, but none of that reached
+ * the rescue drive. Forward new lines through vio_log so they land in the p77
+ * live trace: a DEL_SERVER immediately before a reset names the protection
+ * domain that went down instead of leaving it to guesswork. When the trace is
+ * not armed this costs one stat per second and no flash writes. */
+static void *servreg_worker(void *arg)
+{
+    static const char path[] = "/tmp/hostsvc-pd-listen.log";
+    char line[512];
+    size_t offset = 0;
+
+    (void)arg;
+    for(;;) {
+        FILE *fp = fopen(path, "re");
+        if(fp != NULL) {
+            if(fseek(fp, (long)offset, SEEK_SET) == 0) {
+                while(fgets(line, sizeof(line), fp) != NULL) {
+                    size_t n = strlen(line);
+                    offset += n;
+                    while(n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+                        line[--n] = '\0';
+                    if(n == 0) continue;
+                    vio_log("servreg: %s", line);
+                }
+            }
+            fclose(fp);
+        }
+        sleep(1);
+    }
+    return NULL;
+}
+
+static void start_servreg_watch(void)
+{
+    if(servreg_thread_started) return;
+    servreg_thread_started = 1;
+    if(pthread_create(&servreg_thread, NULL, servreg_worker, NULL) == 0)
+        pthread_detach(servreg_thread);
+    else {
+        servreg_thread_started = 0;
+        vio_log("hostsvc: no servreg watch thread: %s", strerror(errno));
+    }
+}
+
 int vio_host_services_start(void)
 {
     int rmtfs_started = 0;
@@ -805,6 +873,7 @@ int vio_host_services_start(void)
     svc_wlfw = find_svc("wlfwd");
     svc_cnss = find_svc("cnss-daemon");
     svc_qwlfgw = find_svc("qwlfgw");
+    svc_wpa = find_svc("wpa_supplicant");
 
     vio_mkdir_p(SERVICE_DIR, 0755);
     prepare_mainline_firmware();
@@ -812,6 +881,7 @@ int vio_host_services_start(void)
     /* Subscribe to the actual SERVREG service; pd-listen only sends QMI
      * registration after QRTR reports a real 0x42 server endpoint. */
     (void)launch(svc_pd_listen, kPdListenArgs);
+    start_servreg_watch();
     (void)launch(svc_tftp, kTftpArgs);
     if(prepare_rmtfs_partitions() == 0)
         rmtfs_started = launch(svc_rmtfs, kRmtfsArgs) == 0;
@@ -1206,33 +1276,110 @@ static void *wlan_worker(void *arg)
     return NULL;
 }
 
+static int write_wpa_runtime_config(void)
+{
+    static const char config[] =
+        "ctrl_interface=/run/wpa_supplicant\n"
+        "update_config=0\n"
+        "country=VN\n"
+        "p2p_disabled=1\n";
+    const char *path = "/run/qeaf/wpa_supplicant.conf";
+    size_t done = 0;
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if(fd < 0) return -errno;
+    while(done < sizeof(config) - 1) {
+        ssize_t n = write(fd, config + done, sizeof(config) - 1 - done);
+        if(n < 0) {
+            if(errno == EINTR) continue;
+            int err = errno;
+            close(fd);
+            return -err;
+        }
+        done += (size_t)n;
+    }
+    close(fd);
+    return 0;
+}
+
+/* Do not start the WPA layer until qcacld has created a real wlan0. This
+ * worker is best-effort and RAM-only: it reads the vendor binary from the
+ * mounted vendor partition and writes only a temporary config under /run. */
+static void *wpa_start_worker(void *arg)
+{
+    (void)arg;
+    for(unsigned wait = 0; wait < 60; wait++) {
+        if(path_exists("/sys/class/net/wlan0")) break;
+        sleep(1);
+    }
+    if(!path_exists("/sys/class/net/wlan0")) {
+        vio_log("hostsvc: WPA not started: wlan0 did not appear within 60 s");
+        wpa_thread_started = 0;
+        return NULL;
+    }
+    if(!path_exists("/vendor/bin/hw/wpa_supplicant")) {
+        vio_log("hostsvc: WPA not started: /vendor/bin/hw/wpa_supplicant missing");
+        wpa_thread_started = 0;
+        return NULL;
+    }
+    (void)vio_mkdir_p("/run/qeaf", 0700);
+    (void)vio_mkdir_p("/run/wpa_supplicant", 0770);
+    {
+        int rc = write_wpa_runtime_config();
+        if(rc != 0) {
+            vio_log("hostsvc: WPA config creation failed: %s", strerror(-rc));
+            wpa_thread_started = 0;
+            return NULL;
+        }
+    }
+    if(launch(svc_wpa, kWpaArgs) != 0) {
+        vio_log("hostsvc: vendor wpa_supplicant launch failed");
+        wpa_thread_started = 0;
+        return NULL;
+    }
+    for(unsigned wait = 0; wait < 10; wait++) {
+        if(path_exists("/run/wpa_supplicant/wlan0")) {
+            vio_log("hostsvc: WPA control socket ready for wlan0");
+            return NULL;
+        }
+        sleep(1);
+    }
+    vio_log("hostsvc: wpa_supplicant exec confirmed but control socket not ready; inspect /tmp/hostsvc-wpa_supplicant.log");
+    return NULL;
+}
+
+static void start_wpa_worker(void)
+{
+    if(wpa_thread_started || svc_wpa == NULL) return;
+    wpa_thread_started = 1;
+    if(pthread_create(&wpa_thread, NULL, wpa_start_worker, NULL) == 0)
+        pthread_detach(wpa_thread);
+    else {
+        wpa_thread_started = 0;
+        vio_log("hostsvc: cannot create WPA worker: %s", strerror(errno));
+    }
+}
+
 void vio_host_services_start_wlan(void)
 {
-    char path[256], macpath[256];
+    char path[256], macpath[256], regdbpath[256];
     int have_board_files = 0;
     int have_factory_mac;
     static char *const wlfw_args[] = { "wlfwd", WLFW_DIR, wlfw_mac,
                                        "/tmp/wlfw-state", NULL };
 
-    if(wlan_started) return;
-    wlfw_mac[0] = '\0';
-    have_factory_mac = find_factory_mac(wlfw_mac, sizeof(wlfw_mac),
-                                        macpath, sizeof(macpath)) == 0;
-    if(!have_factory_mac) {
-        snprintf(wlan_note, sizeof(wlan_note),
-                 "p74 not mounted or factory WLAN MAC absent/invalid; WLAN blocked");
-        vio_log("hostsvc: %s", wlan_note);
-        launch_qrtr_lookup();
+    if(wlan_started) {
+        /* A later explicit wifi up may retry WPA after the first probe
+         * timed out waiting for the driver-created netdev. */
+        start_wpa_worker();
         return;
     }
-    /* A failed p74 read is retryable. Do not let either WLAN stack start with
-     * the empty/placeholder address while persist is unavailable. */
+    wlfw_mac[0] = '\0';
     wlan_started = 1;
 
     /* Native QEAF service manager owns CNSS. Match the Violet device-tree
      * invocation (-n -l); the custom WLFW QMI client is fallback-only.
-     * CNSS is gated on the real p74 MAC above. It needs /dev/binder even in
-     * -n mode; create it through binderfs or the exact sysfs dev number. */
+     * Real CNSS receives no MAC argument and may query DMS itself, so an
+     * absent p74 MAC must not suppress it. It still needs /dev/binder. */
     if(ensure_binder_node() != 0) {
         snprintf(wlan_note, sizeof(wlan_note),
                  "binder unavailable; CNSS not launched (no guessed device numbers)");
@@ -1241,21 +1388,44 @@ void vio_host_services_start_wlan(void)
         return;
     }
     if(launch(svc_cnss, kCnssArgs) == 0) {
+        /* Stock init starts cnss-daemon and the framework's Wi-Fi enable then
+         * writes ON to the wlan_hdd_state char device. Without that write the
+         * qcacld/icnss driver never loads firmware, so WLFW 0x45 never
+         * appears. Keep the write in a worker: it can block while the driver
+         * waits for firmware, and it must not stall the rescue channel. */
         snprintf(wlan_note, sizeof(wlan_note),
-                 "CNSS daemon spawned by QEAF service manager (-n -l)");
+                 "CNSS daemon spawned by QEAF service manager (-n -l); "
+                 "requesting /dev/wlan ON");
+        if(pthread_create(&wlan_thread, NULL, wlan_worker, NULL) == 0)
+            pthread_detach(wlan_thread);
+        else
+            vio_log("hostsvc: no wlan ON thread: %s", strerror(errno));
+        start_wpa_worker();
         launch_qrtr_lookup();
         return;
     }
+
     vio_log("hostsvc: CNSS unavailable; checking native WLFW fallback inputs");
+    have_factory_mac = find_factory_mac(wlfw_mac, sizeof(wlfw_mac),
+                                        macpath, sizeof(macpath)) == 0;
+    if(!have_factory_mac) {
+        snprintf(wlan_note, sizeof(wlan_note),
+                 "CNSS unavailable; p74 not mounted or factory WLAN MAC "
+                 "absent/invalid; WLFW fallback blocked");
+        vio_log("hostsvc: %s", wlan_note);
+        launch_qrtr_lookup();
+        return;
+    }
+
     vio_mkdir_p(WLFW_DIR, 0700);
     vio_mkdir_p("/tmp/wlfw-state", 0700);
     if(stage_persist_calibration() == 0)
         vio_log("hostsvc: p74 has no saved WLFW calibration files; none invented");
 
     if(find_persist("bdwlan.bin", path, sizeof(path)) == 0 &&
-       find_persist("regdb.bin", macpath, sizeof(macpath)) == 0) {
+       find_persist("regdb.bin", regdbpath, sizeof(regdbpath)) == 0) {
         if(copy_file(path, WLFW_DIR "/bdwlan.bin") == 0 &&
-           copy_file(macpath, WLFW_DIR "/regdb.bin") == 0) {
+           copy_file(regdbpath, WLFW_DIR "/regdb.bin") == 0) {
             have_board_files = 1;
             snprintf(wlan_note, sizeof(wlan_note),
                      "real BDF/regdb files copied from mounted firmware or persist");
@@ -1274,6 +1444,7 @@ void vio_host_services_start_wlan(void)
                 pthread_detach(wlan_thread);
             else
                 vio_log("hostsvc: no wlan thread: %s", strerror(errno));
+            start_wpa_worker();
         }
     } else {
         snprintf(wlan_note, sizeof(wlan_note),
@@ -1501,7 +1672,12 @@ int vio_host_vendor_wifi(void)
         }
     }
     if(!svc_cnss) svc_cnss = find_svc("cnss-daemon");
-    return launch(svc_cnss, kCnssArgs);
+    if(!svc_wpa) svc_wpa = find_svc("wpa_supplicant");
+    {
+        int rc = launch(svc_cnss, kCnssArgs);
+        if(rc == 0) start_wpa_worker();
+        return rc;
+    }
 }
 
 void vio_host_services_logs(char *out, int cap)
@@ -1547,7 +1723,7 @@ void vio_host_services_report(char *out, int cap)
         if(used >= (size_t)cap) break;
         if(!svc->binary_present) {
             char probe[160];
-            snprintf(probe, sizeof(probe), "%s/%s", SERVICE_DIR, svc->name);
+            service_binary_path(svc, probe, sizeof(probe));
             n = snprintf(out + used, (size_t)cap - used,
                          "hostsvc %s: %s\n", svc->name,
                          path_exists(probe) ? "not started" : "binary missing");

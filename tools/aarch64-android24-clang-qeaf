@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -e
+SYSROOT=/mnt/d/QEAFIVELS-Os/build/violet/bionic-sysroot
+NDK=/opt/android-ndk-r30/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang
+exec "$NDK" -L"$SYSROOT/system/lib64" -L"$SYSROOT/apex/com.android.runtime/lib64/bionic" -L"$SYSROOT/vendor/lib64" -Wl,-rpath-link,"$SYSROOT/system/lib64" -Wl,-rpath-link,"$SYSROOT/apex/com.android.runtime/lib64/bionic" -Wl,-rpath-link,"$SYSROOT/vendor/lib64" "$@"

@@ -26,7 +26,9 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifndef APPSTORE_PATH
 #define APPSTORE_PATH "/dev/mmcblk0p77"
+#endif
 #define APPSTORE_MAGIC "QEAFAPP4"
 #define APPSTORE_VERSION 4u
 #define APPSTORE_MAGIC_V3 "QEAFAPP3"
@@ -171,6 +173,7 @@ static int read_package(const appstore_entry_t *entry, uint8_t **out,
 
     *out = NULL;
     *size = 0;
+    if(g_vol == NULL) return -1;
     if(g_lock) g_lock();
     bytes = fat16_file_size(g_vol, name);
     if(g_unlock) g_unlock();
@@ -251,11 +254,16 @@ int appstore_save(const appstore_entry_t *entries, int count)
 
     if(count < 0) return -1;
     if(count > 0 && entries == NULL) return -1;
-    if(g_vol == NULL) {
-        vio_log("appstore: save without a volume");
-        return -1;
+    for(int i = 0; i < count; i++) {
+        if(entries[i].name[0] == '\0') return -1;
+        for(int j = 0; j < i; j++) {
+            if(strcmp(entries[i].name, entries[j].name) == 0) {
+                vio_log("appstore: duplicate catalog key %s rejected",
+                        entries[i].name);
+                return -1;
+            }
+        }
     }
-
     for(int i = 0; i < count; i++) {
         uint8_t *package = NULL;
         size_t package_size = 0;

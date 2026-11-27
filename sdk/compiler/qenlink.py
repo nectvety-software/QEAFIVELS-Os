@@ -3,9 +3,11 @@
 This is a build-time tool, not the device loader. It concatenates the code,
 rodata and data sections of one or more freestanding, position-independent
 objects, resolves PC-relative relocations against the final contiguous layout
-(code | rodata | data | bss) and rejects anything that would need a load-time
-relocation (absolute or GOT relocations) or an undefined symbol. The result is
-a fully position-independent blob the simulator can map at any address.
+(code | rodata | data | bss). It relaxes defined x86_64 GOTPCREL references to
+direct PC-relative code and rejects anything that would still need a load-time
+relocation (absolute addresses, unsupported GOT forms) or an undefined symbol.
+The result is a fully position-independent blob the simulator can map at any
+address.
 
 Only the relocation types needed by freestanding C are supported; anything
 else is a hard error so a broken module is never shipped silently.
@@ -38,6 +40,8 @@ R_X86_64_PC32 = 2
 R_X86_64_PLT32 = 4
 R_X86_64_32 = 10
 R_X86_64_32S = 11
+R_X86_64_GOTPCREL = 9
+R_X86_64_REX_GOTPCRELX = 42
 
 # aarch64 relocation types
 R_AARCH64_NONE = 0
@@ -155,6 +159,22 @@ def _apply_x86(buf, place, rtype, sym_val, addend):
     if rtype in (R_X86_64_PC32, R_X86_64_PLT32):
         _patch32(buf, place, sym_val + addend - place)
         return
+    if rtype in (R_X86_64_GOTPCREL, R_X86_64_REX_GOTPCRELX):
+        if place < 3 or place + 3 >= len(buf):
+            raise LinkError("x86_64 GOTPCREL relocation is outside code")
+        opcode = buf[place - 2]
+        modrm = buf[place - 1]
+        rex = buf[place - 3]
+        if opcode == 0xFF and modrm in (0x15, 0x25):
+            buf[place - 2] = 0xE8 if modrm == 0x15 else 0xE9
+            _patch32(buf, place - 1, sym_val + addend - (place - 1))
+            buf[place + 3] = 0x90
+            return
+        if opcode == 0x8B and modrm & 0xC7 == 0x05 and rex in (0x48, 0x4C):
+            buf[place - 2] = 0x8D
+            _patch32(buf, place, sym_val + addend - place)
+            return
+        raise LinkError("unsupported x86_64 GOTPCREL instruction at 0x%x" % place)
     raise LinkError("x86_64 relocation type %d is not position-independent "
                     "(absolute/GOT); use -fPIC freestanding code" % rtype)
 

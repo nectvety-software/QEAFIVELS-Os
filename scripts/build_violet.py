@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""LEGACY ONLY: build the Violet Linux-musl PID 1 transport prototype.
+"""Build the QEAFIVELS Linux-core Violet PID 1 userspace.
 
-This executable runs on the stock Linux kernel and is NOT the QEAFIVELS
-Kernel or independent OS. Do not use this image for independent-OS release
-claims. Kept temporarily for historical hardware-probe comparison only.
-
-The independent Violet target must be a freestanding AArch64 kernel under
-kernel/arch/aarch64 with its own entry, linker script and boot handoff.
+This static AArch64 musl executable runs as `/init` on the approved vendor
+Linux 4.14.215 kernel. It owns QEAF init, services, framework, UI, QEAPP and
+rescue; Linux owns the kernel and hardware drivers. The freestanding kernels
+under `kernel/arch` are retained reference tracks, not this production path.
 """
 import argparse
 import os
@@ -47,7 +45,11 @@ SOURCES = [
     os.path.join(VIOLET, "qrtr_ns.c"),
     os.path.join(VIOLET, "host_services.c"),
     os.path.join(VIOLET, "wifi_bringup.c"),
+    os.path.join(VIOLET, "bt_bringup.c"),
+    # Freestanding Bluetooth/SLIMbus drivers remain reference and host-test
+    # code. Linux owns production probe, MMIO, DMA, IRQ and HCI transport.
     os.path.join(VIOLET, "vio_caps.c"),
+    os.path.join(ROOT, "drives", "violet", "violet_drivers.c"),
     os.path.join(VIOLET, "vqeaf_camera.c"),
     os.path.join(VIOLET, "violet_input.c"),
     os.path.join(VIOLET, "violet_power.c"),
@@ -57,21 +59,28 @@ SOURCES = [
     os.path.join(VIOLET, "ui", "vqeaf_shutdown.c"),
     os.path.join(VIOLET, "ui", "vqeaf_pages.c"),
     os.path.join(VIOLET, "ui", "vqeaf_theme.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_components.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_drag.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_sound.c"),
+    os.path.join(VIOLET, "ui", "sounds", "vqeaf_sound_data.c"),
     os.path.join(VIOLET, "ui", "vqeaf_ime.c"),
     os.path.join(VIOLET, "ui", "vqeaf_state.c"),
     os.path.join(VIOLET, "ui", "vqeaf_wifi.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_security.c"),
     os.path.join(VIOLET, "ui", "vqeaf_files.c"),
     os.path.join(VIOLET, "ui", "vqeaf_sys_tools.c"),
     os.path.join(VIOLET, "ui", "vqeaf_tools_ui.c"),
     os.path.join(VIOLET, "ui", "vqeaf_media.c"),
     os.path.join(VIOLET, "ui", "vqeaf_video.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp.c"),
+    os.path.join(VIOLET, "qeapp_package.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp_native.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp_runtime.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp_device.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp_sandbox.c"),
     os.path.join(ROOT, "framework", "security", "qeaf_broker.c"),
     os.path.join(ROOT, "system", "core", "settings.c"),
+    os.path.join(ROOT, "system", "core", "clipboard.c"),
     os.path.join(ROOT, "system", "core", "capability.c"),
     os.path.join(VIOLET, "ui", "icons", "vqeaf_app_icons.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_20.c"),
@@ -84,6 +93,7 @@ SOURCES = [
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_bold_34.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_bold_56.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_bold_96.c"),
+    os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_bold_160.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_icon_28.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_icon_40.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_emoji_28.c"),
@@ -125,8 +135,49 @@ for dirpath, _dirs, filenames in os.walk(LVGL_SRC):
         if filename.endswith(".c"):
             SOURCES.append(os.path.join(dirpath, filename))
 
+# The drives/ driver set, built for the same AArch64 target but kept in its own
+# archive instead of being linked into /init. Linux owns the hardware on this
+# path: PID 1 must never map a controller, so these objects are compiled and
+# verified here and linked only by a freestanding build that owns the MMIO.
+DRIVES_SOURCES = [
+    os.path.join(ROOT, "drives", "core", "drive_catalog.c"),
+    os.path.join(ROOT, "drives", "core", "device_manager", "device_manager.c"),
+    os.path.join(ROOT, "drives", "core", "driver_manager", "driver_manager.c"),
+    os.path.join(ROOT, "drives", "core", "firmware_manager", "firmware_manager.c"),
+    os.path.join(ROOT, "drives", "bus", "i2c", "mre_geni_i2c.c"),
+    os.path.join(ROOT, "drives", "bus", "spmi", "mre_spmi.c"),
+    os.path.join(ROOT, "drives", "bus", "spmi", "mre_pmic_arb.c"),
+    os.path.join(ROOT, "drives", "power", "pmic", "mre_pmic_regulator.c"),
+    os.path.join(ROOT, "drives", "input", "touchscreen", "mre_touch.c"),
+    os.path.join(ROOT, "drives", "display", "clock", "mre_sm6150_dispcc.c"),
+    os.path.join(ROOT, "drives", "display", "dsi", "mre_reg_io.c"),
+    os.path.join(ROOT, "drives", "display", "dsi", "mre_dsi_packet.c"),
+    os.path.join(ROOT, "drives", "display", "dsi", "mre_dsi_reg_backend.c"),
+    os.path.join(ROOT, "drives", "display", "dsi", "mre_panel_nt36672a.c"),
+    os.path.join(ROOT, "system", "core", "driver.c"),
+    os.path.join(ROOT, "framework", "core", "qeaf_drives_api.c"),
+    os.path.join(ROOT, "integrations", "MRE-Os", "kernel", "core", "fdt.c"),
+]
+
+DRIVES_INCLUDES = [
+    "-I", os.path.join(ROOT, "drives", "core"),
+    "-I", os.path.join(ROOT, "drives", "bus", "i2c"),
+    "-I", os.path.join(ROOT, "drives", "bus", "spmi"),
+    "-I", os.path.join(ROOT, "drives", "power", "pmic"),
+    "-I", os.path.join(ROOT, "drives", "input", "touchscreen"),
+    "-I", os.path.join(ROOT, "drives", "display", "clock"),
+    "-I", os.path.join(ROOT, "drives", "display", "dsi"),
+    "-I", os.path.join(ROOT, "integrations", "MRE-Os", "hal", "include"),
+    "-I", os.path.join(ROOT, "integrations", "MRE-Os", "kernel", "include", "mre"),
+    "-I", os.path.join(ROOT, "system", "core", "include"),
+    "-I", os.path.join(ROOT, "framework", "application_api"),
+]
+DRIVES_OBJDIR = os.path.join(ROOT, "build", "violet", "drives-obj")
+DRIVES_ARCHIVE = os.path.join(ROOT, "build", "violet", "libvqeaf-drives.a")
+
 INCLUDES = [
     "-I", VIOLET,
+    "-I", os.path.join(ROOT, "drives", "violet"),
     "-I", CHANNEL,
     "-I", os.path.join(CHANNEL, "core"),
     "-I", os.path.join(CHANNEL, "fs"),
@@ -148,6 +199,12 @@ INCLUDES = [
 CFLAGS = ["-O2", "-g", "-Wall", "-Wextra", "-std=c11",
           "-D_GNU_SOURCE", "-DQEAF_OS_STRING_PLATFORM",
           "-DLV_CONF_INCLUDE_SIMPLE", "-DLV_LVGL_H_INCLUDE_SIMPLE"]
+
+# Optional escape hatch for diagnostic builds, e.g.
+#   VQEAF_EXTRA_CFLAGS=-DVQEAF_RESERVE_PERSIST_DISABLE python scripts/build_violet.py
+_extra = os.environ.get("VQEAF_EXTRA_CFLAGS")
+if _extra:
+    CFLAGS += [f for f in _extra.split() if f]
 
 
 def newest_header_mtime():
@@ -185,6 +242,67 @@ def compile_one(src, verbose, header_mtime):
     return obj, None
 
 
+def compile_drive(src, verbose, header_mtime):
+    rel = os.path.relpath(src, ROOT)
+    base = rel.replace(os.sep, "_").replace(".", "_")
+    obj = os.path.join(DRIVES_OBJDIR, base + ".o")
+    if os.path.isfile(obj) and \
+       os.path.getmtime(obj) >= max(os.path.getmtime(src), header_mtime):
+        return obj, None
+    cmd = [ZIG, "cc", "-target", "aarch64-linux-musl"] + CFLAGS + \
+          DRIVES_INCLUDES + ["-c", src, "-o", obj]
+    os.makedirs(DRIVES_OBJDIR, exist_ok=True)
+    if verbose:
+        print(" ".join(cmd))
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        return src, proc.stderr or proc.stdout
+    return obj, None
+
+
+def build_drives(verbose, header_mtime):
+    """Compile the drives/ set for AArch64 and archive it beside /init.
+
+    Nothing here is linked into /init: the archive is the deliverable a
+    freestanding build consumes. Compiling it on the real target is what
+    proves the contracts are 32-bit-safe, freestanding-clean AArch64 code.
+    """
+    failures = []
+    objects = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(compile_drive, src, verbose, header_mtime): src
+                   for src in DRIVES_SOURCES}
+        for future in as_completed(futures):
+            result, err = future.result()
+            if err is None:
+                objects.append(result)
+            else:
+                failures.append((futures[future], err))
+    for src, err in failures:
+        print("build_violet: DRIVE FAILED %s" % src, file=sys.stderr)
+        print(err, file=sys.stderr)
+    if failures:
+        return 1
+
+    objects.sort()
+    if os.path.isfile(DRIVES_ARCHIVE):
+        os.remove(DRIVES_ARCHIVE)
+    cmd = [ZIG, "ar", "rcs", DRIVES_ARCHIVE] + objects
+    if verbose:
+        print(" ".join(cmd))
+    proc = subprocess.run(cmd, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+    if proc.returncode != 0:
+        print("build_violet: drives archive FAILED", file=sys.stderr)
+        print(proc.stderr or proc.stdout, file=sys.stderr)
+        return 1
+    print("build_violet: drives archive %s (%d objects, %d bytes, "
+          "not linked into /init)"
+          % (DRIVES_ARCHIVE, len(objects), os.path.getsize(DRIVES_ARCHIVE)))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--clean", action="store_true")
@@ -198,8 +316,10 @@ def main(argv=None):
 
     if args.clean:
         shutil.rmtree(OBJDIR, ignore_errors=True)
-        if os.path.isfile(TARGET):
-            os.remove(TARGET)
+        shutil.rmtree(DRIVES_OBJDIR, ignore_errors=True)
+        for path in (TARGET, DRIVES_ARCHIVE):
+            if os.path.isfile(path):
+                os.remove(path)
 
     os.makedirs(OBJDIR, exist_ok=True)
     failures = []
@@ -241,7 +361,7 @@ def main(argv=None):
     if head[:4] != b"\x7fELF" or head[4] != 2 or head[18:20] != b"\xb7\x00":
         print("build_violet: output is not an aarch64 ELF", file=sys.stderr)
         return 1
-    return 0
+    return build_drives(args.verbose, header_mtime)
 
 
 if __name__ == "__main__":

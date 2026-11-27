@@ -40,6 +40,7 @@
 #include "ui/vqeaf_shutdown.h"
 #include "wifi_bringup.h"
 #include "vio_caps.h"
+#include "violet_drivers.h"
 #include "boot_journal.h"
 #include "watchdog.h"
 
@@ -47,6 +48,7 @@
 #include "fs/fat16.h"
 #include "fs/rescue.h"
 #include "ui/vqeaf_files.h"
+#include "ui/vqeaf_pages.h"
 #include "qeaf_version.h"
 #include "splash.h"
 
@@ -66,6 +68,7 @@ static struct vio_drm drm;
 static struct vio_lun lun;
 static int drm_ready;
 static volatile sig_atomic_t ui_ready;
+static VioDriverEvidence driver_evidence;
 
 /* The rescue channel runs on its own thread: the panel path can block inside
  * a DRM commit, and QEAF.CMD must keep being answered regardless. Both
@@ -173,8 +176,9 @@ static int snapshot_scanout(struct fat16_volume *vol)
     vio_log("snap: wrote SCREEN.RAW (%dx%d RGB565 %u bytes, frame %u)",
             RESCUE_SCREEN_W, RESCUE_SCREEN_H,
             (unsigned)sizeof(snap_image.pixels), (unsigned)snap_frame);
-    vqeaf_ui_notify("Cứu hộ", "Đã ghi ảnh màn hình vào SCREEN.RAW",
-                    VQEAF_SYM_IMAGE, 0x35E0C8);
+    vqeaf_ui_notify_event("Cứu hộ", "Đã ghi ảnh màn hình vào SCREEN.RAW",
+                          VQEAF_SYM_IMAGE, 0x35E0C8,
+                          VQEAF_SOUND_CAPTURE);
     return (int)sizeof(snap_image);
 }
 
@@ -273,7 +277,8 @@ static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
         if(rc > 0) {
             vio_log("shot: PNG encoder error %u; wrote BMP %s (%d bytes)",
                     lode_err, name, rc);
-            vqeaf_ui_notify("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8);
+            vqeaf_ui_notify_event("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8,
+                                  VQEAF_SOUND_CAPTURE);
             vqeaf_ui_show_capture_thumb(name);
         }
         return rc;
@@ -290,7 +295,8 @@ static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
 
     if(rc > 0) {
         vio_log("shot: %s (%ux%u PNG, %d bytes)", name, w, h, rc);
-        vqeaf_ui_notify("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8);
+        vqeaf_ui_notify_event("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8,
+                                  VQEAF_SOUND_CAPTURE);
         vqeaf_ui_show_capture_thumb(name);
     }
     return rc;
@@ -382,14 +388,16 @@ static void rec_save(const char *reason)
                  "saved %s (%u frames, %u bytes, %s)", g_rec_name,
                  g_rec_frames, (unsigned)g_rec_used, reason);
         vio_log("rec: %s", g_rec_status);
-        vqeaf_ui_notify("Quay màn hình", g_rec_name, VQEAF_SYM_MOVIE, 0xFF7A7A);
+        vqeaf_ui_notify_event("Quay màn hình", g_rec_name, VQEAF_SYM_MOVIE,
+                              0xFF7A7A, VQEAF_SOUND_RECORD);
     }
     else {
         snprintf(g_rec_status, sizeof(g_rec_status),
                  "save failed after %u frames (%s)", g_rec_frames, reason);
         vio_log("rec: %s", g_rec_status);
-        vqeaf_ui_notify("Quay màn hình", "Không ghi được tệp video",
-                        VQEAF_SYM_MOVIE, 0xFF8A7A);
+        vqeaf_ui_notify_event("Quay màn hình", "Không ghi được tệp video",
+                              VQEAF_SYM_MOVIE, 0xFF8A7A,
+                              VQEAF_SOUND_WARNING);
     }
 }
 
@@ -455,6 +463,7 @@ int vio_rec_start(int fps, int seconds)
              REC_W, REC_H, fps);
     vio_log("rec: started, %ux%u @%d fps, %u frame(s), %u-byte budget",
             REC_W, REC_H, fps, g_rec_limit, (unsigned)g_rec_cap);
+    vqeaf_sound_play(VQEAF_SOUND_RECORD);
     return 0;
 }
 
@@ -484,8 +493,10 @@ int vio_screenshot_now(void)
     rc = lun.ready ? screenshot_png(&lun.volume, name, sizeof(name)) : -1;
     if(rc > 0) rescue_flush_log(&lun.volume);
     volume_lock_release();
-    if(rc > 0)
-        vqeaf_ui_notify("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8);
+    if(rc <= 0)
+        vqeaf_ui_notify_event("Ảnh màn hình", "Chụp không thành công",
+                              VQEAF_SYM_DELETE, 0xFF8A7A,
+                              VQEAF_SOUND_WARNING);
     return rc;
 }
 
@@ -851,10 +862,12 @@ static int start_phone_ui(void)
     found = vio_find_touch_device(path, sizeof(path));
     if(found && vio_touch_open(&touch, found, &panel) == 0) {
         touch_ready = 1;
+        driver_evidence.touch_open = 1;
         vio_log("ui: LVGL touch input bound to %s", path);
     }
     else {
         touch_ready = 0;
+        driver_evidence.touch_open = 0;
         vio_log("ui: no touch device; shell accepts rescue taps only");
     }
     /* Power/volume keys: open every evdev node that reports KEY_POWER or
@@ -877,6 +890,8 @@ static int start_phone_ui(void)
             }
         }
     }
+    driver_evidence.power_input_open = power_btn.nfd > 0;
+    vio_drivers_set_evidence(&driver_evidence);
 
     /* The pointer device exists either way: `tap` from QEAF.CMD injects into
      * vio_touch, so an undetected panel does not make the shell unoperable. */
@@ -960,9 +975,29 @@ static int ui_swipe_hook(int x0, int y0, int x1, int y1, int steps)
 /* Rescue `page` verb: ask the UI thread for a named page. The request is a
  * flag the UI loop consumes, because LVGL objects belong to that thread. */
 static volatile int ui_page_request = -1;
+/* The `power` verb runs the same path as a short power-key press, so a host
+ * can lock the screen and wake it again without touching the button. */
 static volatile int ui_power_request;
+
+/* Rescue `term` verb: the command line is queued here and vqeaf_terminal_run()
+ * is invoked on the UI thread, so the terminal label/scroll objects are never
+ * touched from the rescue worker. The flag follows the same convention as the
+ * other single-flag requests above: the worker writes the buffer first, then
+ * raises the flag; a fast second command may overwrite a pending one, which
+ * keeps the worker lock-free (documented last-command-wins). */
+#define UI_TERM_REQUEST_MAX 128
+static char ui_term_request[UI_TERM_REQUEST_MAX];
+static volatile int ui_term_request_flag;
 static volatile sig_atomic_t ui_fault_request;
 static volatile int ui_unlock_request;
+
+static int ui_term_hook(const char *line)
+{
+    if(!ui_ready || ui_display == NULL || line == NULL) return -1;
+    snprintf(ui_term_request, sizeof(ui_term_request), "%s", line);
+    ui_term_request_flag = 1;
+    return 1;
+}
 
 static int ui_page_hook(const char *name)
 {
@@ -1278,7 +1313,16 @@ static void install_ui_fault_handlers(void)
 static void publish_last_boot(void)
 {
     const char *previous = vio_journal_previous();
-    char text[256];
+    static char reason[512];
+    static char text[VIO_JOURNAL_TEXT + 512];
+    int used;
+
+    /* The bootloader and the reset path are the only witnesses left after a
+     * reset that ran no handler. Put their account at the top of the record
+     * and keep a copy in the p77 slot, so each boot carries the chain: why the
+     * previous boot ended, then the trace that ran up to it. */
+    vio_reset_reason(reason, sizeof(reason));
+    vio_journal_note(reason);
 
     if(previous == NULL || previous[0] == '\0') {
         /* The slot is armed and counted, but holds no blank record: the last
@@ -1286,9 +1330,10 @@ static void publish_last_boot(void)
          * of leaving 15 KiB of NULs that reads like a failed publish. */
         snprintf(text, sizeof(text),
                  "QEAF boot record: boots=%u (this boot)\n"
+                 "%s\n"
                  "no fault record from the previous boot: it ended without a\n"
                  "caught signal (watchdog, power or kernel reset).\n",
-                 vio_journal_boots());
+                 vio_journal_boots(), reason);
         volume_lock_acquire();
         (void)fat16_write_file(&lun.volume, "LASTBOOT.TXT",
                                (const uint8_t *)text, strlen(text));
@@ -1297,12 +1342,22 @@ static void publish_last_boot(void)
                 vio_journal_boots());
         return;
     }
+    used = snprintf(text, sizeof(text), "%s\n\n", reason);
+    if(used < 0) used = 0;
+    if((size_t)used < sizeof(text) - 1u) {
+        size_t room = sizeof(text) - 1u - (size_t)used;
+        size_t len = strlen(previous);
+        if(len > room) len = room;
+        memcpy(text + used, previous, len);
+        used += (int)len;
+        text[used] = '\0';
+    }
     volume_lock_acquire();
     (void)fat16_write_file(&lun.volume, "LASTBOOT.TXT",
-                           (const uint8_t *)previous, strlen(previous));
+                           (const uint8_t *)text, strlen(text));
     volume_lock_release();
     vio_log("boot: previous boot record published (LASTBOOT.TXT, %u bytes)",
-            (unsigned)strlen(previous));
+            (unsigned)strlen(text));
 }
 
 /* Settings reads the mode the platform actually applied. The gadget still
@@ -1327,14 +1382,27 @@ int main(void)
     install_ui_fault_handlers();
     drm.fd = -1;
     lun.fd = -1;
+    vio_drivers_evidence_init(&driver_evidence);
+    vio_drivers_set_evidence(&driver_evidence);
 
     vio_setup_environment();
+    /* This line proves the kernel entered the initramfs /init executable as
+     * PID 1. The early initramfs has no /dev nodes, so setup_environment()
+     * recreates /dev/console and reattaches stdin/stdout/stderr first. */
+    vio_log("pid1: /init entry reached (pid=%d)", (int)getpid());
+    if(getpid() != 1)
+        vio_log("pid1: FATAL expected pid 1, observed pid=%d", (int)getpid());
+
     /* Device nodes exist now: count this boot and re-arm the p77 journal
      * slot, so even a panic during init leaves "boots=N stage=..."
      * behind for the next boot. */
     vio_journal_init();
+    set_stage("pid1-entry");
+    vio_log("pid1: p77 boot journal initialized; next stage=wifi");
+
     /* The stock kernel cannot read radio firmware from partitions nobody
      * mounted. Stage the read-only vendor/radio/persist sources before the UI. */
+    set_stage("wifi-bringup");
     vio_wifi_bringup();
     /* Publish the honest hardware capability census from real read-only
      * probes, so the UI and the rescue `caps` verb reflect what this device
@@ -1354,12 +1422,14 @@ int main(void)
     rescue_set_hold_hook(ui_hold_hook);
     rescue_set_swipe_hook(ui_swipe_hook);
     rescue_set_page_hook(ui_page_hook);
+    rescue_set_term_hook(ui_term_hook);
     rescue_set_power_hook(ui_power_hook);
     rescue_set_fault_hook(ui_fault_hook);
     rescue_set_unlock_hook(ui_unlock_hook);
     vqeaf_shutdown_set_hooks(shutdown_stage, shutdown_final);
     vqeaf_ui_set_usb_mode_provider(usb_mode_for_ui);
-    set_stage("lun");
+    set_stage("usb-lun");
+    vio_log("usb: initializing QEAFRESCUE RAM volume before display probe");
 
     /* The rescue drive is the only way back into a phone whose panel path is
      * unproven, so bind it before anything that can block or fault. */
@@ -1367,12 +1437,17 @@ int main(void)
         in_ui = 1;
         if(vio_lun_init(&lun) == 0) {
             vqeaf_files_set_backends(lun_files_read, lun_files_list);
+            set_stage("usb-gadget");
             if(vio_lun_start_gadget(&lun) < 0)
-                vio_log("boot: LUN built but USB gadget is not bound; will retry");
+                vio_log("usb: LUN image ready but UDC bind failed; RAM rescue log remains active");
+            else
+                vio_log("usb: QEAFRESCUE mass-storage gadget bound; host should enumerate it");
         }
         else {
             vio_log("boot: QEAFRESCUE volume unavailable");
         }
+        driver_evidence.usb_gadget_bound = lun.ready && lun.gadget;
+        vio_drivers_set_evidence(&driver_evidence);
         in_ui = 0;
     }
     else {
@@ -1389,14 +1464,18 @@ int main(void)
         vio_log("boot: rescue worker did not start; main loop will poll QEAF.CMD");
     }
 
-    set_stage("dri-wait");
+    set_stage("drm-wait");
+    vio_log("display: waiting up to 8 s for /dev/dri/card0 from sysfs");
     if(vio_wait_for_path("/dev/dri/card0", 8000) < 0)
-        vio_log("boot: /dev/dri/card0 did not appear; continuing without UI");
+        vio_log("display: DRM device node absent; kernel DRM probe/devnode creation failed");
+    else
+        vio_log("display: /dev/dri/card0 appeared; proceeding to backlight and modeset");
 
     set_stage("backlight");
     if(sigsetjmp(ui_recovery, 1) == 0) {
         in_ui = 1;
-        vio_set_backlight(85);
+        if(vio_set_backlight(85) < 0)
+            vio_log("display: no writable backlight sysfs node");
         in_ui = 0;
     }
     else {
@@ -1411,8 +1490,15 @@ int main(void)
         ui_orientation = (int)display_orientation();
         vio_panel_init(&panel, ui_w, ui_h, VIO_PANEL_W, VIO_PANEL_H,
                        display_orientation_degrees(display_orientation()));
+        vio_log("display: panel geometry prepared %dx%d; starting DRM/KMS init",
+                VIO_PANEL_W, VIO_PANEL_H);
+        errno = 0;
         if(vio_drm_init(&drm, VIO_PANEL_W, VIO_PANEL_H) == 0) {
+            vio_log("display: DRM/KMS init succeeded pitch=%u buffer=%llu",
+                    drm.pitch, (unsigned long long)drm.buffer_size);
             drm_ready = 1;
+            driver_evidence.drm_modeset_ok = 1;
+            vio_drivers_set_evidence(&driver_evidence);
             /* The dumb buffer's pitch includes row padding (1088 pixels for
              * a 1080-pixel row on violet); rendering with panel_w as stride
              * would shear every row by 8 pixels. */
@@ -1439,7 +1525,7 @@ int main(void)
         }
         else {
             in_ui = 0;
-            vio_log("boot: DRM scanout unavailable; UI disabled, LUN stays up");
+            vio_log("display: DRM/KMS init failed errno=%d; UI disabled, rescue LUN stays up", errno);
         }
     }
     else {
@@ -1485,11 +1571,10 @@ int main(void)
             slen = lun.ready ?
                    screenshot_png(&lun.volume, sname, sizeof(sname)) : -1;
             volume_lock_release();
-            if(slen > 0)
-                vqeaf_ui_notify("Ảnh màn hình", sname, VQEAF_SYM_IMAGE, 0x35E0C8);
-            else
-                vqeaf_ui_notify("Ảnh màn hình", "Chụp không thành công",
-                                VQEAF_SYM_DELETE, 0xFF8A7A);
+            if(slen <= 0)
+                vqeaf_ui_notify_event("Ảnh màn hình", "Chụp không thành công",
+                                      VQEAF_SYM_DELETE, 0xFF8A7A,
+                                      VQEAF_SOUND_WARNING);
         }
 
         if(drm_ready) {
@@ -1530,6 +1615,7 @@ int main(void)
                         /* A queued install/launch runs on the UI thread, so an
                          * asleep screen must wake instead of stalling it. */
                         if(ui_page_request >= 0 ||
+                           ui_term_request_flag ||
                            vqeaf_qeapp_install_pending() ||
                            vqeaf_qeapp_launch_pending() ||
                            vqeaf_qeapp_data_pending() ||
@@ -1543,6 +1629,12 @@ int main(void)
                             int page = ui_page_request;
                             ui_page_request = -1;
                             vqeaf_ui_show((vqeaf_page_t)page);
+                        }
+                        if(ui_term_request_flag) {
+                            char line[UI_TERM_REQUEST_MAX];
+                            snprintf(line, sizeof(line), "%s", ui_term_request);
+                            ui_term_request_flag = 0;
+                            vqeaf_terminal_run(line);
                         }
                         if(ui_power_request) {
                             ui_power_request = 0;
@@ -1639,9 +1731,11 @@ int main(void)
                                     slen = -1;
                                 volume_lock_release();
                                 if(slen <= 0)
-                                    vqeaf_ui_notify("Ảnh màn hình",
-                                                    "Chụp không thành công",
-                                                    VQEAF_SYM_DELETE, 0xFF8A7A);
+                                    vqeaf_ui_notify_event("Ảnh màn hình",
+                                                          "Chụp không thành công",
+                                                          VQEAF_SYM_DELETE,
+                                                          0xFF8A7A,
+                                                          VQEAF_SOUND_WARNING);
                             }
                             if(power_btn.record_toggle) {
                                 power_btn.record_toggle = 0;
@@ -1651,13 +1745,17 @@ int main(void)
                                 if(vio_rec_active()) {
                                     vio_rec_stop();
                                 } else if(vio_rec_start(8, 10) == 0) {
-                                    vqeaf_ui_notify("Quay màn hình",
-                                                    "Đang quay 10 giây, 8 fps",
-                                                    VQEAF_SYM_MOVIE, 0xFF7A7A);
+                                    vqeaf_ui_notify_event("Quay màn hình",
+                                                          "Đang quay 10 giây, 8 fps",
+                                                          VQEAF_SYM_MOVIE,
+                                                          0xFF7A7A,
+                                                          VQEAF_SOUND_NONE);
                                 } else {
-                                    vqeaf_ui_notify("Quay màn hình",
-                                                    "Không quay được màn hình",
-                                                    VQEAF_SYM_DELETE, 0xFF8A7A);
+                                    vqeaf_ui_notify_event("Quay màn hình",
+                                                          "Không quay được màn hình",
+                                                          VQEAF_SYM_DELETE,
+                                                          0xFF8A7A,
+                                                          VQEAF_SOUND_WARNING);
                                 }
                             }
                             if(power_btn.volume_delta != 0)
@@ -1688,9 +1786,11 @@ int main(void)
                                 int rc = vio_lun_set_mode(&lun, mode);
 
                                 if(rc < 0)
-                                    vqeaf_ui_notify("USB",
-                                                    "Không đổi được chế độ USB",
-                                                    VQEAF_SYM_DELETE, 0xFF8A7A);
+                                    vqeaf_ui_notify_event("USB",
+                                                          "Không đổi được chế độ USB",
+                                                          VQEAF_SYM_DELETE,
+                                                          0xFF8A7A,
+                                                          VQEAF_SOUND_WARNING);
                                 else if(pick == VQEAF_USB_CHARGE)
                                     /* Charge-only hides QEAFRESCUE, so the
                                      * notice names the way back. */
@@ -1752,6 +1852,8 @@ int main(void)
                             : "boot: USB gadget bound on retry");
                 else
                     vio_log("boot: gadget bind on retry failed; will try again");
+                driver_evidence.usb_gadget_bound = lun.ready && lun.gadget;
+                vio_drivers_set_evidence(&driver_evidence);
                 in_ui = 0;
             }
             else {

@@ -1,6 +1,10 @@
 # Violet native boot integration — MRE → QEAFIVELS
 
-Date: 2026-11-23
+Date: 2026-11-23; reference-track label updated 2026-11-25
+
+This document describes the retained freestanding AArch64 reference kernel.
+It is not the production Violet Linux boot path. Linux 4.14 is the approved
+kernel core; production hardware belongs to Linux drivers and QEAF services.
 
 ## Integrated modules
 
@@ -34,6 +38,33 @@ Entering the Violet DTB probe mode disables QEMU-only GICv2 fallback for that bo
 - MMU enable refuses to proceed unless PMM and page-table construction succeeded; the MRE MMU routine also refuses if SCTLR_EL1.M/C are already enabled.
 - GIC and timer are not initialized by discovery or by the bootstrap function. They remain an explicit later operation.
 - The MRE GICv3 path still requires a verified ICC_SRE access path through the actual secure-firmware/EL2 handoff. That has not been established on the handset.
+
+## SM6150 display/DSI and GENI UART (2026-11-25)
+
+The independent AArch64 build now contains a bounded SM6150 DSI 6G-v2.3.1
+controller core. It detects the shifted version, programs the current XML
+RGB888 video timing and four-lane mapping, performs the 20 ms controller reset,
+and waits for a real video-done or error interrupt with a poll limit. The
+NT36672A Shenchao reference mode is explicitly burst mode with non-continuous
+clocking; it remains reference data, not proof of the fitted panel.
+
+The display lifecycle still fails closed. READY requires an authenticated boot
+handoff, enabled MMU, complete discovered nodes/supplies/lanes, explicit panel
+timing and verified command data, working clock/regulator/GPIO providers,
+verified panel initialization/deinitialization, DSI video-done, verified DPU
+scanout, and backlight. The DSI controller core does not implement the
+panel-dependent 14 nm PHY/PLL trim, DISPCC/DPU/SMMU providers, or the actual
+NT36672A command arrays.
+
+The GENI UART backend remains explicit and fail-closed. Successful attachment
+still requires verified clocks, pins, inherited UART configuration and MMU
+mapping. Polled TX timeouts now stop the command engine with bounded
+cancel-then-abort recovery before detaching the backend.
+
+Host verification: 28/28 native CTest tests passed, including fake-MMIO DSI and
+GENI recovery tests; `scripts/build_kernel_aarch64.py` linked the AArch64 ELF;
+`scripts/test_kernel_aarch64.py` passed the QEMU regression. These are host and
+emulated results, not physical display or UART evidence.
 
 ## Host evidence
 

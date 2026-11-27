@@ -1,16 +1,14 @@
 /* SPDX-License-Identifier: MIT */
 /* platform/violet/ui/vqeaf_theme.c - widget constructors for the phone shell. */
 #include "vqeaf_theme.h"
-#include "wallpaper.h"
 
 #include "vqeaf/settings.h"
 #include <stdio.h>
 
 /* Zero-initialised, filled by vqeaf_theme_set() before anything is drawn. */
 vqeaf_palette_t vqeaf_palette;
-/* The installed shell starts in Light; Settings can still switch to Dark. */
 static vqeaf_theme_mode_t g_theme_mode = VQEAF_THEME_DARK;
-static int g_liquid_glass;
+static int g_liquid_glass = 1;
 static int g_fluent;
 
 /* ---- dynamic colour (Material You style) --------------------------------- */
@@ -29,7 +27,7 @@ static int clamp_i(int value, int lo, int hi)
 /* Integer HSL: h 0..359, s/l 0..100. */
 static lv_color_t hsl_color(int h, int s, int l)
 {
-    int sector, frac, c, x, m, r, g, b, light, chroma, span;
+    int sector, frac, x, m, r, g, b, light, chroma, span;
 
     h = ((h % 360) + 360) % 360;
     s = clamp_i(s, 0, 100);
@@ -105,7 +103,7 @@ static void palette_m3_roles(vqeaf_theme_mode_t mode, int hue)
     }
     else {
         vqeaf_palette.primary = vqeaf_palette.accent;
-        vqeaf_palette.on_primary = lv_color_hex(0x00201C);
+        vqeaf_palette.on_primary = lv_color_hex(0x001A3D);
         vqeaf_palette.primary_container = hsl_color(hue, 60, 22);
         vqeaf_palette.on_primary_container = hsl_color(hue, 80, 92);
         vqeaf_palette.secondary_container = hsl_color(hue, 30, 22);
@@ -185,16 +183,16 @@ static void palette_from_seed(vqeaf_theme_mode_t mode, uint32_t seed)
 typedef struct { uint32_t rgb; int weight; } wall_color_t;
 
 static const wall_color_t wall_dark[] = {
-    { 0x10232F, 34 },  /* deep blue sky */
-    { 0x1C6669, 24 },  /* teal cloud */
-    { 0x285878, 22 },  /* blue cloud */
-    { 0x614B79, 20 },  /* violet sun glow */
+    { 0x0A3EB4, 40 },  /* cobalt sky */
+    { 0x2E73E8, 34 },  /* royal blue */
+    { 0x65AEFF, 18 },  /* sky highlight */
+    { 0x092D78,  8 },  /* deep blue shade */
 };
 static const wall_color_t wall_light[] = {
-    { 0xE2DDEE, 40 },  /* pale lavender sky */
-    { 0xFFF0E6, 14 },  /* warm horizon */
-    { 0xB5A5C5, 12 }, { 0xD4AFC5, 10 },
-    { 0xE9BCA8,  8 }, { 0xF5BFC0, 6 },
+    { 0xEAF4FF, 40 },  /* pale sky */
+    { 0xCDE4FF, 28 },  /* blue haze */
+    { 0x9CC8FF, 18 },  /* cobalt highlight */
+    { 0xF7FBFF, 14 },  /* white light */
 };
 
 static uint32_t wallpaper_dominant(vqeaf_theme_mode_t mode)
@@ -320,40 +318,38 @@ void vqeaf_theme_set(vqeaf_theme_mode_t mode)
         return;
     }
     if(g_theme_mode == VQEAF_THEME_LIGHT) {
-        /* Sampled from the light-mode reference: pale sky wallpaper, white
-         * frosted surfaces, dark ink text, deeper teal for contrast. */
-        vqeaf_palette.bg        = lv_color_hex(0xF2F2F7);
-        vqeaf_palette.bg_deep   = lv_color_hex(0xFFFFFF);
-        vqeaf_palette.surface   = lv_color_hex(0xFFFFFF);
-        vqeaf_palette.surface_2 = lv_color_hex(0xF2F2F7);
-        vqeaf_palette.surface_3 = lv_color_hex(0xE5E5EA);
-        vqeaf_palette.line      = lv_color_hex(0xD1D1D6);
-        vqeaf_palette.accent    = lv_color_hex(0x007AFF);
-        vqeaf_palette.accent_dk = lv_color_hex(0x005EC4);
-        vqeaf_palette.cyan      = lv_color_hex(0x32ADE6);
-        vqeaf_palette.green     = lv_color_hex(0x34C759);
-        vqeaf_palette.text      = lv_color_hex(0x1C1C1E);
-        vqeaf_palette.text_dim  = lv_color_hex(0x636366);
-        vqeaf_palette.text_mute = lv_color_hex(0x8E8E93);
-        vqeaf_palette.danger    = lv_color_hex(0xFF3B30);
-        vqeaf_palette.warn      = lv_color_hex(0xFF9500);
+        vqeaf_palette.bg        = lv_color_hex(0xEAF3FF);
+        vqeaf_palette.bg_deep   = lv_color_hex(0xF7FBFF);
+        vqeaf_palette.surface   = lv_color_hex(0xF8FBFF);
+        vqeaf_palette.surface_2 = lv_color_hex(0xEDF5FF);
+        vqeaf_palette.surface_3 = lv_color_hex(0xDDEEFF);
+        vqeaf_palette.line      = lv_color_hex(0xA9C7E8);
+        vqeaf_palette.accent    = lv_color_hex(0x1663D6);
+        vqeaf_palette.accent_dk = lv_color_hex(0x0B4FB3);
+        vqeaf_palette.cyan      = lv_color_hex(0x2289C9);
+        vqeaf_palette.green     = lv_color_hex(0x16805A);
+        vqeaf_palette.text      = lv_color_hex(0x0B2447);
+        vqeaf_palette.text_dim  = lv_color_hex(0x345579);
+        vqeaf_palette.text_mute = lv_color_hex(0x5D7A9D);
+        vqeaf_palette.danger    = lv_color_hex(0xC74646);
+        vqeaf_palette.warn      = lv_color_hex(0xA87413);
     }
     else {
-        vqeaf_palette.bg        = lv_color_hex(0x070B20); /* Midnight Navy */
-        vqeaf_palette.bg_deep   = lv_color_hex(0x030511);
-        vqeaf_palette.surface   = lv_color_hex(0x101A3A); /* Deep Blue */
-        vqeaf_palette.surface_2 = lv_color_hex(0x152049);
-        vqeaf_palette.surface_3 = lv_color_hex(0x1C2A55);
-        vqeaf_palette.line      = lv_color_hex(0x2A3A63);
-        vqeaf_palette.accent    = lv_color_hex(0x8157FF); /* Neon Violet */
-        vqeaf_palette.accent_dk = lv_color_hex(0x287BFF); /* Electric Blue */
-        vqeaf_palette.cyan      = lv_color_hex(0x25D9F2); /* Cyan Glow */
-        vqeaf_palette.green     = lv_color_hex(0x34C97A);
-        vqeaf_palette.text      = lv_color_hex(0xF4F5FF); /* Primary Text */
-        vqeaf_palette.text_dim  = lv_color_hex(0xAAB2D0); /* Secondary Text */
-        vqeaf_palette.text_mute = lv_color_hex(0x6E7BA5);
-        vqeaf_palette.danger    = lv_color_hex(0xFF6B6B);
-        vqeaf_palette.warn      = lv_color_hex(0xFFB020);
+        vqeaf_palette.bg        = lv_color_hex(0x071D4A);
+        vqeaf_palette.bg_deep   = lv_color_hex(0x031330);
+        vqeaf_palette.surface   = lv_color_hex(0x123C7A);
+        vqeaf_palette.surface_2 = lv_color_hex(0x1B4D96);
+        vqeaf_palette.surface_3 = lv_color_hex(0x2A62AE);
+        vqeaf_palette.line      = lv_color_hex(0x7EB5FF);
+        vqeaf_palette.accent    = lv_color_hex(0x5EA0FF);
+        vqeaf_palette.accent_dk = lv_color_hex(0x2563EB);
+        vqeaf_palette.cyan      = lv_color_hex(0x78D9FF);
+        vqeaf_palette.green     = lv_color_hex(0x55D6A3);
+        vqeaf_palette.text      = lv_color_hex(0xFFFFFF);
+        vqeaf_palette.text_dim  = lv_color_hex(0xD4E6FF);
+        vqeaf_palette.text_mute = lv_color_hex(0x9DBCE6);
+        vqeaf_palette.danger    = lv_color_hex(0xFF8A94);
+        vqeaf_palette.warn      = lv_color_hex(0xFFD166);
     }
     {
         int h, s, l;
@@ -396,7 +392,7 @@ int vqeaf_theme_fluent(void)
 
 int32_t vqeaf_theme_card_radius(void)
 {
-    return g_fluent ? 12 : 28;
+    return g_fluent ? 12 : 32;
 }
 
 void vqeaf_acrylic_surface(lv_obj_t *obj, int32_t radius)
@@ -417,25 +413,25 @@ void vqeaf_acrylic_surface(lv_obj_t *obj, int32_t radius)
 }
 
 /* LVGL has no backdrop blur in this renderer. Simulate the reference's glass
- * with a deep-blue translucent gradient, cyan/violet rim and soft navy shadow. */
+ * with a white-to-blue translucent gradient, bright rim and soft cobalt shadow. */
 void vqeaf_glass_surface(lv_obj_t *obj, int32_t radius, lv_opa_t opacity)
 {
     if(obj == NULL) return;
-    lv_obj_set_style_bg_color(obj, lv_color_hex(0x101A3A), 0);
-    lv_obj_set_style_bg_grad_color(obj, lv_color_hex(0x8157FF), 0);
+    lv_obj_set_style_bg_color(obj, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_bg_grad_color(obj, lv_color_hex(0x78B7FF), 0);
     lv_obj_set_style_bg_grad_dir(obj, LV_GRAD_DIR_VER, 0);
     lv_obj_set_style_bg_main_stop(obj, 0, 0);
     lv_obj_set_style_bg_grad_stop(obj, 255, 0);
     lv_obj_set_style_bg_opa(obj, opacity, 0);
     lv_obj_set_style_radius(obj, radius, 0);
-    lv_obj_set_style_border_width(obj, 2, 0);
-    lv_obj_set_style_border_color(obj, lv_color_hex(0x25D9F2), 0);
-    lv_obj_set_style_border_opa(obj, LV_OPA_80, 0);
+    lv_obj_set_style_border_width(obj, 1, 0);
+    lv_obj_set_style_border_color(obj, lv_color_hex(0xEAF5FF), 0);
+    lv_obj_set_style_border_opa(obj, LV_OPA_70, 0);
     lv_obj_set_style_shadow_width(obj, 18, 0);
     lv_obj_set_style_shadow_ofs_y(obj, 7, 0);
     lv_obj_set_style_shadow_spread(obj, 0, 0);
-    lv_obj_set_style_shadow_color(obj, lv_color_hex(0x030511), 0);
-    lv_obj_set_style_shadow_opa(obj, LV_OPA_60, 0);
+    lv_obj_set_style_shadow_color(obj, lv_color_hex(0x031A4D), 0);
+    lv_obj_set_style_shadow_opa(obj, (lv_opa_t)45, 0);
 }
 
 /* --- typography weights --------------------------------------------------- */
@@ -481,6 +477,33 @@ const lv_font_t *vqeaf_type_font(vqeaf_font_role_t role)
 {
     return vqeaf_type_font_weight(role, vqeaf_type_get_bold() ? VQEAF_WEIGHT_BOLD :
                                                       VQEAF_WEIGHT_REGULAR);
+}
+
+static lv_font_t g_emoji_text_fonts[8];
+static lv_font_t g_emoji_default_font;
+static const lv_font_t *const g_emoji_text_bases[] = {
+    &vqeaf_font_20, &vqeaf_font_24, &vqeaf_font_28, &vqeaf_font_34,
+    &vqeaf_font_bold_20, &vqeaf_font_bold_24, &vqeaf_font_bold_28,
+    &vqeaf_font_bold_34,
+};
+
+const lv_font_t *vqeaf_type_font_with_emoji(const lv_font_t *font)
+{
+    if(font == NULL) return NULL;
+    lv_font_t *wrapped = NULL;
+    for(size_t i = 0; i < sizeof(g_emoji_text_bases) / sizeof(g_emoji_text_bases[0]); i++) {
+        if(font == g_emoji_text_bases[i]) {
+            wrapped = &g_emoji_text_fonts[i];
+            break;
+        }
+    }
+    if(font == lv_font_get_default()) wrapped = &g_emoji_default_font;
+    if(wrapped == NULL) return font;
+    if(wrapped->get_glyph_dsc == NULL) {
+        *wrapped = *font;
+        wrapped->fallback = &vqeaf_emoji_28;
+    }
+    return wrapped;
 }
 
 lv_obj_t *vqeaf_obj(lv_obj_t *parent)
@@ -581,17 +604,6 @@ lv_obj_t *vqeaf_label(lv_obj_t *parent, const char *text,
     lv_label_set_text(label, text);
     lv_obj_set_style_text_font(label, font, 0);
     lv_obj_set_style_text_color(label, color, 0);
-    /* Readability on the photo wallpaper: a 1px contrasting outline keeps
-     * dark text legible over the black-hole image (and light text over bright
-     * areas) without changing the theme palette. */
-    {
-        lv_color32_t c = lv_color_to_32(color, LV_OPA_COVER);
-        uint32_t lum = (c.red * 299u + c.green * 587u + c.blue * 114u) / 1000u;
-        lv_obj_set_style_text_outline_stroke_width(label, 1, 0);
-        lv_obj_set_style_text_outline_stroke_color(label,
-            lum > 128u ? lv_color_black() : lv_color_white(), 0);
-        lv_obj_set_style_text_outline_stroke_opa(label, 140, 0);
-    }
     lv_obj_add_flag(label, LV_OBJ_FLAG_GESTURE_BUBBLE);
     return label;
 }
@@ -644,17 +656,32 @@ void vqeaf_app_icon_style(lv_obj_t *tile, lv_color_t top,
 lv_obj_t *vqeaf_icon_img(lv_obj_t *parent, const lv_image_dsc_t *dsc,
                          int32_t size)
 {
-    if(dsc == NULL) return NULL;
-    lv_obj_t *img = lv_image_create(parent);
+    if(dsc == NULL || dsc->header.w == 0 || size <= 0) return NULL;
+    lv_obj_t *clip = lv_obj_create(parent);
+    lv_obj_remove_style_all(clip);
+    lv_obj_set_size(clip, size, size);
+    lv_obj_set_style_radius(clip, 10, 0);
+    lv_obj_set_style_clip_corner(clip, true, 0);
+    lv_obj_set_style_bg_opa(clip, LV_OPA_TRANSP, 0);
+    lv_obj_remove_flag(clip, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_remove_flag(clip, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(clip, LV_OBJ_FLAG_GESTURE_BUBBLE);
+
+    lv_obj_t *img = lv_image_create(clip);
     lv_obj_remove_style_all(img);
     lv_image_set_src(img, dsc);
     lv_obj_set_size(img, size, size);
     lv_image_set_scale(img, (uint32_t)size * 256 / dsc->header.w);
-    lv_image_set_antialias(img, true);
+    lv_obj_center(img);
+    /* System pixel art must keep hard edges at non-integer display sizes. */
+    int pixel_art = dsc->header.w == 32 && dsc->header.h == 32 &&
+                    (dsc->header.cf == LV_COLOR_FORMAT_RGB565 ||
+                     dsc->header.cf == LV_COLOR_FORMAT_ARGB8888);
+    lv_image_set_antialias(img, !pixel_art);
     lv_obj_remove_flag(img, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_remove_flag(img, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(img, LV_OBJ_FLAG_GESTURE_BUBBLE);
-    return img;
+    return clip;
 }
 
 void vqeaf_on_click(lv_obj_t *obj, lv_event_cb_t cb, void *user_data)
@@ -1816,15 +1843,12 @@ int vqeaf_m3_checklist_done(lv_obj_t *list)
 
 int vqeaf_wallpaper_active(void)
 {
-    return qeaf_wallpaper.data != NULL && qeaf_wallpaper.header.w > 0;
+    return 1;
 }
 
 lv_color_t vqeaf_wallpaper_text_color(void)
 {
-    if(qeaf_wallpaper.data != NULL && qeaf_wallpaper.header.w > 0)
-        return lv_color_hex(0xF4F5FF); /* Midnight V2 primary text over the photo */
-    return vqeaf_theme_liquid_glass() ? lv_color_hex(0xFFF7FF) :
-                                        VQEAF_C_TEXT;
+    return VQEAF_C_TEXT;
 }
 
 static lv_obj_t *wallpaper_blob(lv_obj_t *parent, int32_t width,
@@ -1851,12 +1875,9 @@ static lv_obj_t *wallpaper_blob(lv_obj_t *parent, int32_t width,
 void vqeaf_wallpaper(lv_obj_t *parent)
 {
     const int light = vqeaf_theme_get() == VQEAF_THEME_LIGHT;
-    const int glass = g_liquid_glass;
     lv_obj_t *base = lv_obj_create(parent);
-    int32_t w, h, sun;
-    uint32_t sky_top, sky_bottom, sun_top, sun_bottom;
-    uint32_t cloud_a, cloud_b, cloud_c, ridge_a, ridge_b;
-    lv_opa_t cloud_opa, ridge_opa;
+    int32_t w, h;
+    uint32_t sky_top, sky_bottom, highlight, mid, deep;
 
     lv_obj_remove_style_all(base);
     lv_obj_set_pos(base, 0, 0);
@@ -1872,113 +1893,28 @@ void vqeaf_wallpaper(lv_obj_t *parent)
     if(w <= 0) w = VQEAF_SCREEN_W;
     if(h <= 0) h = VQEAF_SCREEN_H;
 
-    /* Real photo wallpaper (generated from a user-supplied image, RGB565 at
-     * the exact UI canvas size). It covers the whole content box; the vector
-     * gradient below stays as the fallback for a zero-sized descriptor. */
-    if(qeaf_wallpaper.data != NULL && qeaf_wallpaper.header.w > 0 &&
-       qeaf_wallpaper.header.h > 0) {
-        lv_obj_t *photo = lv_image_create(base);
-        lv_image_set_src(photo, &qeaf_wallpaper);
-        lv_obj_set_size(photo, w, h);
-        /* "Cover": scale uniformly by the larger axis ratio so the picture
-         * always fills the box; LVGL clips the overflow to the parent base.
-         * This keeps the black-hole ring centred in portrait and landscape
-         * instead of stretching it into an oval. */
-        {
-            int32_t iw = (int32_t)qeaf_wallpaper.header.w;
-            int32_t ih = (int32_t)qeaf_wallpaper.header.h;
-            uint32_t zoom = 256;
-            if(iw > 0 && ih > 0) {
-                uint32_t zx = (uint32_t)(((int64_t)w * 256 + iw / 2) / iw);
-                uint32_t zy = (uint32_t)(((int64_t)h * 256 + ih / 2) / ih);
-                zoom = zx > zy ? zx : zy;
-                if(zoom < 256) zoom = 256;
-            }
-            lv_image_set_scale_x(photo, zoom);
-            lv_image_set_scale_y(photo, zoom);
-        }
-        lv_obj_align(photo, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_remove_flag(photo,
-            LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(photo, LV_OBJ_FLAG_GESTURE_BUBBLE);
-
-        /* Contrast veil. The photo is mostly near-black; in the light theme
-         * dark text on it was unreadable. A translucent white veil lifts the
-         * backdrop for dark text; in dark themes a black veil keeps light
-         * text legible. The veil sits above the photo but below all page
-         * content and never takes focus or gestures. */
-        {
-            lv_obj_t *veil = lv_obj_create(base);
-            lv_obj_remove_style_all(veil);
-            lv_obj_set_size(veil, lv_pct(100), lv_pct(100));
-            lv_obj_set_pos(veil, 0, 0);
-            lv_obj_set_style_bg_color(veil, light ? lv_color_white() :
-                                                  lv_color_black(), 0);
-            lv_obj_set_style_bg_opa(veil,
-                (lv_opa_t)(light ? (g_liquid_glass ? 50 : 58) :
-                                   (g_liquid_glass ? 34 : 46)), 0);
-            lv_obj_remove_flag(veil, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_add_flag(veil, LV_OBJ_FLAG_GESTURE_BUBBLE);
-            lv_obj_remove_flag(veil, LV_OBJ_FLAG_CLICKABLE);
-        }
-        return;
+    if(light) {
+        sky_top = 0xEAF4FF; sky_bottom = 0xCDE4FF;
+        highlight = 0x9CC8FF; mid = 0x77ADF2; deep = 0xD2E6FF;
     }
-
-    if(glass) {
-        sky_top = 0x392055; sky_bottom = 0xF3A18F;
-        sun_top = 0xF7C4D1; sun_bottom = 0xF5A581;
-        cloud_a = 0x82589E; cloud_b = 0xD17DB2; cloud_c = 0xF0B4A0;
-        ridge_a = 0x81688E; ridge_b = 0x553F6E;
-        cloud_opa = 58; ridge_opa = 48;
-    } else if(light) {
-        sky_top = 0xD9E0E1; sky_bottom = 0xE6E9E7;
-        sun_top = 0xEDF0EE; sun_bottom = 0xC8D0CF;
-        cloud_a = 0x87999C; cloud_b = 0xAAB6B6; cloud_c = 0xD4DAD8;
-        ridge_a = 0x809092; ridge_b = 0xA4B0AE;
-        cloud_opa = 17; ridge_opa = 13;
-    } else {
-        sky_top = 0x10232F; sky_bottom = 0x111D28;
-        sun_top = 0x356B74; sun_bottom = 0x614B79;
-        cloud_a = 0x1C6669; cloud_b = 0x285878; cloud_c = 0x72557F;
-        ridge_a = 0x1E3D49; ridge_b = 0x162C38;
-        cloud_opa = 52; ridge_opa = 72;
+    else {
+        sky_top = 0x0A3EB4; sky_bottom = 0x4F9BFF;
+        highlight = 0x74B8FF; mid = 0x2E73E8; deep = 0x092D78;
     }
-
     lv_obj_set_style_bg_color(base, lv_color_hex(sky_top), 0);
     lv_obj_set_style_bg_grad_color(base, lv_color_hex(sky_bottom), 0);
 
-    /* Keep the background code-drawn: no image widget, decoder, or bitmap
-     * asset is required for the fog and layered landscape. */
-    sun = w * 56 / 100;
-    wallpaper_blob(base, sun, sun, w * 51 / 100, h * 18 / 100,
-                   sun_top, sun_bottom, glass ? 42 : (light ? 17 : 30));
-
-    /* Small cloud forms keep the middle of the screen calm for text and
-     * widgets. Their rounded ends stay inside the canvas instead of making
-     * full-width horizontal bands. */
-    wallpaper_blob(base, w * 62 / 100, h * 8 / 100, -w * 8 / 100,
-                   h * 42 / 100, cloud_a, cloud_b,
-                   (lv_opa_t)(cloud_opa * 3 / 5));
-    wallpaper_blob(base, w * 46 / 100, h * 7 / 100, w * 55 / 100,
-                   h * 54 / 100, cloud_b, cloud_c,
-                   (lv_opa_t)(cloud_opa / 2));
-    wallpaper_blob(base, w * 53 / 100, h * 8 / 100, w * 7 / 100,
-                   h * 66 / 100, cloud_c, cloud_a,
-                   (lv_opa_t)(cloud_opa * 2 / 5));
-
-    /* Two broad ellipses, cropped by the display, form distant soft hills. */
-    wallpaper_blob(base, w * 180 / 100, h * 56 / 100, -w * 40 / 100,
-                   h * 73 / 100, ridge_a, ridge_b, ridge_opa);
-    wallpaper_blob(base, w * 170 / 100, h * 48 / 100, -w * 15 / 100,
-                   h * 82 / 100, ridge_b, sky_bottom,
-                   (lv_opa_t)(ridge_opa * 3 / 4));
-
-    /* Soft, layered hills echo the misty references without adding a bitmap
-     * or image decoder to the shell. */
-    wallpaper_blob(base, w * 145 / 100, h * 27 / 100, -w * 24 / 100,
-                   h * 60 / 100, ridge_a, cloud_b,
-                   glass ? 21 : (light ? 13 : 34));
-    wallpaper_blob(base, w * 155 / 100, h * 24 / 100, -w * 42 / 100,
-                   h * 70 / 100, ridge_b, sky_bottom,
-                   glass ? 34 : (light ? 15 : 50));
+    wallpaper_blob(base, w * 150 / 100, h * 62 / 100, -w * 48 / 100,
+                   -h * 38 / 100, highlight, mid, light ? 70 : 115);
+    wallpaper_blob(base, w * 138 / 100, h * 50 / 100, w * 25 / 100,
+                   -h * 26 / 100, light ? 0xF7FBFF : 0x65AEFF,
+                   sky_bottom, light ? 50 : 85);
+    wallpaper_blob(base, w * 175 / 100, h * 52 / 100, -w * 65 / 100,
+                   h * 58 / 100, deep, mid, light ? 45 : 120);
+    wallpaper_blob(base, w * 150 / 100, h * 36 / 100, -w * 10 / 100,
+                   h * 72 / 100, mid, light ? 0xEAF4FF : 0x0A3EB4,
+                   light ? 45 : 90);
+    wallpaper_blob(base, w * 110 / 100, h * 18 / 100, w * 40 / 100,
+                   h * 46 / 100, light ? 0xFFFFFF : 0x8FCBFF,
+                   highlight, light ? 30 : 38);
 }

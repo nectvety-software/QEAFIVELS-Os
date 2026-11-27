@@ -17,6 +17,7 @@ typedef enum {
     VQEAF_FW_BOOTING,
     VQEAF_FW_QRTR_READY,
     VQEAF_FW_QMI_DISCOVERED,
+    VQEAF_FW_WLFW_READY,
     VQEAF_FW_WLAN_READY,
     VQEAF_FW_FAILED,
     VQEAF_FW_CRASHED
@@ -36,6 +37,8 @@ typedef struct {
     int  (*fw_boot_status)(void *, int *booted, int *crashed);
     int  (*qrtr_ready)(void *);
     int  (*qmi_discover)(void *, uint32_t *node, uint32_t *port);
+    /* 0 only after the real WLFW handshake; -EAGAIN means not ready yet. */
+    int  (*wlfw_ready)(void *);
     void (*log)(void *, const char *line);
     uint64_t (*now_ms)(void *ctx);
     void (*sleep_ms)(void *, uint32_t ms);
@@ -57,7 +60,7 @@ void vqeaf_fw_boot_init(vqeaf_fw_boot_t *b, const vqeaf_fw_ops_t *ops);
  * errno with b->state == VQEAF_FW_FAILED / VQEAF_FW_CRASHED. */
 int vqeaf_fw_boot_run(vqeaf_fw_boot_t *b, const char *fw_path,
                       uint32_t boot_timeout_ms, uint32_t poll_ms,
-                      uint32_t max_restarts);
+                      uint32_t wlfw_timeout_ms, uint32_t max_restarts);
 void vqeaf_fw_boot_abort(vqeaf_fw_boot_t *b); /* safe shutdown / CNSS reset */
 
 #endif

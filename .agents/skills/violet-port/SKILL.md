@@ -1,8 +1,9 @@
 # Skill: Violet port (Redmi Note 7 Pro)
 
-Build, package and flash the VQEAF-OS aarch64 PID 1 from this tree onto the
-Redmi Note 7 Pro (codename `violet`), and verify it with the same evidence
-rules the x86_64 reference uses. Read `.agents/AGENTS.md` first.
+Build, package and verify the QEAFIVELS Linux-core aarch64 PID 1 for the
+Redmi Note 7 Pro (codename `violet`). Flashing is a separate, explicitly
+consented action and is never implied by a build/package request. Read
+`.agents/AGENTS.md` first.
 
 ## What exists
 
@@ -14,8 +15,9 @@ rules the x86_64 reference uses. Read `.agents/AGENTS.md` first.
 - `scripts/build_violet.py` — Zig 0.13 (`-target aarch64-linux-musl`,
   `-static`), links `build/violet/vqeaf-init`.
 - `scripts/package_violet.py` — stages `/init`, reuses QeafdropOs
-  `mk_initramfs.py` + `mk_bootimg_violet.py` (stock kernel, patched header),
-  runs the gates, writes `dist/boot-vqeaf-violet.img`.
+  `mk_initramfs.py` + `mk_bootimg_violet.py` (stock Linux 4.14 kernel, patched
+  header), verifies kernel/init provenance, runs the gates, writes
+  `dist/boot-vqeaf-violet.img` and `dist/boot-vqeaf-violet.manifest.json`.
 - QeafdropOs checkout (default `D:\QeafivelsOfficial\QeafdropOs`, override
   with `QEAFDROPOS`) supplies the Zig toolchain, the stock kernel dump and
   the flash/verify scripts.
@@ -25,12 +27,15 @@ rules the x86_64 reference uses. Read `.agents/AGENTS.md` first.
 ```
 python scripts/build_violet.py            # incremental
 python scripts/build_violet.py --clean    # from scratch
-python scripts/package_violet.py          # image + gates (implies build)
+python scripts/package_violet.py          # image + provenance + gates (implies build)
 python scripts/package_violet.py --skip-build
+python scripts/package_violet.py --verify-only  # inspect existing artifacts, no build
 ```
 
-Output: `dist/boot-vqeaf-violet.img`. Two gates run at the end and must PASS
-before anything else happens:
+Output: `dist/boot-vqeaf-violet.img` plus
+`dist/boot-vqeaf-violet.manifest.json`. The kernel payload must match the
+stock reference byte-for-byte, `/init` must be a static AArch64 ELF, and two
+gates must PASS before the manifest is written:
 
 1. `QeafdropOs/scripts/validate_bootimg.py` — boot image structure.
 2. `QeafdropOs/scripts/audit_rescue_channel.py` — rescue channel files plus

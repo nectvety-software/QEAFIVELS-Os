@@ -9,8 +9,9 @@
 #include "vqeaf/firmware_boot.h"
 
 typedef struct {
-    int fail_step;      /* 1..8, 0 = none */
+    int fail_step;      /* 1..9, 0 = none */
     int boot_mode;      /* 0 ok, 1 timeout, 2 crash once, 3 crash always */
+    int wlfw_mode;      /* 0 ready, 1 never ready, 2 error */
     int qmi_found;
     uint64_t now;
     uint32_t boot_calls;
@@ -52,6 +53,13 @@ static int boot_status(void *p, int *booted, int *crashed)
     *booted = 1;
     return 0;
 }
+static int wlfw_ready(void *p)
+{
+    sc_t *s = (sc_t *)p;
+    mark(s, 9);
+    if(s->fail_step == 9 || s->wlfw_mode == 2) return -EIO;
+    return s->wlfw_mode == 1 ? -EAGAIN : 0;
+}
 static int qrtr(void *p) { return failed((sc_t *)p, 7); }
 static int discover(void *p, uint32_t *node, uint32_t *port)
 {
@@ -71,7 +79,7 @@ static vqeaf_fw_ops_t make_ops(sc_t *s)
     o.clocks_enable = clocks; o.clocks_disable = clocks_off;
     o.bus_ready = bus; o.fw_validate = validate; o.fw_load = load;
     o.fw_boot_status = boot_status; o.qrtr_ready = qrtr;
-    o.qmi_discover = discover; o.log = logline;
+    o.qmi_discover = discover; o.wlfw_ready = wlfw_ready; o.log = logline;
     o.now_ms = now; o.sleep_ms = sleep_ms;
     return o;
 }
@@ -101,19 +109,20 @@ int main(void)
     init_sc(&s);
     o = make_ops(&s);
     vqeaf_fw_boot_init(&b, &o);
-    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 1) == 0);
+    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 100, 1) == 0);
     assert(b.state == VQEAF_FW_WLAN_READY && b.fw_len == 4096);
     assert(b.qmi_node == 2 && b.qmi_port == 0x1234);
-    assert(s.calls[0] == 1 && has_call(&s, 6) && has_call(&s, 8));
+    assert(s.calls[0] == 1 && has_call(&s, 6) && has_call(&s, 8) &&
+           has_call(&s, 9));
     assert(s.nlog > 0);
 
     /* Fail at every stage: never advance past the failing callback. */
-    for(step = 1; step <= 8; step++) {
+    for(step = 1; step <= 9; step++) {
         init_sc(&s);
         s.fail_step = step;
         o = make_ops(&s);
         vqeaf_fw_boot_init(&b, &o);
-        assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 0) < 0);
+        assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 100, 0) < 0);
         assert(b.state == VQEAF_FW_FAILED);
         assert(b.last_error == -EIO || b.last_error == -ENOENT);
         assert(!has_call(&s, step + 1) || step == 6);
@@ -125,7 +134,7 @@ int main(void)
     s.boot_mode = 1;
     o = make_ops(&s);
     vqeaf_fw_boot_init(&b, &o);
-    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 0) == -ETIMEDOUT);
+    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 100, 0) == -ETIMEDOUT);
     assert(b.state == VQEAF_FW_FAILED && s.boot_calls == 11);
     assert(!has_call(&s, 7) && !has_call(&s, 8));
 
@@ -134,7 +143,7 @@ int main(void)
     s.boot_mode = 2;
     o = make_ops(&s);
     vqeaf_fw_boot_init(&b, &o);
-    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 1) == 0);
+    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 100, 1) == 0);
     assert(b.state == VQEAF_FW_WLAN_READY && b.restarts == 1);
     assert(has_call(&s, 90)); /* power_off was called before restart */
 
@@ -143,7 +152,7 @@ int main(void)
     s.boot_mode = 3;
     o = make_ops(&s);
     vqeaf_fw_boot_init(&b, &o);
-    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 1) == -EIO);
+    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 100, 1) == -EIO);
     assert(b.state == VQEAF_FW_CRASHED && !has_call(&s, 7));
 
     /* WLFW 0x45 not discovered: fail at QMI step, never WLAN_READY. */
@@ -151,9 +160,19 @@ int main(void)
     s.qmi_found = 0;
     o = make_ops(&s);
     vqeaf_fw_boot_init(&b, &o);
-    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 0) == -ENOENT);
+    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 100, 0) == -ENOENT);
     assert(b.state == VQEAF_FW_FAILED && b.last_error == -ENOENT);
     assert(strcmp(vqeaf_fw_state_name(VQEAF_FW_WLAN_READY), "WLAN_READY") == 0);
+
+    /* A discovered service without a completed WLFW handshake is not ready. */
+    init_sc(&s);
+    s.wlfw_mode = 1;
+    o = make_ops(&s);
+    vqeaf_fw_boot_init(&b, &o);
+    assert(vqeaf_fw_boot_run(&b, "wlanmdsp.mbn", 100, 10, 40, 0) == -ETIMEDOUT);
+    assert(b.state == VQEAF_FW_FAILED && b.last_error == -ETIMEDOUT);
+    assert(has_call(&s, 8) && has_call(&s, 9));
+    assert(strcmp(vqeaf_fw_state_name(VQEAF_FW_WLFW_READY), "WLFW_READY") == 0);
 
     /* Abort releases resources and returns to POWER_OFF. */
     init_sc(&s);

@@ -1,23 +1,41 @@
-# QEAFIVELS OS — Independent Operating System Charter
+# QEAFIVELS OS — Linux-Core Operating System Charter
 
-Status: architecture baseline, 2026-11-11
+Status: architecture baseline updated 2026-11-25
 Target: Xiaomi Redmi Note 7 Pro (violet), Qualcomm SM6150 family
-Identity: QEAFIVELS OS / QEAFIVELS Kernel / QEAFIVELS Framework
+Identity: QEAFIVELS OS / QEAFIVELS Linux Core / QEAFIVELS Framework
 
-## Non-negotiable independence
+The filename is retained for continuity. The former "independent kernel"
+foundation was superseded by the explicit 2026-11-25 decision to use Linux
+as the core for the entire OS.
 
-The production target is a freestanding ARM64 operating system with its own boot handoff, kernel, drivers, syscall ABI, native services, framework, application loader, recovery and package ecosystem.
+## Approved foundation and ownership
 
-Forbidden as runtime foundations: Linux kernel, Linux userspace, vendor mobile-platform ROM families, vendor app runtimes, vendor framework/HAL/services, and Linux distributions. A Linux-hosted cross compiler or QEMU host is a development tool only, not a target runtime dependency.
+The production Violet target uses the vendor Linux `4.14.215-azure-Pixel+`
+AArch64 kernel. The x86_64/QEMU reference target uses a separately pinned
+upstream Linux 4.14.215 kernel and deterministic initramfs. QEMU boots QEAF
+PID 1, services and the native Puzzle `.qeapp`; this is headless emulator
+evidence, not a physical hardware or production-release claim.
 
-The existing `platform/violet/main_violet.c` image is explicitly LEGACY TRANSPORT PROTOTYPE: it is an AArch64 Linux-musl PID 1/initramfs application using the stock device kernel, DRM/KMS and evdev. It is not QEAFIVELS Kernel and must not be packaged or described as the independent OS. Preserve it for reference and comparison; do not use it as the final target boot path.
+Linux owns process/memory management, scheduling, interrupts, timers,
+VFS/filesystems, namespaces, kernel security primitives and kernel drivers.
+QEAFIVELS owns PID 1/init, system services, capability policy, device
+brokers, framework, UI, QeafVXP Runtime, `.qeapp`, `.vqeaf`, rescue and
+tooling.
 
-The current freestanding x86_64 UEFI kernel/boot manager/recovery and QEMU tests are a development reference for kernel algorithms and interfaces only. They are not phone-compatible and must not be represented as Violet support. Port architecture-neutral algorithms; implement ARM64 entry, exception, MMU and interrupt code separately.
+Forbidden as userspace foundations: Android/AOSP/ART, APK-style packages,
+Java/Kotlin, vendor mobile ROMs, vendor app runtimes/frameworks/HAL/services
+and Linux distributions. Linux kernel use is approved. Never rename a vendor
+ROM or Linux distribution as QEAFIVELS OS, and never claim QEAFIVELS wrote
+the Linux kernel.
+
+The freestanding x86_64 UEFI and AArch64 kernels are retained as
+reference/regression tracks until Linux reaches evidence parity. They are
+not phone-compatible production kernels and must not be flashed as such.
 
 ## Product names
 
 - OS: QEAFIVELS OS
-- Kernel: QEAFIVELS Kernel
+- Kernel: QEAFIVELS Linux Core
 - Framework: QEAFIVELS Framework
 - Compatibility runtime: QeafVXP Runtime (isolated from native apps)
 - Native package: .qeapp
@@ -28,70 +46,112 @@ The current freestanding x86_64 UEFI kernel/boot manager/recovery and QEMU tests
 
 ## Target facts and confidence
 
-Public product/device references identify Redmi Note 7 Pro as Snapdragon 675 / SM6150, Kryo 460, Adreno 612, 4/6 GiB LPDDR4X, 64/128 GB eMMC 5.1 and 2340x1080 IPS LCD. Qualcomm's platform brief identifies SM6150, Adreno 612, Kryo 460, X12 LTE modem and Hexagon 685 DSP.
+Public product/device references identify Redmi Note 7 Pro as Snapdragon 675
+/ SM6150, Kryo 460, Adreno 612, 4/6 GiB LPDDR4X, 64/128 GB eMMC 5.1 and
+2340x1080 IPS LCD. Qualcomm's platform brief identifies SM6150, Adreno 612,
+Kryo 460, X12 LTE modem and Hexagon 685 DSP.
 
-Existing local Violet hardware notes contain measured observations from one device and a stock image dump:
-- DSI panel reports 1080x2340 at 60 Hz; panel name recorded as nt36672a_shenchao.
-- Storage dump exposes mmcblk0 and identifies the device storage as eMMC; do not call it UFS. Exact controller/partition geometry must be rechecked against the target unit before any write.
-- Existing stock-kernel DRM/KMS dumb-buffer scanout and backlight control were demonstrated from Linux userspace. These observations do not prove a bare-metal display driver.
-- USB gadget UDC was observed at a600000.dwc3; configfs mass-storage was demonstrated under the stock kernel only.
-- Touch node exists but raw protocol and controller identity remain unverified.
-- Audio, Wi-Fi, Bluetooth, modem, GPS, sensors and camera do not have verified QEAFIVELS-native drivers.
-- The local hardware notes contain a conflict: product sources say SM6150 while an older Qeafdrop README says SDM660. Resolve from Violet DTB compatible, SoC ID/revision and CPU identification before silicon-specific work.
-- The local dump notes report vbmeta presence and unsigned test-image boot observations, but secure-boot/AVB and anti-rollback state are not fully characterized. Do not infer universal unlock/verification behavior.
+Existing local Violet hardware notes contain measured observations from one
+device and a stock image dump:
 
-Reference links:
-- upstream Violet device-tree reference (identifier intentionally omitted under QEAF naming policy)
-- https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/snapdragon_product_brief_675.pdf
-- https://www.qualcomm.com/media/documents/files/secure-boot-and-image-authentication-technical-overview-v2-0.pdf
+- DSI panel reports 1080x2340 at 60 Hz; panel name recorded as
+  `nt36672a_shenchao`.
+- Storage exposes mmcblk0 and identifies eMMC; do not call it UFS. Exact
+  controller/partition geometry must be rechecked before any write.
+- Stock-kernel DRM/KMS scanout, backlight control, evdev and configfs USB
+  gadget were demonstrated from Linux userspace.
+- USB gadget UDC was observed at `a600000.dwc3`.
+- Wi-Fi, Bluetooth, modem, GNSS, audio, camera and biometrics still require
+  honest firmware/service/driver evidence; a HAL or UI mock is not proof.
+- The dump contains `vbmeta`; secure-boot/AVB and anti-rollback state are not
+  fully characterized. Do not infer universal unlock behavior.
 
 ## Boot strategy and safety
 
-Do not replace XBL/ABL or write boot-critical partitions as an exploratory step. The current evidence supports using the device's existing boot chain as a transport for a future freestanding ARM64 kernel image, but the exact entry exception level, register contract, DTB location, reserved-memory map, cache state, and secure-world handoff must first be measured/documented.
+Do not replace XBL/ABL or write boot-critical partitions as an exploratory
+step. Violet currently reuses the stock kernel payload and existing boot
+transport, replacing only the ramdisk. Kernel/package provenance must be
+verified before any deployment consideration.
 
-First target artifact: a serial-only freestanding ARM64 kernel that validates a documented handoff and halts safely. Display, touch and storage follow only after register-level and memory-map evidence. Recovery must be a separate minimal freestanding image/path, not a vendor mobile-platform recovery or a Linux initramfs.
-
-No physical flash/write is authorized by this charter. All destructive actions require a separate explicit request and verified device/partition identity, backups and recovery plan.
+No physical flash/write is authorized by this charter. Current project
+policy permits only explicitly approved p77/recovery writes with both raw
+read-back proofs; p76/boot, userdata and misc remain forbidden without a new
+explicit authorization. All destructive actions require verified
+device/partition identity, backups and a recovery plan.
 
 ## Architecture
 
-1. Boot: documented existing boot-chain transport initially; QEAFIVELS stage-2/boot manager only when hardware interface and signing constraints are known.
-2. Kernel: freestanding AArch64 EL entry, vectors, GIC interrupt controller, generic timer, page tables/MMU, physical allocator, scheduler, IPC, syscalls, crash log.
-3. HAL/drivers: native MMIO/register drivers; vendor firmware is an explicitly versioned external dependency, never an implicit vendor mobile-platform or Linux service.
-4. Core services: supervisor, device/capability registry, storage/VFS, power, display, input, logging, security, package/update and notifications via QEAFIVELS IPC.
-5. Framework: native graphics, LVGL integration, window manager, events, gestures, font/theme/animation/accessibility and application lifecycle.
-6. QeafVXP Runtime: separate compatibility boundary; never load .vxp as .qeapp.
-7. Native apps: documented executable ABI, signed .qeapp, permissions and process isolation.
-8. UI: lock/home/drawer/notifications/quick settings/settings/recovery backed by real service APIs.
+1. Boot: verified existing transport, pinned kernel artifact, initramfs,
+   recovery and diagnostics.
+2. Linux kernel core: vendor Violet 4.14.215 on AArch64; pinned upstream
+   4.14.215 x86_64/QEMU baseline.
+3. Drivers: Linux owns probe/remove, IRQ, DMA, clocks, regulators, resets and
+   runtime power. QEAF services expose bounded hardware APIs.
+4. Core services: supervisor, device/capability registry, storage/VFS,
+   power, display, input, logging, security, package/update and notifications.
+5. Framework: native graphics, LVGL integration, window manager, events,
+   gestures, font/theme/animation/accessibility and application lifecycle.
+6. QeafVXP Runtime: separate compatibility boundary; never load `.vxp` as
+   `.qeapp`.
+7. Native apps: documented executable ABI, signed `.qeapp`, permissions and
+   Linux process isolation.
+8. UI and rescue: lock/home/drawer/notifications/quick settings/settings and
+   recovery backed by real service APIs.
+
+## Security gates
+
+QEAPP processes must drop root identity, clear supplementary groups, close
+inherited descriptors, apply `no_new_privs`, seccomp and resource limits, and
+receive no direct MMIO or privileged device access. Verify the actual target
+kernel's namespace, seccomp, cgroup/device and LSM configuration.
+
+Signed package/update verification, persistent private storage, revocation,
+rollback and hardware-backed key storage remain separate implementation
+gates. The freestanding kernel's EL0 capability/VFS tests remain mandatory
+for that reference track only.
 
 ## Verified stage gates
 
-A stage is DONE only when source, reproducible build artifact, automated tests and evidence are recorded. Emulator tests are labeled emulator-only. Hardware tests must include device identity, test method, logs and observed result. No feature may be marked hardware-supported from a UI mock or stock-kernel probe.
+A stage is DONE only when source or binary provenance, reproducible build
+artifact where source exists, automated tests and evidence are recorded.
+Emulator tests are labeled emulator-only. Hardware tests must include device
+identity, method, logs and observed result. No feature may be marked
+hardware-supported from a UI mock or stock-kernel probe alone.
 
-### Stage 1 — hardware/boot research
-Current: PARTIAL. Public SoC/spec identity and local stock-kernel observations exist. Remaining: resolve SoC ID conflict; capture exact boot image/DTB/bootloader version; verify partition map on the actual unit; document handoff registers/EL/cache/MMU state, RAM/reserved-memory map, security/AVB/rollback and UART route. No partition writes.
+### Linux migration phases
 
-### Stage 2 — boot transport proof
-Build a host-testable image parser and a serial-only AArch64 payload. Prove boot entry and safe halt without replacing XBL/ABL. Record exact payload format and handoff. Do not claim a custom bootloader unless code actually runs before the kernel slot.
-
-### Stage 3 — ARM64 kernel startup
-Freestanding toolchain and linker script; AArch64 entry/vector table; early UART only after verified register/clock/pin configuration; exception diagnostics; handoff parser. First artifact must not call Linux syscalls, libc, or depend on an initramfs userspace.
-Current: DONE on QEMU virt (emulated only) — `kernel/arch/aarch64`, gate `scripts/test_kernel_aarch64.py`. The Violet handoff/entry path is still NOT STARTED.
-
-### Stages 4–10 — kernel foundations
-MMU and memory map; page allocator; GIC and generic timer; scheduler/context switch; synchronization; IPC; syscall ABI; block-device contract; crash handling. Unit tests on host/QEMU plus target tests when hardware access is available.
-Current: stages 4–7 are DONE on QEMU virt; stage 8 is PARTIAL (virtio-mmio only); stages 9–10 are PARTIAL (kernel ramfs with per-task handles, exception/panic diagnostics). Stage 7 includes the F4 credential model: per-task uid/gid/capabilities, capability-gated syscall dispatch and VFS owner/mode checks. None of this is Violet hardware evidence.
-
-### Stages 11–15 — services/framework/UI
-Native supervisor and versioned IPC; driver/capability model; VFS; display/input service; LVGL UI port with a QEAFIVELS display/input backend; native framework and .qeapp lifecycle. LVGL is a graphics library, not an OS foundation.
-
-### Stages 16–20 — recovery, ecosystem, validation
-Independent recovery; signed update and rollback; QeafVXP isolation; VXPEngine and Qeafivels Tool integration; staged physical validation. Wi-Fi/BT/modem/audio/camera/GPS/sensors require separate firmware and register/interface research.
+1. **Architecture and provenance — IN PROGRESS.** Canonical rules now name
+   Linux as the core. Violet host-only kernel/package manifest verification
+   is implemented; source revision remains unavailable.
+2. **x86_64 Linux baseline — PASS.** Upstream Linux 4.14.215 source, config,
+   toolchain, `bzImage`, static userspace and deterministic initramfs are pinned
+   and verified under `build/linux-x86_64/`.
+3. **x86_64 QEMU bring-up — PARTIAL.** QEAF PID 1, service readiness, native
+   Puzzle `.qeapp` lifecycle and clean poweroff PASS in QEMU. Rescue, system UI,
+   persistence and updates are not wired into this headless path.
+4. **Violet reproducible kernel — BLOCKED.** Exact vendor 4.14 source/config/
+   DTB provenance is missing; current packaging is verified binary reuse.
+5. **Driver/service parity — IN PROGRESS.** Linux owns hardware; QEAF service
+   adapters and capability reporting remain under test.
+6. **Security/persistence/update — PARTIAL.** QEAPP sandbox exists; durable
+   storage, revocation, signed update and rollback are incomplete.
+7. **Physical validation — NOT AUTHORIZED.** Requires separate explicit
+   approval and p77-only evidence gates.
 
 ## Immediate next actions
 
-1. Freeze and relabel the Linux-musl Violet initramfs path as legacy/interim; exclude it from independent-OS release claims.
-2. Audit actual repository and preserve the freestanding x86_64 reference implementation and its tests.
-3. ~~Create `kernel/arch/aarch64` bring-up sources, linker script and build target with no libc/Linux ABI.~~ Done on QEMU virt: `scripts/build_kernel_aarch64.py` + `scripts/test_kernel_aarch64.py` (milestones A–G1, F4). Remaining: Violet handoff/entry.
-4. Resolve target identity and boot handoff from the existing local stock dump and, where available, read-only device diagnostics.
-5. ~~Build and test a serial-only AArch64 image before adding UI or attempting any flash.~~ Done on QEMU virt (serial-only boot, then display/input/compositor/UI layers, all emulated). No flash has been attempted for this track.
+1. Keep `scripts/package_violet.py --verify-only` and its unit tests green.
+2. Keep `scripts/build_linux_x86_64.py`, its 21 baseline tests and the
+   Linux/QEAPP regression selection green without overwriting freestanding
+   `KERNEL.EFI` artifacts.
+3. Extend the three passing negative QEMU cases (missing services, missing
+   package, tampered package) with wrong ABI/architecture, crash, timeout and
+   unavailable seccomp without weakening the PASS gate.
+4. Harden the Linux QEAPP sandbox: W^X arena, checked rlimits, namespaces/
+   chroot/device controls, stronger signing, private storage and revocation.
+5. Complete the Linux 4.14 security backport/CVE review and source-archive GPG
+   verification before any release claim.
+6. Obtain exact Violet vendor kernel source/config/DTB provenance before
+   claiming a reproducible Violet kernel build.
+7. Preserve the freestanding kernels as reference tracks until Linux reaches
+   evidence parity; do not delete them during migration.

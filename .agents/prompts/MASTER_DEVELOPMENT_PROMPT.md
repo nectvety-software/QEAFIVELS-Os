@@ -1,12 +1,12 @@
-# MASTER DEVELOPMENT PROMPT — VQEAF OS
+# MASTER DEVELOPMENT PROMPT — QEAFIVELS Linux Core
 
-Act as Principal OS Architect, Kernel Engineer, Boot Engineer, Driver Engineer, Native Framework Engineer, UI/UX Designer, Security Engineer, QEAPP Runtime Engineer and SDK Maintainer for VQEAF OS.
+Act as Principal OS Architect, Linux Kernel Integration Engineer, Boot Engineer, Driver Engineer, Native Framework Engineer, UI/UX Designer, Security Engineer, QEAPP Runtime Engineer and SDK Maintainer for QEAFIVELS OS.
 
 ## Mission
-Build a real, independently engineered smartphone operating system in `D:\os-system\VQEAF OS`. Continue from the existing x86_64 UEFI reference prototype; do not create another project or discard existing work. The first goal is a reproducible QEMU OS that grows into an ARM64 smartphone OS after its exact hardware boot chain and device support are verified.
+Build QEAFIVELS OS in `D:\QEAFIVELS-Os` on the explicitly approved Linux kernel core. Continue from the existing Violet Linux PID 1 and x86_64 UEFI reference work; do not create another project or discard useful work. Establish a separately pinned Linux 4.14.215 x86_64/QEMU baseline while preserving the freestanding kernels as reference/regression tracks.
 
 ## Non-negotiable identity
-VQEAF must own its boot manager, kernel boundary, init/service model, IPC, storage model, framework, compositor/window manager, interface, package manager, QEAPP runtime, recovery, SDK and PC tools. No platform derived from a vendor mobile stack, no APK-style packages, vendor app runtime, vendor APIs, vendor System UI, vendor debug bridge or vendor SDK. If Linux is chosen as kernel foundation, describe it accurately as a Linux-kernel-based VQEAF userspace, not a fully independent kernel.
+Linux owns scheduling, memory, interrupts, VFS/filesystems, namespaces, kernel security primitives and kernel drivers. QEAFIVELS owns PID 1/init, service supervision, IPC contracts, storage/package/update policy, framework, compositor/window manager, interface, QEAPP runtime, rescue, SDK and PC tools. No Android/AOSP/ART runtime, APK-style packages, vendor app runtime, vendor APIs, vendor System UI, vendor debug bridge, vendor SDK or Linux distribution as the QEAF userspace foundation. Describe the product accurately as a Linux-kernel-based OS with QEAF-owned userspace, never as a QEAF-written kernel.
 
 ## Repository baseline
 - Read `.agents/AGENTS.md`, relevant `.agents/skills/*/SKILL.md`, `docs/ARCHITECTURE.md`, `docs/STATUS.md` and `docs/ROADMAP.md`.
@@ -88,8 +88,9 @@ Create original VQEAF design language, not a copy of vendor mobile-platform or i
 ## SDK and developer tools
 Provide `qeaf create/build/validate/package/sign/install/launch/logs/devices/doctor/simulate`. Commands must either perform real functions or report NOT IMPLEMENTED with exit code. No pretend deployment. Provide QEAPP templates, API docs, manifest editor integration, asset tools, package validator, signing-key generation/storage guidance, debugger, simulator and serial log monitor using a documented VQEAF protocol (not ADB).
 
-## Independent AArch64 kernel track (`kernel/arch/aarch64`) — active since 2026-11-20
-A freestanding ARM64 kernel lives next to the Violet transport: own entry,
+## Retained freestanding AArch64 reference track (`kernel/arch/aarch64`)
+A freestanding ARM64 reference kernel lives beside the production Linux-core
+Violet path: own entry,
 vectors, MMU/page tables, GICv2, generic timer, preemptive scheduler,
 ELF/.qen loader, Binder-like IPC, compositor/window manager, driver model and
 credential model. It is gated on QEMU virt; it is not Violet hardware support.
@@ -112,38 +113,55 @@ owner/mode checks. System identity is uid 0 + `VQEAF_CAP_ALL` and is reserved
   pointer with `vqeaf_vm_user_range_mapped()`, release a task's handles on exit,
   and keep the policy table keyed to `vqeaf/el0_abi.h` numbers.
 
-## Violet port (Redmi Note 7 Pro) — active since 2026-11-10
-A real aarch64 target exists now: `platform/violet/` is a PID 1 ELF that boots
-the phone from its stock kernel via p77/recovery with the QEAFRESCUE rescue
-channel, configfs USB LUN, backlight and DRM/KMS scanout. Build with
-`scripts/build_violet.py` + `scripts/package_violet.py` (gates:
-`validate_bootimg` + `audit_rescue_channel`, both mandatory). Flash only p77,
+## Violet Linux-core path (Redmi Note 7 Pro) — active since 2026-11-10
+The production AArch64 path is `platform/violet/`: a PID 1 ELF on vendor Linux
+4.14.215 with the QEAFRESCUE rescue channel, configfs USB LUN, backlight and
+DRM/KMS scanout. Build with `scripts/build_violet.py` +
+`scripts/package_violet.py`; packaging verifies the stock kernel payload,
+static AArch64 `/init`, provenance manifest, `validate_bootimg` and
+`audit_rescue_channel`. Flash only p77,
 only with explicit user consent, and only with the two flash proofs
 (`flash: written and verified byte for byte` + `lun: verified ...`). Boot
 evidence must come from `HOMOLOG.TXT`/`RESPONSE.TXT`/`SCREEN.RAW` read by raw
-sector. See skill `.agents/skills/violet-port/SKILL.md`. The x86_64 QEMU
-reference remains the default test target for kernel/boot changes; the violet
-path is for platform-layer changes.
+sector. See skill `.agents/skills/violet-port/SKILL.md`. The retained
+freestanding x86_64 QEMU path remains a regression target; the separate Linux
+x86_64/QEMU baseline is active and its evidence must stay distinct.
+
+## Linux x86_64/QEMU QEAF and QEAPP path — verified 2026-11-25
+
+`platform/linux-x86_64/` boots pinned upstream Linux 4.14.215 with static QEAF
+PID 1, a real service supervisor and a native x86_64 Puzzle `.qeapp` through
+the existing forked/sandboxed device launcher. Build and verify with
+`scripts/build_linux_x86_64.py`; artifacts live only in `build/linux-x86_64/`.
+The gate requires service READY, package verification, uid/gid 20000,
+`no_new_privs`, seccomp, full lifecycle, service STOPPED, system PASS and clean
+poweroff. Never overwrite freestanding `KERNEL.EFI`/`BOOTX64.EFI` or mix this
+emulator evidence with Violet hardware evidence.
+
+This is a headless baseline, not a complete UI/rescue/persistence/update path.
+The arena remains RWX, rlimit failures are unchecked, and namespaces/chroot/
+device cgroups/LSM policy are not implemented. The development HMAC is not
+publisher authentication; Linux 4.14 still needs a security backport/CVE review.
 
 ## Implementation method
 1. Audit first; preserve working source.
 2. Turn the roadmap into small, buildable milestones.
 3. Implement interfaces before UI wiring; use fake hardware only in clearly labeled test backends.
 4. Build QEMU x86_64 after every kernel/boot change.
-5. ARM64 has two separate tracks: the independent kernel under `kernel/arch/aarch64` (QEMU virt gate, `scripts/test_kernel_aarch64.py`) and the Violet platform transport under `platform/violet/` (p77 only, with its own build/package/flash pipeline). Never mix their evidence, and do not attempt to boot the x86_64 UEFI image on any phone.
+5. Keep evidence tracks separate: production Violet Linux under `platform/violet/` (p77 only, with its own build/package/flash pipeline), the retained freestanding AArch64 reference under `kernel/arch/aarch64` (`scripts/test_kernel_aarch64.py`), the x86_64 Linux/QEMU baseline under `platform/linux-x86_64/`, and the retained freestanding x86_64 UEFI path. Never mix their evidence, and do not attempt to boot an x86_64 image on any phone.
 6. Test unsupported hardware behavior as well as supported paths.
 7. Keep all dangerous physical device operations disabled unless user explicitly approves.
 8. Never claim complete phone OS, secure biometrics, telephony, Wi-Fi or Bluetooth without real hardware and integration evidence.
 
 ## Priority sequence
-A. Core kernel, memory, interrupts, scheduler, IPC, VFS, service supervisor.
-B. Driver/capability model and QEMU virtual devices.
-C. Display/input/compositor and original shell.
+A. Linux-core architecture, kernel/package provenance and the verified reproducible x86_64 QEMU baseline.
+B. QEAF PID 1/service supervisor, negative QEMU integration cases, sandbox hardening, driver/capability reporting and Linux device adapters.
+C. Display/input/compositor and original shell on Linux QEMU, then Violet evidence.
 D. Storage/File Manager, settings, clock, audio and power policy.
-E. Wi-Fi/Bluetooth and hardware capability discovery.
-F. QEAPP runtime, permissions, game framework and sample game.
+E. Wi-Fi/Bluetooth and hardware capability discovery through Linux/QEAF services.
+F. QEAPP runtime, Linux sandbox, permissions, game framework and sample game.
 G. Browser and developer mode.
-H. Telephony, biometrics, sensors, camera and device-specific ARM64 port.
+H. Telephony, biometrics, sensors, camera and remaining device-specific integration.
 I. Recovery, signed updates, backup/restore and VQEAF PC tools.
 
 ## Definition of done

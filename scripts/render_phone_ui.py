@@ -38,22 +38,34 @@ OUTDIR = os.path.abspath(os.environ.get(
 OBJDIR = os.path.join(ROOT, "build", "ui-host", "obj")
 EXE = os.path.join(ROOT, "build", "ui-host", "vqeaf-ui-host.exe")
 
-PAGES = ["lock", "home", "apps", "apps-edit", "control", "settings", "storage", "about",
+PAGES = ["lock", "home", "home-page-2", "apps", "apps-edit", "apps-edit-page-2",
+         "control", "settings", "storage", "about",
          "keyboard", "keyboard-themes", "wifi", "drivers", "sync", "lock-theme", "files",
          "installer", "qeapp", "qeapp-native", "video", "music",
-         "ntfs-search", "task-manager", "disk-cleanup"]
+         "ntfs-search", "task-manager", "disk-cleanup", "terminal",
+         "security", "wifi-audit", "advisories", "advisories-search", "advisory-detail",
+         "m3"]
 # The .qeapp installer overlay states, rendered over the FILES page.
-INSTALL_STATES = ["install-confirm", "install-busy", "install-done", "install-error"]
+INSTALL_STATES = ["install-confirm", "install-busy", "install-done",
+                  "install-error", "install-session"]
 # Bold-text accessibility mode renders of real pages (weight system).
 BOLD_STATES = ["settings-bold", "home-bold"]
 # Independent IME window rendered over the real Notes page in each adaptive mode.
-IME_STATES = ["ime-normal", "ime-split", "ime-one-hand", "ime-floating", "ime-extract"]
+IME_STATES = ["ime-normal", "ime-split", "ime-one-hand", "ime-floating",
+              "ime-extract", "ime-emoji"]
 # Music app surfaces beyond the plain player.
 MUSIC_STATES = ["music-canvas", "music-queue"]
+# Control Center with an injected real playback session.
+MEDIA_STATES = ["control-media-audio"]
 # Windows 11 (Fluent) skin: the pages the skin changes, rendered with it on.
 FLUENT_STATES = ["lock-fluent", "home-fluent", "apps-fluent", "settings-fluent"]
+# M3 reference page scrolled to its reusable Liquid Glass showcase.
+M3_STATES = ["m3-liquid", "m3-liquid-overlay", "m3-liquid-actions"]
+# First-boot setup steps, captured with the completion marker cleared.
+SETUP_STATES = ["setup-welcome", "setup-security", "setup-network",
+                "setup-appearance", "setup-ready"]
 ALL_STATES = (PAGES + INSTALL_STATES + BOLD_STATES + IME_STATES + MUSIC_STATES +
-              FLUENT_STATES)
+              MEDIA_STATES + FLUENT_STATES + M3_STATES + SETUP_STATES)
 GEOMETRIES = [(720, 1560), (1560, 720)]
 PROFILES = ["unknown", "providers"]
 
@@ -62,15 +74,22 @@ SOURCES = [
     os.path.join(UI, "vqeaf_shutdown.c"),
     os.path.join(UI, "vqeaf_pages.c"),
     os.path.join(UI, "vqeaf_theme.c"),
+    os.path.join(UI, "vqeaf_components.c"),
+    os.path.join(UI, "vqeaf_drag.c"),
+    os.path.join(UI, "vqeaf_sound.c"),
+    os.path.join(UI, "sounds", "vqeaf_sound_data.c"),
     os.path.join(UI, "vqeaf_ime.c"),
     os.path.join(UI, "vqeaf_wifi.c"),
+    os.path.join(UI, "vqeaf_security.c"),
     os.path.join(UI, "vqeaf_files.c"),
     os.path.join(UI, "vqeaf_sys_tools.c"),
     os.path.join(UI, "vqeaf_tools_ui.c"),
     os.path.join(UI, "vqeaf_media.c"),
     os.path.join(UI, "vqeaf_video.c"),
     os.path.join(UI, "vqeaf_qeapp.c"),
+    os.path.join(ROOT, "platform", "violet", "qeapp_package.c"),
     os.path.join(ROOT, "system", "core", "settings.c"),
+    os.path.join(ROOT, "system", "core", "clipboard.c"),
     os.path.join(UI, "icons", "vqeaf_app_icons.c"),
     os.path.join(UI, "fonts", "vqeaf_font_20.c"),
     os.path.join(UI, "fonts", "vqeaf_font_24.c"),
@@ -83,6 +102,7 @@ SOURCES = [
     os.path.join(UI, "fonts", "vqeaf_font_bold_34.c"),
     os.path.join(UI, "fonts", "vqeaf_font_bold_56.c"),
     os.path.join(UI, "fonts", "vqeaf_font_bold_96.c"),
+    os.path.join(UI, "fonts", "vqeaf_font_bold_160.c"),
     os.path.join(UI, "fonts", "vqeaf_icon_28.c"),
     os.path.join(UI, "fonts", "vqeaf_icon_40.c"),
     os.path.join(UI, "fonts", "vqeaf_emoji_28.c"),
@@ -242,7 +262,8 @@ def main():
                 # IME frames are partial-screen overlays (extract mode is a
                 # large flat editor above the keys), so they are legitimately
                 # sparser than a full page; a truly blank frame has 1-3 colours.
-                min_colours = 12 if page in IME_STATES else 30
+                min_colours = 20 if page == "setup-welcome" else (
+                    12 if page in IME_STATES else 30)
                 if colours < min_colours:
                     raise SystemExit("render_phone_ui: %s looks blank (%d colours)"
                                      % (ppm, colours))

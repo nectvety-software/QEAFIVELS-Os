@@ -4,8 +4,8 @@
  * Built by scripts/test_violet_shell.py against the same sources as the
  * initramfs shell (state providers stubbed like vqeaf_ui_host.c). Verifies the
  * tap/long-press contract by execution: tap opens, long-press shows the info
- * sheet, the sheet's move button rearranges the dock. Key steps are dumped as
- * PPM so the script can convert them to PNG for visual inspection.
+ * sheet, stock Home widget/grid/pagination, and Home dock move mode.
+ * Key steps are dumped as PPM for visual inspection.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,13 +16,26 @@
 #include "vqeaf_state.h"
 #include "vqeaf_ui.h"
 #include "vqeaf_pages.h"
+#include "vqeaf_security.h"
+#include "vqeaf_theme.h"
+#include "vqeaf_components.h"
+#include "vqeaf_drag.h"
+#include "icons/vqeaf_app_icons.h"
+#include "vqeaf_tools_ui.h"
 #include "vqeaf_ime.h"
 #include "vqeaf_fonts.h"
 #include "vqeaf_qeapp.h"
+#include <vqeaf/qeapp_package.h>
 #include "vqeaf_qeapp_device.h"
+#include <vqeaf/settings.h>
 #include "vqeaf_shutdown.h"
 #include "vqeaf_host_platform.h"
 #include "vqeaf_host_sync.h"
+
+#ifndef __linux__
+void vqeaf_install_render(int state);
+void vqeaf_install_render_close(void);
+#endif
 
 /* Test doubles for platform haptics (host gate has no vibrator). */
 int vio_haptics_available(void) { return 0; }
@@ -41,6 +54,34 @@ int vio_rec_stop(void) { return -1; }
 int vio_rec_active(void) { return 0; }
 const char *vio_rec_status(void) { return "host renderer: no DRM scanout"; }
 int vio_screenshot_now(void) { return -1; }
+
+static int g_sound_write_fail;
+
+static int test_sound_open(void *context)
+{
+    (void)context;
+    return 0;
+}
+
+static int test_sound_write(void *context, const int16_t *samples, size_t count)
+{
+    (void)context;
+    (void)samples;
+    if(g_sound_write_fail) return -1;
+    return (int)count;
+}
+
+static void test_sound_close(void *context)
+{
+    (void)context;
+}
+
+static const vqeaf_sound_backend_t test_sound_backend = {
+    .name = "PCM kiểm thử",
+    .open = test_sound_open,
+    .write = test_sound_write,
+    .close = test_sound_close,
+};
 
 int vqeaf_camera_query_caps(char *buf, int cap)
 {
@@ -94,6 +135,31 @@ static int fake_usb_mode(void)
 /* Device-only native runtime stubs (same contract as vqeaf_ui_host.c): the
  * host cannot fork/map native modules, so the QEAPP page renders its honest
  * empty state instead of a fabricated frame. */
+int vqeaf_qeapp_device_session_start(const uint8_t *package, size_t size,
+                                     uint32_t effective_permissions,
+                                     char *error, size_t error_cap)
+{
+    (void)package; (void)size; (void)effective_permissions;
+    if(error != NULL && error_cap > 0) error[0] = '\0';
+    return 1;
+}
+
+int vqeaf_qeapp_device_session_send(const vqeaf_qeapp_device_input_t *event)
+{
+    (void)event;
+    return -1;
+}
+
+int vqeaf_qeapp_device_session_poll(char *error, size_t error_cap)
+{
+    if(error != NULL && error_cap > 0) error[0] = '\0';
+    return 0;
+}
+
+void vqeaf_qeapp_device_session_stop(void) {}
+int vqeaf_qeapp_device_session_active(void) { return 0; }
+uint32_t vqeaf_qeapp_device_session_frame_seq(void) { return 0u; }
+
 int vqeaf_qeapp_device_launch(const uint8_t *package, size_t size,
                               uint32_t effective_permissions,
                               char *report, size_t report_cap,
@@ -271,6 +337,22 @@ static void long_press(int x, int y)
     step(60);
 }
 
+/* Hold past the long-press threshold, then move without lifting. */
+static void hold_drag_to(int x0, int y0, int x1, int y1, int steps)
+{
+    int i;
+
+    g_point.x = x0;
+    g_point.y = y0;
+    g_pressed = 1;
+    step(1000);
+    for(i = 1; i <= steps; i++) {
+        g_point.x = x0 + (x1 - x0) * i / steps;
+        g_point.y = y0 + (y1 - y0) * i / steps;
+        step(20);
+    }
+}
+
 /* Hold the finger down without lifting: used to observe Material's ripple. */
 static void press_hold(int x, int y, int ms)
 {
@@ -291,6 +373,7 @@ static lv_obj_t *find_label(lv_obj_t *root, const char *text, int min_y)
     uint32_t i, n;
     lv_area_t area;
 
+    if(lv_obj_has_flag(root, LV_OBJ_FLAG_HIDDEN)) return NULL;
     if(lv_obj_check_type(root, &lv_label_class)) {
         const char *t = lv_label_get_text(root);
         lv_obj_get_coords(root, &area);
@@ -306,6 +389,24 @@ static lv_obj_t *find_label(lv_obj_t *root, const char *text, int min_y)
 }
 
 /* First textarea in the tree (the Notes field), so the IME can bind it. */
+static lv_obj_t *find_label_topmost(lv_obj_t *root, const char *text, int min_y)
+{
+    uint32_t i = lv_obj_get_child_count(root);
+    lv_area_t area;
+    while(i > 0) {
+        lv_obj_t *child = lv_obj_get_child(root, --i);
+        lv_obj_t *hit = find_label_topmost(child, text, min_y);
+        if(hit != NULL) return hit;
+    }
+    if(lv_obj_check_type(root, &lv_label_class)) {
+        const char *t = lv_label_get_text(root);
+        lv_obj_get_coords(root, &area);
+        if(t != NULL && strcmp(t, text) == 0 && area.y1 >= min_y)
+            return root;
+    }
+    return NULL;
+}
+
 static lv_obj_t *find_textarea(lv_obj_t *root)
 {
     uint32_t i, n;
@@ -370,6 +471,43 @@ static int label_target(lv_obj_t *label, int *x, int *y)
     return 0;
 }
 
+static int label_self_target(lv_obj_t *label, int *x, int *y);
+
+static int tap_text(lv_obj_t *root, const char *text)
+{
+    lv_obj_t *label = find_label(root, text, 0);
+    int x, y;
+    int rc;
+    if(label == NULL) return -1;
+    rc = lv_obj_has_flag(label, LV_OBJ_FLAG_CLICKABLE) ?
+         label_self_target(label, &x, &y) : label_target(label, &x, &y);
+    if(rc != 0) return -1;
+    tap(x, y);
+    settle();
+    return 0;
+}
+
+static int enter_digits(const char *digits)
+{
+    for(; *digits != '\0'; digits++) {
+        char key[2] = { *digits, '\0' };
+        if(tap_text(lv_screen_active(), key) != 0) return -1;
+    }
+    return 0;
+}
+
+static int first_child_target(lv_obj_t *parent, int *x, int *y)
+{
+    lv_obj_t *child = lv_obj_get_child(parent, 0);
+    lv_area_t area;
+    if(child == NULL) return -1;
+    lv_obj_update_layout(lv_screen_active());
+    lv_obj_get_coords(child, &area);
+    *x = (area.x1 + area.x2) / 2;
+    *y = (area.y1 + area.y2) / 2;
+    return 0;
+}
+
 /* Header labels sit at the far right of a full-width row; label_target()
  * aims at the row centre, so small action labels need their own coords. */
 static int label_self_target(lv_obj_t *label, int *x, int *y)
@@ -386,6 +524,19 @@ static int label_self_target(lv_obj_t *label, int *x, int *y)
 static int modal_up(void)
 {
     return lv_obj_get_child_count(lv_layer_top()) > 0;
+}
+
+static lv_obj_t *find_drag_ghost(void)
+{
+    lv_obj_t *layer = lv_layer_top();
+    uint32_t count = lv_obj_get_child_count(layer);
+    for(uint32_t i = 0; i < count; i++) {
+        lv_obj_t *obj = lv_obj_get_child(layer, (int32_t)i);
+        if(lv_obj_get_width(obj) == 104 && lv_obj_get_height(obj) == 104 &&
+           !lv_obj_has_flag(obj, LV_OBJ_FLAG_CLICKABLE))
+            return obj;
+    }
+    return NULL;
 }
 
 static lv_obj_t *find_label_contains(lv_obj_t *root, const char *needle,
@@ -478,11 +629,222 @@ static void snapshot(const char *name)
     printf("shot %s\n", path);
 }
 
+static void check_app_icon_contract(void)
+{
+    const lv_image_dsc_t *icons[VQEAF_APP_ICON_COUNT];
+    int valid = 1;
+    int unique = 1;
+
+    for(int i = 0; i < VQEAF_APP_ICON_COUNT; i++) {
+        icons[i] = vqeaf_app_icon(i);
+        if(icons[i] == NULL || icons[i]->data == NULL ||
+           icons[i]->header.magic != LV_IMAGE_HEADER_MAGIC ||
+           icons[i]->header.cf != LV_COLOR_FORMAT_ARGB8888 ||
+           icons[i]->header.w != 32 || icons[i]->header.h != 32 ||
+           icons[i]->header.stride != 128 ||
+           icons[i]->data_size != 32u * 32u * 4u ||
+           icons[i]->data[3] != 0 ||
+           icons[i]->data[(32 * 16 + 16) * 4 + 3] != 255)
+            valid = 0;
+    }
+    for(int i = 0; i < VQEAF_APP_ICON_COUNT; i++) {
+        if(icons[i] == NULL) continue;
+        for(int j = i + 1; j < VQEAF_APP_ICON_COUNT; j++) {
+            if(icons[j] != NULL &&
+               memcmp(icons[i]->data, icons[j]->data,
+                      icons[i]->data_size) == 0)
+                unique = 0;
+        }
+    }
+    CHECK(valid, "all 29 system icons are valid 32x32 ARGB8888 LVGL images");
+    CHECK(unique, "every system icon has original pixel data");
+    CHECK(vqeaf_app_icon(-1) == NULL &&
+          vqeaf_app_icon(VQEAF_APP_ICON_COUNT) == NULL,
+          "out-of-range system icon IDs return NULL");
+}
+
+static void check_icon_display_copy(void)
+{
+    uint8_t raw[64 * 64 * 4];
+    uint8_t original[64 * 64 * 4];
+    uint8_t display_copy[64 * 64 * 4];
+    const size_t center = (32u * 64u + 32u) * 4u;
+    const size_t edge = center + 4u;
+    int alpha_unchanged = 1;
+
+    memset(raw, 0, sizeof(raw));
+    raw[center] = 0;
+    raw[center + 1] = 0;
+    raw[center + 2] = 255;
+    raw[center + 3] = 255;
+    raw[edge + 3] = 128;
+    raw[(63u * 64u + 63u) * 4u + 3u] = 255;
+    memcpy(original, raw, sizeof(raw));
+    CHECK(vqeaf_qeapp_icon_display_copy(display_copy, sizeof(display_copy),
+                                        raw, sizeof(raw)) == 0,
+          "legacy icon display copy succeeds");
+    CHECK(memcmp(raw, original, sizeof(raw)) == 0,
+          "legacy icon normalization preserves raw package pixels");
+    CHECK(display_copy[edge] == 0 && display_copy[edge + 1] == 0 &&
+          display_copy[edge + 2] == 255 && display_copy[edge + 3] == 128,
+          "partial-alpha black edge inherits opaque colour");
+    CHECK(display_copy[2] == 255 && display_copy[3] == 0,
+          "transparent pixels inherit colour without gaining alpha");
+    for(size_t i = 3; i < sizeof(raw); i += 4)
+        if(raw[i] != display_copy[i]) alpha_unchanged = 0;
+    CHECK(alpha_unchanged, "legacy icon normalization preserves every alpha");
+    CHECK(display_copy[(63u * 64u + 63u) * 4u + 3u] == 255 &&
+          display_copy[(63u * 64u + 63u) * 4u + 2u] == 0,
+          "opaque black artwork remains opaque black");
+    CHECK(vqeaf_qeapp_icon_display_copy(display_copy, sizeof(display_copy) - 1,
+                                        raw, sizeof(raw)) == -1 &&
+          vqeaf_qeapp_icon_display_copy(NULL, sizeof(display_copy),
+                                        raw, sizeof(raw)) == -1,
+          "icon display copy rejects invalid buffers");
+}
+
+static uint32_t framebuffer_rgb(int x, int y)
+{
+    return framebuffer[(size_t)y * 720u + (unsigned)x] & 0x00FFFFFFu;
+}
+
+static void check_icon_clipping(void)
+{
+    static uint8_t pixels[32 * 32 * 4];
+    static const lv_image_dsc_t opaque_icon = {
+        .header = {
+            .magic = LV_IMAGE_HEADER_MAGIC,
+            .cf = LV_COLOR_FORMAT_ARGB8888,
+            .w = 32, .h = 32, .stride = 128,
+        },
+        .data = pixels,
+        .data_size = sizeof(pixels),
+    };
+    lv_obj_t *backdrop;
+    lv_obj_t *clip;
+    lv_obj_t *image;
+
+    memset(pixels, 0xFF, sizeof(pixels));
+    backdrop = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(backdrop);
+    lv_obj_set_size(backdrop, 720, 1560);
+    lv_obj_set_style_bg_color(backdrop, lv_color_hex(0xFF00FF), 0);
+    lv_obj_set_style_bg_opa(backdrop, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(backdrop, LV_OBJ_FLAG_SCROLLABLE);
+    clip = vqeaf_icon_img(backdrop, &opaque_icon, 104);
+    lv_obj_set_pos(clip, 100, 120);
+    settle();
+    CHECK(clip != NULL && lv_obj_get_child_count(clip) == 1 &&
+          lv_obj_get_style_radius(clip, 0) == 10 &&
+          lv_obj_get_style_clip_corner(clip, 0),
+          "bitmap icon has a real 10 px clipping container");
+    image = clip != NULL ? lv_obj_get_child(clip, 0) : NULL;
+    CHECK(image != NULL && lv_obj_get_style_radius(image, 0) == 0,
+          "rounded clipping belongs to the parent, not the scaled image");
+    CHECK(image != NULL && lv_obj_get_x(image) == 0 && lv_obj_get_y(image) == 0 &&
+          lv_obj_get_width(image) == lv_obj_get_width(clip) &&
+          lv_obj_get_height(image) == lv_obj_get_height(clip),
+          "bitmap artwork is centered inside its clipping plate");
+    CHECK(framebuffer_rgb(100, 120) == 0x00FF00FF &&
+          framebuffer_rgb(203, 223) == 0x00FF00FF,
+          "opaque bitmap corners are clipped away");
+    CHECK(framebuffer_rgb(104, 124) == 0x00FFFFFF &&
+          framebuffer_rgb(152, 124) == 0x00FFFFFF &&
+          framebuffer_rgb(152, 172) == 0x00FFFFFF,
+          "rounded icon interior remains visible");
+    snapshot("icon-clip-probe");
+    lv_obj_del(backdrop);
+    settle();
+}
+
+static void check_advisory_service(void)
+{
+    size_t matches[VQEAF_ADVISORY_SEARCH_MAX];
+    size_t count = vqeaf_advisory_count();
+    int valid = count >= 8;
+    int sequential = 1;
+    char too_long[97];
+    const char *too_many_tokens = "one two three four five";
+
+    for(size_t i = 0; i < count; i++) {
+        const vqeaf_advisory_t *record = vqeaf_advisory_at(i);
+        if(record == NULL || record->id == NULL || record->title == NULL ||
+           record->product == NULL || record->published == NULL ||
+           record->severity == NULL || record->source == NULL ||
+           record->summary == NULL || record->remediation == NULL ||
+           record->id[0] == '\0' || record->title[0] == '\0' ||
+           record->product[0] == '\0' || record->published[0] == '\0' ||
+           record->summary[0] == '\0' || record->remediation[0] == '\0' ||
+           strncmp(record->id, "CVE-", 4) != 0)
+            valid = 0;
+    }
+    CHECK(valid, "offline advisory catalog has complete public CVE metadata");
+    CHECK(vqeaf_advisory_at(count) == NULL,
+          "out-of-range advisory IDs return NULL");
+    CHECK(vqeaf_advisory_catalog_revision()[0] != '\0',
+          "offline catalog publishes its revision");
+
+    CHECK(vqeaf_advisory_search("", matches, VQEAF_ADVISORY_SEARCH_MAX) ==
+          (int)count, "empty query returns the whole catalog");
+    for(size_t i = 0; i < count; i++)
+        if(matches[i] != i) sequential = 0;
+    CHECK(sequential, "empty-query results preserve catalog order");
+
+    CHECK(vqeaf_advisory_search("EtErNaLbLuE", matches,
+                                VQEAF_ADVISORY_SEARCH_MAX) == 1 &&
+          strcmp(vqeaf_advisory_at(matches[0])->id, "CVE-2017-0144") == 0,
+          "advisory search is case-insensitive");
+    CHECK(vqeaf_advisory_search("windows smb", matches,
+                                VQEAF_ADVISORY_SEARCH_MAX) == 1 &&
+          strcmp(vqeaf_advisory_at(matches[0])->id, "CVE-2017-0144") == 0,
+          "all query tokens must match one record");
+    CHECK(vqeaf_advisory_search("no-such-advisory", matches,
+                                VQEAF_ADVISORY_SEARCH_MAX) == 0,
+          "unknown advisory query returns no fabricated results");
+    CHECK(vqeaf_advisory_search("", matches, 1) == 1 && matches[0] == 0,
+          "search honours the caller's result bound");
+    CHECK(vqeaf_advisory_search("", NULL, 1) == -1 &&
+          vqeaf_advisory_search("", matches, 0) == -1 &&
+          vqeaf_advisory_search(NULL, matches, 1) == -1,
+          "invalid advisory search arguments are rejected");
+    memset(too_long, 'x', sizeof(too_long) - 1);
+    too_long[sizeof(too_long) - 1] = '\0';
+    CHECK(vqeaf_advisory_search(too_long, matches, 1) == -1,
+          "overlong advisory queries are rejected");
+    CHECK(vqeaf_advisory_search(too_many_tokens, matches, 1) == -1,
+          "advisory queries have a bounded token count");
+}
+
+static uint8_t setup_settings_blob[VQEAF_SETTINGS_BLOB_SIZE];
+static int setup_settings_save_fail;
+
+static int setup_settings_save(void *ctx, const uint8_t *blob, uint32_t len)
+{
+    (void)ctx;
+    if(setup_settings_save_fail) return -1;
+    if(len > sizeof(setup_settings_blob)) return -1;
+    memcpy(setup_settings_blob, blob, len);
+    return 0;
+}
+
+static int setup_settings_load(void *ctx, uint8_t *blob, uint32_t cap,
+                               uint32_t *len)
+{
+    (void)ctx;
+    (void)blob;
+    (void)cap;
+    if(len != NULL) *len = 0;
+    return -1;
+}
+
 int main(int argc, char **argv)
 {
     lv_obj_t *label;
     int x, y;
 
+    check_app_icon_contract();
+    check_icon_display_copy();
+    check_advisory_service();
     g_outdir = argc > 1 ? argv[1] : "build/screens/phone-ui";
     framebuffer = calloc(720u * 1560u, sizeof(uint32_t));
     if(framebuffer == NULL) return 2;
@@ -506,9 +868,60 @@ int main(int argc, char **argv)
     vqeaf_ui_set_sync_read(host_sync_read);
     step(100);
 
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETUP && vqeaf_setup_required(),
+          "first boot opens setup instead of lock");
+    CHECK(find_label(lv_screen_active(), "Xin chào!", 0) != NULL,
+          "setup welcome renders on initial boot");
+    CHECK(!vqeaf_ui_dock_visible() && !vqeaf_ui_gesture_pill_visible() &&
+          !vqeaf_tools_taskbar_visible(VQEAF_PAGE_SETUP),
+          "setup hides dock, gesture pill and tools taskbar");
+    vqeaf_ui_set_virtual_keys(1);
+    CHECK(!vqeaf_ui_gesture_pill_visible(),
+          "setup does not reveal a gesture pill with virtual keys enabled");
+    vqeaf_ui_set_virtual_keys(0);
+    snapshot("setup-welcome");
+    swipe(360, 1545, 360, 1300, 12);
+    swipe(710, 700, 570, 700, 12);
+    swipe(360, 8, 360, 200, 12);
+    settle();
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETUP &&
+          !vqeaf_ui_control_visible(),
+          "shell gestures cannot bypass incomplete setup");
+    label = find_label(lv_screen_active(), "Gọi khẩn cấp", 0);
+    CHECK(label != NULL && label_self_target(label, &x, &y) == 0,
+          "welcome offers emergency call");
+    if(label != NULL && label_self_target(label, &x, &y) == 0) tap(x, y);
+    settle();
+    CHECK(find_label_contains(lv_layer_top(), "Chưa có dịch vụ thoại", 0) != NULL,
+          "emergency call reports the missing modem service honestly");
+    tap_text(lv_layer_top(), "OK");
+    CHECK(tap_text(lv_screen_active(), "Bắt đầu") == 0,
+          "welcome start opens security");
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETUP &&
+          find_label(lv_screen_active(), "Bảo mật", 0) != NULL,
+          "setup start advances to security");
+    snapshot("setup-security");
+    CHECK(tap_text(lv_screen_active(), VQEAF_SYM_ARROW_BACK) == 0,
+          "setup security back returns to welcome");
+    CHECK(find_label(lv_screen_active(), "Xin chào!", 0) != NULL,
+          "setup back restores the welcome step");
+    CHECK(vqeaf_setup_complete() == 0,
+          "legacy shell tests can complete setup through the real marker");
+    vqeaf_ui_show(VQEAF_PAGE_LOCK);
+    settle();
+
+    lv_obj_t *icon_probe = vqeaf_icon_img(lv_screen_active(),
+        vqeaf_app_icon(VQEAF_APP_ICON_VQEAF), 104);
+    CHECK(icon_probe != NULL &&
+          lv_obj_get_style_radius(icon_probe, LV_PART_MAIN) == 10,
+          "bitmap app icons use 10 px rounded corners");
+    if(icon_probe != NULL) lv_obj_del(icon_probe);
+    check_icon_clipping();
+
     /* 1. Long-press a home-grid app: info sheet, not navigation. */
     vqeaf_ui_show(VQEAF_PAGE_HOME);
     settle();
+    snapshot("home-icon-corners");
     label = find_label(lv_screen_active(), "Điện thoại", 0);
     CHECK(label != NULL, "home grid has Điện thoại");
     if(label_target(label, &x, &y) == 0) long_press(x, y);
@@ -556,7 +969,7 @@ int main(int argc, char **argv)
         const vqeaf_qeapp_t *app = vqeaf_qeapp_at(0);
         label = find_label(lv_screen_active(), app->name, 0);
         CHECK(label != NULL, "drawer lists the installed QEAPP");
-        /* The installed section sits below the 24-app grid; scroll it into
+        /* The installed section sits below the paged app grid; scroll it into
          * view before pressing, like a thumb would. */
         if(label != NULL) {
             lv_obj_scroll_to_view_recursive(label, LV_ANIM_OFF);
@@ -576,11 +989,13 @@ int main(int argc, char **argv)
         CHECK(!modal_up(), "Đóng closes the QEAPP sheet");
     }
 
-    /* 6. Long-press a nav-dock app: sheet with Di chuyển (it is docked). */
+    /* 6. Home keeps the dock in both themes. Long-press a dock app: the sheet
+     *    offers Di chuyển because a real drop target is visible. */
+    vqeaf_theme_set_fluent(1);
     vqeaf_ui_show(VQEAF_PAGE_HOME);
     settle();
-    label = find_label(lv_screen_active(), "Tin nhắn", 1400);
-    CHECK(label != NULL, "nav dock has Tin nhắn");
+    label = find_label(lv_screen_active(), "Trình duyệt", 1400);
+    CHECK(label != NULL, "nav dock has Trình duyệt");
     if(label_target(label, &x, &y) == 0) long_press(x, y);
     CHECK(modal_up(), "long-press dock opens sheet");
     CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME, "long-press dock does not navigate");
@@ -593,9 +1008,9 @@ int main(int argc, char **argv)
     if(label_target(label, &x, &y) == 0) tap(x, y);
     CHECK(!modal_up(), "Di chuyển closes the sheet");
     snapshot("move-armed");
-    tap(101, 1447);   /* nav dock slot 0 centre */
-    CHECK(vqeaf_dock_slot(0) == 5, "move drops Tin nhắn into slot 0");
-    CHECK(vqeaf_dock_slot(1) == 4, "old occupant swaps to slot 1");
+    tap(303, 1447);   /* nav dock slot 1 centre */
+    CHECK(vqeaf_dock_slot(1) == 7, "move drops Trình duyệt into slot 1");
+    CHECK(vqeaf_dock_slot(0) == 8, "old occupant swaps to slot 0");
     snapshot("move-done");
 
     /* 8. A non-docked app offers Thêm vào dock; the dock lives on Home only,
@@ -623,6 +1038,111 @@ int main(int argc, char **argv)
     CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETTINGS,
           "tap on new dock icon opens SETTINGS");
 
+    vqeaf_theme_set_fluent(0);
+    vqeaf_dock_drop(7, 0);
+    vqeaf_dock_drop(8, 1);
+    vqeaf_dock_drop(9, 2);
+    vqeaf_dock_drop(10, 3);
+
+    /* Hold-drag is a real pointer gesture, not tap-to-place mode. */
+    vqeaf_ui_show(VQEAF_PAGE_HOME);
+    step(50);
+    settle();
+    label = find_label(lv_screen_active(), "Trình duyệt", 1400);
+    lv_obj_t *second_label = find_label(lv_screen_active(), "Máy ảnh", 1400);
+    CHECK(label != NULL && second_label != NULL,
+          "dock exposes two drag sources");
+    if(label != NULL && second_label != NULL &&
+       label_target(label, &x, &y) == 0) {
+        int tx, ty;
+        if(label_target(second_label, &tx, &ty) == 0) {
+            int first = vqeaf_dock_slot(0);
+            int second = vqeaf_dock_slot(1);
+            hold_drag_to(x, y, tx, ty, 12);
+            CHECK(vqeaf_drag_active(), "dock hold creates an active drag");
+            snapshot("dock-drag");
+            release_hold();
+            step(150);
+            settle();
+            CHECK(vqeaf_dock_slot(0) == second && vqeaf_dock_slot(1) == first,
+                  "dock hold-drag swaps the two slots");
+            CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME && !modal_up() &&
+                  !vqeaf_drag_active(),
+                  "dock drag neither launches an app nor opens information");
+        }
+    }
+
+    label = find_label(lv_screen_active(), "Trình duyệt", 1400);
+    if(label != NULL && label_target(label, &x, &y) == 0) {
+        int first = vqeaf_dock_slot(0);
+        int second = vqeaf_dock_slot(1);
+        hold_drag_to(x, y, 360, 900, 14);
+        CHECK(vqeaf_drag_active(), "dock drag can leave every valid target");
+        snapshot("dock-drag-cancel");
+        release_hold();
+        step(150);
+        settle();
+        CHECK(vqeaf_dock_slot(0) == first && vqeaf_dock_slot(1) == second,
+              "dropping outside the dock cancels without reordering");
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME && !modal_up() &&
+              !vqeaf_drag_active(),
+              "cancelled dock drag does not navigate or leak a ghost");
+    }
+
+    label = find_label(lv_screen_active(), "Trình duyệt", 1400);
+    if(label != NULL && label_target(label, &x, &y) == 0) {
+        int first = vqeaf_dock_slot(0);
+        int second = vqeaf_dock_slot(1);
+        lv_obj_t *ghost;
+        hold_drag_to(x, y, x + 80, y, 8);
+        ghost = find_drag_ghost();
+        CHECK(ghost != NULL, "dock drag creates a top-layer ghost");
+        if(ghost != NULL) {
+            lv_obj_delete(ghost);
+            g_point.x += 24;
+            step(20);
+            CHECK(!vqeaf_drag_active(),
+                  "an externally deleted ghost cancels the drag safely");
+        }
+        release_hold();
+        step(150);
+        settle();
+        CHECK(vqeaf_dock_slot(0) == first && vqeaf_dock_slot(1) == second &&
+              !modal_up() && !vqeaf_drag_active(),
+              "deleted ghost cancellation restores the dock and press state");
+    }
+    vqeaf_dock_move(0, 1);
+    vqeaf_ui_show(VQEAF_PAGE_HOME);
+    step(50);
+    settle();
+
+    label = find_label(lv_screen_active(), "Điện thoại", 0);
+    second_label = find_label(lv_screen_active(), "Tin nhắn", 0);
+    CHECK(label != NULL && second_label != NULL,
+          "Home exposes two reorder targets");
+    if(label != NULL && second_label != NULL &&
+       label_target(label, &x, &y) == 0) {
+        int tx, ty;
+        if(label_target(second_label, &tx, &ty) == 0) {
+            int first = vqeaf_pages_home_order_at(0);
+            int second = vqeaf_pages_home_order_at(1);
+            hold_drag_to(x, y, tx, ty, 12);
+            CHECK(vqeaf_drag_active(), "Home hold creates an active drag");
+            snapshot("home-reorder");
+            release_hold();
+            step(150);
+            settle();
+            CHECK(vqeaf_pages_home_order_at(0) == second &&
+                  vqeaf_pages_home_order_at(1) == first,
+                  "Home hold-drag moves the icon within the visible page");
+            CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME && !modal_up(),
+                  "Home reorder does not launch an app or open information");
+        }
+    }
+    vqeaf_pages_home_move(0, 1);
+    vqeaf_ui_show(VQEAF_PAGE_HOME);
+    settle();
+
     /* 9. A tap on a page-less app stays put. */
     vqeaf_ui_show(VQEAF_PAGE_HOME);
     settle();
@@ -630,20 +1150,114 @@ int main(int argc, char **argv)
     if(label_target(label, &x, &y) == 0) tap(x, y);
     CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME,
           "tap on page-less app does not navigate");
+    CHECK(find_label(lv_layer_top(),
+                     "Điện thoại chưa có trang nội dung trên ảnh này.", 0) != NULL,
+          "page-less app explains that no content backend exists");
+    snapshot("app-unavailable");
+    label = find_label(lv_layer_top(), "OK", 0);
+    CHECK(label != NULL, "unavailable feedback offers dismissal");
+    if(label_target(label, &x, &y) == 0) tap(x, y);
+    CHECK(find_label(lv_layer_top(),
+                     "Điện thoại chưa có trang nội dung trên ảnh này.", 0) == NULL,
+          "unavailable feedback can be dismissed");
 
-    /* 9b. Shell chrome policy: the dock/hotseat belongs to Home only;
-     *     system apps, detail pages and running native apps hide it and keep
-     *     just the gesture pill. The lock screen hides both. */
+    /* 9b. Stock Home is a regular content page with the floating dock and
+     *     gesture pill. Other regular pages keep the gesture pill; native apps
+     *     and Lock hide the dock as before. */
     vqeaf_ui_show(VQEAF_PAGE_HOME);
     settle();
-    CHECK(vqeaf_ui_dock_visible(), "Home shows the dock");
+    CHECK(vqeaf_ui_dock_visible(), "stock Home shows the dock");
+    CHECK(!vqeaf_tools_taskbar_visible(VQEAF_PAGE_HOME),
+          "stock Home hides the tools taskbar");
     CHECK(vqeaf_ui_gesture_pill_visible(), "Home shows the gesture pill");
+    CHECK(vqeaf_dock_slot(0) == 7 && vqeaf_dock_slot(1) == 8 &&
+          vqeaf_dock_slot(2) == 9 && vqeaf_dock_slot(3) == 10,
+          "stock dock defaults to Browser, Camera, Gallery and Music");
+    CHECK(find_label(lv_screen_active(), "Trình duyệt", 1400) != NULL &&
+          find_label(lv_screen_active(), "Máy ảnh", 1400) != NULL &&
+          find_label(lv_screen_active(), "Thư viện", 1400) != NULL &&
+          find_label(lv_screen_active(), "Nhạc", 1400) != NULL,
+          "dock renders its four real destinations");
     snapshot("chrome-home");
     vqeaf_ui_show(VQEAF_PAGE_SETTINGS);
     settle();
     CHECK(!vqeaf_ui_dock_visible(), "Settings hides the dock");
     CHECK(vqeaf_ui_gesture_pill_visible(), "Settings keeps the gesture pill");
     snapshot("chrome-settings");
+
+    /* 9c. Settings routes through the public QEAPP API. On the host, package
+     *     mutation is explicitly unsupported and leaves the seeded registry
+     *     unchanged; the session-only card is a labelled render fixture. */
+    {
+        vqeaf_qeapp_package_info_t package_info;
+        vqeaf_qeapp_package_result_t package_result;
+        uint8_t package_hash[VQEAF_QEAPP_PACKAGE_SHA256_SIZE] = { 0 };
+        size_t before = vqeaf_qeapp_package_count();
+
+        CHECK(vqeaf_qeapp_package_api_version() == VQEAF_QEAPP_PACKAGE_API_VERSION,
+              "Settings uses QEAPP package API v1");
+        CHECK(vqeaf_qeapp_package_preview("demo.qeapp", &package_info,
+                                          &package_result) ==
+              VQEAF_QEAPP_PACKAGE_UNSUPPORTED,
+              "host package preview is unsupported");
+        CHECK(package_result.struct_size == sizeof(package_result) &&
+              package_result.api_version == VQEAF_QEAPP_PACKAGE_API_VERSION &&
+              package_result.persisted == -1 && package_result.updated == -1,
+              "unsupported preview initializes result metadata");
+        CHECK(vqeaf_qeapp_package_install("demo.qeapp", &package_result) ==
+              VQEAF_QEAPP_PACKAGE_UNSUPPORTED,
+              "host package install is unsupported");
+        CHECK(package_result.struct_size == sizeof(package_result) &&
+              package_result.api_version == VQEAF_QEAPP_PACKAGE_API_VERSION &&
+              package_result.persisted == -1 && package_result.updated == -1,
+              "unsupported install initializes result metadata");
+        CHECK(vqeaf_qeapp_package_install_verified("demo.qeapp", package_hash,
+                                                   &package_result) ==
+              VQEAF_QEAPP_PACKAGE_UNSUPPORTED,
+              "host verified install is unsupported");
+        CHECK(vqeaf_qeapp_package_uninstall("org.vqeaf.hello", &package_result) ==
+              VQEAF_QEAPP_PACKAGE_UNSUPPORTED,
+              "host package uninstall is unsupported");
+        CHECK(package_result.struct_size == sizeof(package_result) &&
+              package_result.api_version == VQEAF_QEAPP_PACKAGE_API_VERSION &&
+              package_result.persisted == -1 && package_result.updated == -1,
+              "unsupported uninstall initializes result metadata");
+        CHECK(vqeaf_qeapp_package_count() == before,
+              "unsupported host mutations change no registry state");
+
+        label = find_label(lv_screen_active(), "Cài đặt .qeapp", 0);
+        CHECK(label != NULL, "Settings has a .qeapp installer row");
+        if(label_target(label, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_INSTALLER,
+              "Settings installer row opens the installer");
+        CHECK(find_label_contains(lv_screen_active(), "API QEAPP v1", 0) != NULL,
+              "installer shows the public API badge");
+        snapshot("installer-api");
+
+        label = find_label(lv_screen_active(), "Cài", 0);
+        if(label_target(label, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(modal_up(), "package tap opens the result modal on host");
+        CHECK(find_label_contains(lv_layer_top(),
+                                  "Host chỉ xem trước giao diện", 0) != NULL,
+              "host preview explains the missing package backend");
+        snapshot("install-host-unsupported");
+        label = find_label(lv_layer_top(), "ĐÓNG", 0);
+        if(label_target(label, &x, &y) == 0) tap(x, y);
+        step(100);
+
+        vqeaf_install_render(4);
+        settle();
+        CHECK(find_label(lv_layer_top(), "Đã cài trong phiên hiện tại.", 0) != NULL,
+              "session-only install has a distinct truthful result");
+        CHECK(find_label_contains(lv_layer_top(), "Chưa lưu vào kho p77", 0) != NULL,
+              "session-only result explains the reboot boundary");
+        snapshot("install-session-only");
+        vqeaf_install_render_close();
+        step(100);
+    }
+
     vqeaf_ui_show(VQEAF_PAGE_KEYBOARD);
     settle();
     CHECK(!vqeaf_ui_dock_visible(), "a Settings detail page hides the dock");
@@ -664,7 +1278,8 @@ int main(int argc, char **argv)
     CHECK(!vqeaf_ui_gesture_pill_visible(), "lock screen hides the gesture pill");
     vqeaf_ui_show(VQEAF_PAGE_HOME);
     settle();
-    CHECK(vqeaf_ui_dock_visible(), "returning Home restores the dock");
+    CHECK(vqeaf_ui_dock_visible() && vqeaf_ui_gesture_pill_visible(),
+          "returning Home restores the dock and gesture pill");
 
     /* 10. Files: open subfolders and preview/inspect multimedia. */
     vqeaf_ui_show(VQEAF_PAGE_FILES);
@@ -889,37 +1504,137 @@ int main(int argc, char **argv)
     CHECK(!vqeaf_shutdown_active(), "back button leaves the refusal screen");
     g_final_result = 0;
 
-    /* 14. A right swipe must land on the app list and STAY there after the
-     * finger is lifted. A deliberately long drag (40 polls) reproduces the
-     * case where rebuilding g_content mid-drag used to re-fire the gesture. */
-    vqeaf_pages_apps_page_set(0);   /* first page: right swipe still goes Home */
+    /* 14. Stock Home is a two-page, four-column launcher built from the 30
+     *     real registry entries. The system widget shows live uptime/RAM/storage,
+     *     never fabricated screen-time data. A long drag rebuilds once, stays on
+     *     the selected page after release, and clamps instead of wrapping. */
+    CHECK(vqeaf_pages_home_page_count() == 2,
+          "Home has two pages for 30 real apps");
+    vqeaf_pages_home_page_set(-9);
+    CHECK(vqeaf_pages_home_page() == 0, "Home page clamps at the first page");
+    vqeaf_pages_home_page_set(99);
+    CHECK(vqeaf_pages_home_page() == 1, "Home page clamps at the last page");
+    vqeaf_pages_home_page_set(0);
     vqeaf_ui_show(VQEAF_PAGE_HOME);
     settle();
-    swipe(120, 800, 620, 800, 40);
-    CHECK(vqeaf_ui_page() == VQEAF_PAGE_APPS,
-          "right swipe from Home opens the app list (not Settings)");
+    CHECK(find_label(lv_screen_active(), "Điện thoại", 0) != NULL &&
+          find_label(lv_screen_active(), "Ghi chú", 0) != NULL &&
+          find_label(lv_screen_active(), "Thời tiết", 0) == NULL,
+          "Home page one contains the first 16 real apps");
+    CHECK(find_label(lv_screen_active(), "Tiện ích hệ thống", 0) != NULL &&
+          find_label(lv_screen_active(), "Thời gian chạy", 0) != NULL &&
+          find_label(lv_screen_active(), "RAM đã dùng", 0) != NULL &&
+          find_label(lv_screen_active(), "Lưu trữ", 0) != NULL,
+          "Home widget renders real uptime, RAM and storage roles");
+    CHECK(find_label(lv_screen_active(), "Tìm ứng dụng, cài đặt…", 0) != NULL,
+          "Home renders the launcher search pill");
+    CHECK(find_label_contains(lv_screen_active(), "Thời gian sử dụng", 0) == NULL,
+          "Home does not fabricate screen-time statistics");
+    {
+        const char *first_row[] = { "Điện thoại", "Tin nhắn", "Danh bạ",
+                                    "Trình duyệt" };
+        lv_obj_t *labels[4];
+        lv_area_t areas[4];
+        int four_columns = 1;
+        for(int i = 0; i < 4; i++) {
+            labels[i] = find_label(lv_screen_active(), first_row[i], 0);
+            if(labels[i] == NULL) {
+                four_columns = 0;
+                continue;
+            }
+            lv_obj_get_coords(labels[i], &areas[i]);
+        }
+        for(int i = 1; i < 4; i++) {
+            if(labels[i] == NULL || labels[i - 1] == NULL) continue;
+            if(areas[i].x1 <= areas[i - 1].x2 ||
+               LV_ABS(areas[i].y1 - areas[i - 1].y1) > 24)
+                four_columns = 0;
+        }
+        CHECK(four_columns, "portrait Home first row has four distinct columns");
+    }
+    {
+        lv_obj_t *label = find_label(lv_screen_active(), "Điện thoại", 0);
+        lv_obj_t *item = label != NULL ? lv_obj_get_parent(label) : NULL;
+        lv_obj_t *plate = item != NULL ? lv_obj_get_child(item, 0) : NULL;
+        lv_obj_t *image = plate != NULL && lv_obj_get_child_count(plate) == 1 ?
+                          lv_obj_get_child(plate, 0) : NULL;
+        lv_area_t item_area, plate_area, image_area;
+        int centered = item != NULL && plate != NULL;
+        if(centered) {
+            lv_obj_get_coords(item, &item_area);
+            lv_obj_get_coords(plate, &plate_area);
+            centered = LV_ABS((item_area.x1 + item_area.x2) -
+                              (plate_area.x1 + plate_area.x2)) <= 1;
+        }
+        CHECK(centered, "Home app icon plate is centered in its launcher cell");
+        if(image != NULL && lv_obj_get_class(image) == &lv_image_class) {
+            lv_obj_get_coords(plate, &plate_area);
+            lv_obj_get_coords(image, &image_area);
+            CHECK(LV_ABS((plate_area.x1 + plate_area.x2) -
+                         (image_area.x1 + image_area.x2)) <= 1 &&
+                  LV_ABS((plate_area.y1 + plate_area.y2) -
+                         (image_area.y1 + image_area.y2)) <= 1,
+                  "Home bitmap artwork is centered inside its plate");
+        }
+    }
+    swipe(620, 800, 120, 800, 40);
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME && vqeaf_pages_home_page() == 1,
+          "left swipe from Home opens page two");
+    CHECK(find_label(lv_screen_active(), "Thời tiết", 0) != NULL &&
+          find_label(lv_screen_active(), "Dọn dẹp ổ đĩa", 0) != NULL &&
+          find_label(lv_screen_active(), "Điện thoại", 0) == NULL,
+          "Home page two contains the remaining 14 real apps");
+    step(500);
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME && vqeaf_pages_home_page() == 1,
+          "Home page two stays after release without a stray app launch");
+    CHECK(!modal_up(), "a stray CLICKED after the swipe did not open a sheet");
+    snapshot("home-page-2");
+
+    /* Storage and About are launcher entries with real destination pages. */
+    vqeaf_pages_apps_page_set(2);
+    vqeaf_ui_show(VQEAF_PAGE_APPS);
+    settle();
+    label = find_label(lv_screen_active(), "Lưu trữ", 0);
+    CHECK(label != NULL, "drawer lists Lưu trữ");
+    if(label_target(label, &x, &y) == 0) tap(x, y);
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_STORAGE, "tap opens the real Storage page");
+    vqeaf_pages_apps_page_set(2);
+    vqeaf_ui_show(VQEAF_PAGE_APPS);
+    settle();
+    label = find_label(lv_screen_active(), "Thông tin", 0);
+    CHECK(label != NULL, "drawer lists Thông tin");
+    if(label_target(label, &x, &y) == 0) tap(x, y);
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_ABOUT, "tap opens the real About page");
+    vqeaf_pages_home_page_set(1);
+    vqeaf_ui_show(VQEAF_PAGE_HOME);
+    settle();
+
+    swipe(620, 800, 120, 800, 20);
+    CHECK(vqeaf_pages_home_page() == 1, "outward swipe clamps on the last Home page");
+    swipe(120, 800, 620, 800, 20);
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME && vqeaf_pages_home_page() == 0,
+          "right swipe returns to Home page one");
+    swipe(120, 800, 620, 800, 20);
+    CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME && vqeaf_pages_home_page() == 0,
+          "outward swipe clamps without opening another section");
+
+    /* The app drawer remains a separate pager, and its right swipe still
+     * returns to the launcher. */
+    vqeaf_pages_apps_page_set(0);
+    vqeaf_ui_show(VQEAF_PAGE_APPS);
+    settle();
     CHECK(find_label(lv_screen_active(), "Ứng dụng", 0) != NULL &&
-          find_label_contains(lv_screen_active(), "Tìm kiếm ứng dụng", 0) != NULL,
+          find_label_contains(lv_screen_active(), "Tìm trên thiết bị", 0) != NULL,
           "app list content is rendered");
     CHECK(vqeaf_pages_apps_page_count() == 4,
           "app drawer is split into four paged views");
     step(500);
     CHECK(vqeaf_ui_page() == VQEAF_PAGE_APPS,
           "app list stays after the finger is lifted, no back to Home");
-    CHECK(!modal_up(), "a stray CLICKED after the swipe did not open a sheet");
     snapshot("swipe-right-apps");
-
-    /* The next contact still works: right swipe from Apps goes Home, and a
-     * left swipe from Home still reaches Apps. */
     swipe(120, 800, 620, 800, 20);
     CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME,
           "right swipe from the app list returns Home");
-    swipe(620, 800, 120, 800, 20);
-    CHECK(vqeaf_ui_page() == VQEAF_PAGE_APPS,
-          "left swipe from Home still opens the app list");
-    step(300);
-    CHECK(vqeaf_ui_page() == VQEAF_PAGE_APPS,
-          "left-swipe result also stays after release");
 
     /* 15. Keyboard appearance: every theme card carries a palette row and a
      * subtitle (previously Bubble/Facet were short and broke the grid), and
@@ -928,7 +1643,7 @@ int main(int argc, char **argv)
     settle();
     CHECK(find_label(lv_screen_active(), "Mint", 0) != NULL,
           "Bubble theme has a subtitle");
-    CHECK(find_label(lv_screen_active(), "Graphite", 0) != NULL,
+    CHECK(find_label(lv_screen_active(), "Ember", 0) != NULL,
           "Facet theme has a subtitle");
     label = find_label(lv_screen_active(), "Chủ đề", 0);
     CHECK(label != NULL, "active breadcrumb pill is present");
@@ -988,7 +1703,9 @@ int main(int argc, char **argv)
 
     vqeaf_state_set_screen_timeout(1);
     vqeaf_ui_activity();
-    step(1500);
+    /* The state sampler runs every second, so a one-second timeout can take
+     * almost two seconds to be observed. */
+    step(2100);
     CHECK(vqeaf_ui_sleeping() == 1,
           "idle timeout enters sleep");
     CHECK(vqeaf_state.screen_off == 1 && vqeaf_state.brightness == 0,
@@ -1009,6 +1726,8 @@ int main(int argc, char **argv)
     vqeaf_ui_toggle_screen();
     CHECK(vqeaf_ui_sleeping() == 0 && vqeaf_state.brightness >= 50,
           "manual Sleep toggles back and restores brightness");
+    vqeaf_state_set_screen_timeout(60);
+    vqeaf_ui_activity();
 
     /* 18. "Áp dụng" must change the real OS keyboards, not just the preview
      * card. Drive a live LVGL keyboard and read its actual style colour. */
@@ -1018,13 +1737,15 @@ int main(int argc, char **argv)
     lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
     vqeaf_pages_kb_theme_style(kb);
     CHECK(lv_color_eq(lv_obj_get_style_bg_color(kb, LV_PART_ITEMS),
-                      lv_color_hex(vqeaf_pages_kb_theme_key_color(0))),
+                      lv_color_hex(vqeaf_pages_kb_theme_key_color(
+                          vqeaf_pages_kb_theme_applied()))),
           "default theme styles a live keyboard");
     label = find_label(lv_screen_active(), "Bubble", 0);
     CHECK(label != NULL, "Bubble card is present");
     if(label_target(label, &x, &y) == 0) tap(x, y);
     settle();
-    CHECK(vqeaf_pages_kb_theme_applied() == 0,
+    CHECK(vqeaf_pages_kb_theme_applied() ==
+              vqeaf_pages_kb_theme_default(),
           "selecting a card alone does not apply it");
     label = find_label(lv_screen_active(), "Áp dụng", 0);
     CHECK(label != NULL, "Áp dụng button is present");
@@ -1092,7 +1813,7 @@ int main(int argc, char **argv)
               "seed 0 restores the stock palette");
 
         /* Automatic mode: the seed is the wallpaper's dominant colour, so the
-         * accent follows the teal wallpaper instead of a hand-picked seed. */
+         * accent follows the cobalt wallpaper instead of a hand-picked seed. */
         CHECK(!vqeaf_theme_auto(), "automatic colour starts off");
         vqeaf_theme_set_auto(1);
         CHECK(vqeaf_theme_auto(), "automatic colour can be enabled");
@@ -1105,9 +1826,9 @@ int main(int argc, char **argv)
                   "the wallpaper seed changes the accent");
             CHECK(VQEAF_C_ACCENT.green > VQEAF_C_ACCENT.red &&
                   VQEAF_C_ACCENT.blue > VQEAF_C_ACCENT.red,
-                  "the accent follows the teal wallpaper");
+                  "the accent follows the cobalt wallpaper");
             CHECK(VQEAF_C_BG.red < 80 && VQEAF_C_BG.green > VQEAF_C_BG.red,
-                  "dark mode keeps a dark teal background");
+                  "dark mode keeps a dark cobalt background");
 
             /* Light mode derives its own seed from the light wallpaper, and a
              * manual seed turns automatic mode back off. */
@@ -1350,7 +2071,7 @@ int main(int argc, char **argv)
             lv_obj_t *win = vqeaf_ime_window();
             CHECK(win != NULL, "IME window is up");
             if(win != NULL) {
-                lv_obj_t *grid = lv_obj_get_child(win, 0);
+                lv_obj_t *grid = vqeaf_ime_grid();
                 lv_obj_t *row0 = lv_obj_get_child(grid, 0);
                 lv_obj_t *qkey = lv_obj_get_child(row0, 0);
                 lv_obj_t *wkey = lv_obj_get_child(row0, 1);
@@ -1403,10 +2124,11 @@ int main(int argc, char **argv)
             CHECK(vqeaf_ime_visible() && win != NULL,
                   "special-key test: IME is up");
             if(win != NULL) {
-                CHECK(ime_key_has_icon(find_ime_key(win, "ENTER"),
-                                       VQEAF_SYM_KEYBOARD_RETURN),
+                CHECK(ime_key_has_icon(
+                          find_ime_key(win, VQEAF_SYM_KEYBOARD_RETURN),
+                          VQEAF_SYM_KEYBOARD_RETURN),
                       "ENTER uses a Material Icons glyph");
-                lv_obj_t *key = find_ime_key(win, "SHIFT");
+                lv_obj_t *key = find_ime_key(win, VQEAF_SYM_ARROW_UPWARD);
                 CHECK(key != NULL, "IME has a SHIFT key");
                 CHECK(ime_key_has_icon(key, VQEAF_SYM_ARROW_UPWARD),
                       "SHIFT uses a Material Icons glyph");
@@ -1416,9 +2138,10 @@ int main(int argc, char **argv)
                     tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
                     settle();
                     CHECK(vqeaf_ime_visible(), "SHIFT keeps the IME open");
-                    CHECK(ime_key_has_icon(find_ime_key(win, "SHIFT"),
-                                           VQEAF_SYM_KEYBOARD_CAPSLOCK),
-                          "active SHIFT switches to the caps-lock icon");
+                    CHECK(ime_key_has_icon(
+                              find_ime_key(win, VQEAF_SYM_ARROW_UPWARD),
+                              VQEAF_SYM_ARROW_UPWARD),
+                          "active SHIFT keeps the shift icon");
                     key = find_ime_key(win, "A");
                     if(key != NULL) {
                         lv_obj_update_layout(win);
@@ -1432,17 +2155,21 @@ int main(int argc, char **argv)
                 }
                 key = find_ime_key(win, "?123");
                 CHECK(key != NULL, "IME has a ?123 key");
-                CHECK(ime_key_has_icon(key, VQEAF_SYM_NUMBERS),
-                      "symbol mode uses a Material Icons glyph");
+                CHECK(key != NULL &&
+                      lv_obj_get_style_text_font(lv_obj_get_child(key, 0), 0) !=
+                          VQEAF_ICON_SM,
+                      "symbol mode keeps a readable text label");
                 if(key != NULL) {
                     lv_obj_update_layout(win);
                     lv_obj_get_coords(key, &area);
                     tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
                     settle();
                     CHECK(vqeaf_ime_visible(), "?123 keeps the IME open");
-                    CHECK(ime_key_has_icon(find_ime_key(win, "ABC"),
-                                           VQEAF_SYM_ABC),
-                          "ABC mode switches to its own Material icon");
+                    lv_obj_t *abc = find_ime_key(win, "ABC");
+                    CHECK(abc != NULL &&
+                          lv_obj_get_style_text_font(lv_obj_get_child(abc, 0), 0) !=
+                              VQEAF_ICON_SM,
+                          "ABC mode keeps a readable text label");
                     key = find_ime_key(win, "1");
                     if(key != NULL) {
                         lv_obj_update_layout(win);
@@ -1459,17 +2186,20 @@ int main(int argc, char **argv)
                         settle();
                     }
                     CHECK(vqeaf_ime_visible(), "returning to ABC keeps the IME open");
-                    CHECK(find_ime_key(win, "SHIFT") != NULL &&
+                    CHECK(find_ime_key(win, VQEAF_SYM_ARROW_UPWARD) != NULL &&
                           find_ime_key(win, "ABC") == NULL,
                           "ABC returns the IME to the letter grid");
-                    CHECK(ime_key_has_icon(find_ime_key(win, "SHIFT"),
-                                           VQEAF_SYM_ARROW_UPWARD),
+                    CHECK(ime_key_has_icon(
+                              find_ime_key(win, VQEAF_SYM_ARROW_UPWARD),
+                              VQEAF_SYM_ARROW_UPWARD),
                           "returning to letters restores the shift icon");
                 }
                 key = find_ime_key(win, "SPACE");
                 CHECK(key != NULL, "IME has SPACE");
-                CHECK(ime_key_has_icon(key, VQEAF_SYM_SPACE_BAR),
-                      "SPACE uses a Material Icons glyph");
+                CHECK(key != NULL &&
+                      lv_obj_get_style_text_font(lv_obj_get_child(key, 0), 0) !=
+                          VQEAF_ICON_SM,
+                      "SPACE keeps a readable text label");
                 if(key != NULL) {
                     lv_obj_update_layout(win);
                     lv_obj_get_coords(key, &area);
@@ -1479,7 +2209,7 @@ int main(int argc, char **argv)
                     CHECK(strcmp(lv_textarea_get_text(ta), "A1 ") == 0,
                           "SPACE inserts a space");
                 }
-                key = find_ime_key(win, "DEL");
+                key = find_ime_key(win, VQEAF_SYM_BACKSPACE);
                 CHECK(key != NULL, "IME has DEL");
                 CHECK(ime_key_has_icon(key, VQEAF_SYM_BACKSPACE),
                       "DEL uses a Material Icons glyph");
@@ -1507,7 +2237,7 @@ int main(int argc, char **argv)
         vqeaf_ui_show(VQEAF_PAGE_APPS);
         settle();
         lv_obj_t *label = find_label(lv_screen_active(),
-                                     "Tìm kiếm ứng dụng...", 0);
+                                     "Tìm trên thiết bị...", 0);
         CHECK(label != NULL, "Apps page has the search pill");
         if(label != NULL && label_target(label, &x, &y) == 0) {
             tap(x, y);
@@ -1662,6 +2392,107 @@ int main(int argc, char **argv)
         snapshot("m3-layout");
     }
 
+    /* 23. Liquid Glass controls are driven by the real pointer indev. */
+    {
+        static const vqeaf_component_item_t items[] = {
+            { "Tự động", NULL, 0 },
+            { "Sáng", NULL, 0 },
+            { "Tối", NULL, 0 },
+        };
+        static const char *const labels[] = { "Một", "Hai", "Ba" };
+        lv_obj_t *root = vqeaf_obj(lv_layer_top());
+        lv_obj_t *slide, *slider, *toggle, *check, *tabs, *select, *action;
+        lv_obj_t *label;
+        lv_area_t area;
+        int x, y;
+
+        lv_obj_set_size(root, 600, 760);
+        lv_obj_set_pos(root, 60, 120);
+        lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_all(root, 18, 0);
+        lv_obj_set_style_pad_row(root, 14, 0);
+        slide = vqeaf_lg_slide_confirm(root, "Trượt để xác nhận", NULL, NULL);
+        slider = vqeaf_lg_slider(root, 0);
+        toggle = vqeaf_lg_switch(root, 0);
+        check = vqeaf_lg_checkbox(root, "Cho phép", 0);
+        tabs = vqeaf_lg_tabs(root, labels, 3, 0);
+        select = vqeaf_lg_select(root, items, 3, 0, NULL, NULL);
+        action = vqeaf_lg_action_button(root, VQEAF_SYM_ARROW_FORWARD, NULL, NULL);
+        lv_obj_update_layout(root);
+        settle();
+
+        lv_obj_get_coords(slide, &area);
+        x = (area.x1 + area.x2) / 2;
+        y = (area.y1 + area.y2) / 2;
+        swipe(area.x1 + 34, y, area.x2 - 34, y, 8);
+        settle();
+        CHECK(vqeaf_lg_slide_confirmed(slide),
+              "pointer drag confirms the liquid slide control");
+        snapshot("m3-liquid-controls");
+        lv_obj_get_coords(slide, &area);
+        tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
+        settle();
+        CHECK(!vqeaf_lg_slide_confirmed(slide),
+              "tap resets a confirmed liquid slide control");
+
+        lv_obj_get_coords(slider, &area);
+        swipe(area.x1, (area.y1 + area.y2) / 2,
+              area.x2, (area.y1 + area.y2) / 2, 8);
+        settle();
+        CHECK(vqeaf_lg_slider_get(slider) == 100,
+              "pointer drag maps the liquid slider to its full range");
+
+        lv_obj_get_coords(toggle, &area);
+        tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
+        settle();
+        CHECK(vqeaf_lg_switch_get(toggle), "pointer tap toggles the liquid switch");
+        lv_obj_get_coords(check, &area);
+        tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
+        settle();
+        CHECK(vqeaf_lg_checkbox_get(check), "pointer tap checks the glass checkbox");
+        lv_obj_get_coords(vqeaf_lg_tab_item(tabs, 2), &area);
+        tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
+        settle();
+        CHECK(vqeaf_lg_tabs_selected(tabs) == 2,
+              "pointer tap moves the liquid tab lens");
+
+        lv_obj_get_coords(select, &area);
+        tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
+        settle();
+        CHECK(vqeaf_lg_overlay_visible(select), "pointer tap opens the liquid select");
+        label = find_label(lv_layer_top(), "Sáng", 0);
+        CHECK(label != NULL, "liquid select exposes its real choices");
+        if(label != NULL && label_target(label, &x, &y) == 0) {
+            tap(x, y);
+        }
+        settle();
+        CHECK(vqeaf_lg_selected_index(select) == 1,
+              "pointer choice updates the liquid select state");
+        CHECK(!vqeaf_lg_any_overlay_visible(),
+              "choosing an item dismisses the liquid surface");
+
+        lv_obj_get_coords(select, &area);
+        tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
+        settle();
+        CHECK(vqeaf_lg_overlay_visible(select), "liquid select reopens after choice");
+        step(260);
+        snapshot("m3-liquid-overlay");
+        tap(8, 8);
+        settle();
+        CHECK(!vqeaf_lg_any_overlay_visible(),
+              "backdrop tap dismisses the liquid surface safely");
+
+        lv_obj_get_coords(action, &area);
+        tap((area.x1 + area.x2) / 2, (area.y1 + area.y2) / 2);
+        step(500);
+        settle();
+        CHECK(!lv_obj_has_flag(action, LV_OBJ_FLAG_CLICKABLE),
+              "liquid action arrow melts away after one activation");
+        lv_obj_delete(root);
+        settle();
+        CHECK(!vqeaf_lg_any_overlay_visible(), "liquid probe cleanup leaves no overlay");
+    }
+
     /* 24. Recents is the card carousel: one snapped card per open task in
      * most-recent-first order, each card opens its app, and a card can be
      * closed (or the whole list cleared) without leaving a dead entry. */
@@ -1719,37 +2550,216 @@ int main(int argc, char **argv)
     {
         lv_obj_t *label;
         int x, y;
-        int before = vqeaf_ui_notification_count();
+        vqeaf_state_t saved_state = vqeaf_state;
+        static const char *const forbidden[] = {
+            "PM2.5", "AQI", "iQOO", "FlashCharge", "Gọi khẩn cấp",
+            "Mở khóa bằng vân tay"
+        };
+
+        CHECK(vqeaf_settings_set_str("lock.pin", "") == 0,
+              "lock test starts without a PIN");
+        vqeaf_state.battery_valid = 1;
+        vqeaf_state.battery_pct = 76;
+        vqeaf_state.charging = 1;
+        vqeaf_state.wifi_up = 1;
+        vqeaf_state.storage_valid = 1;
+        vqeaf_state.storage_pct = 44;
+        vqeaf_state.storage_total = 128ULL * 1024ULL * 1024ULL;
+        vqeaf_state.storage_free = 72ULL * 1024ULL * 1024ULL;
+        /* Let the provider sampler observe the fixture before isolating the
+         * notification log from its real charging transition. */
+        step(1000);
+        vqeaf_ui_notification_clear();
+
+        vqeaf_ui_show(VQEAF_PAGE_LOCK);
+        settle();
+        CHECK(find_label(lv_screen_active(), "Không có thông báo", 0) != NULL,
+              "empty lock notification state is explicit");
+        snapshot("lock-empty");
 
         vqeaf_ui_notify("Kiểm thử", "Sự kiện thật của phiên", VQEAF_SYM_CHECK,
                         0x35E0C8);
-        CHECK(vqeaf_ui_notification_count() == before + 1 &&
+        CHECK(vqeaf_ui_notification_count() == 1 &&
               vqeaf_ui_notification_at(0) != NULL &&
               strcmp(vqeaf_ui_notification_at(0)->title, "Kiểm thử") == 0,
               "the notification log keeps real events newest-first");
         CHECK(vqeaf_ui_notification_at(0)->uptime_s <= vqeaf_state.uptime_s,
               "each entry carries the uptime it happened at");
+        vqeaf_pages_refresh();
+        settle();
+
+        label = find_label(lv_screen_active(), vqeaf_state.date_text, 0);
+        lv_obj_t *clock = find_label(lv_screen_active(), vqeaf_state.clock_text, 0);
+        CHECK(label != NULL && clock != NULL,
+              "lock screen shows the real date and clock");
+        if(label != NULL && clock != NULL) {
+            lv_area_t date_area;
+            lv_area_t clock_area;
+            lv_obj_get_coords(label, &date_area);
+            lv_obj_get_coords(clock, &clock_area);
+            CHECK(date_area.y1 < clock_area.y1,
+                  "lock date sits above the clock");
+            CHECK(clock_area.y2 - clock_area.y1 >= 150 &&
+                  lv_obj_get_style_text_font(clock, 0) == &vqeaf_font_bold_160,
+                  "lock clock uses the large display face");
+        }
+        CHECK(find_label(lv_screen_active(), "76%", 100) != NULL,
+              "lock battery card renders the real percentage");
+        CHECK(find_label(lv_screen_active(), "Đang sạc", 100) != NULL,
+              "lock battery card renders the real charging state");
+        CHECK(find_label(lv_screen_active(), "Bật", 100) != NULL,
+              "lock Wi-Fi card renders the real radio state");
+        CHECK(find_label(lv_screen_active(), "44%", 100) != NULL &&
+              find_label(lv_screen_active(), "Lưu trữ", 100) != NULL,
+              "lock storage card renders real usage");
+        CHECK(find_label(lv_screen_active(), "1 thông báo", 0) != NULL &&
+              find_label(lv_screen_active(), "Kiểm thử", 0) != NULL,
+              "lock notification card shows the real count and latest event");
+        for(size_t i = 0; i < sizeof(forbidden) / sizeof(forbidden[0]); i++)
+            CHECK(find_label_contains(lv_screen_active(), forbidden[i], 0) == NULL,
+                  forbidden[i]);
+        CHECK(find_label(lv_screen_active(), "Đèn pin", 0) != NULL &&
+              find_label(lv_screen_active(), "Máy ảnh", 0) != NULL &&
+              find_label(lv_screen_active(), "Không hỗ trợ", 0) != NULL,
+              "unsupported lock hardware is visibly disabled with an explanation");
+        snapshot("lock-widget");
+
+        label = find_label(lv_screen_active(), "Đèn pin", 0);
+        if(label != NULL && first_child_target(lv_obj_get_parent(label), &x, &y) == 0)
+            tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_LOCK &&
+              find_label_contains(lv_layer_top(),
+                                  "Máy không có đèn pin điều khiển được", 0) != NULL,
+              "torch explains its missing backend without unlocking");
+        while(lv_obj_get_child_count(lv_layer_top()) > 0)
+            lv_obj_delete(lv_obj_get_child(lv_layer_top(), 0));
+        label = find_label(lv_screen_active(), "Máy ảnh", 0);
+        if(label != NULL && first_child_target(lv_obj_get_parent(label), &x, &y) == 0)
+            tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_LOCK &&
+              find_label_contains(lv_layer_top(),
+                                  "Máy ảnh không có trên thiết bị này", 0) != NULL,
+              "camera explains its missing backend without unlocking");
+        while(lv_obj_get_child_count(lv_layer_top()) > 0)
+            lv_obj_delete(lv_obj_get_child(lv_layer_top(), 0));
+        settle();
+
+        vqeaf_ui_notify("Thông báo trực tiếp", "Cập nhật không cần tạo lại trang",
+                        VQEAF_SYM_NOTIFICATIONS, 0x8157FF);
+        vqeaf_pages_refresh();
+        settle();
+        CHECK(find_label(lv_screen_active(), "2 thông báo", 0) != NULL &&
+              find_label(lv_screen_active(), "Thông báo trực tiếp", 0) != NULL,
+              "lock notification widgets refresh live");
+        label = find_label(lv_screen_active(), "Thông báo trực tiếp", 0);
+        if(label != NULL && label_target(label, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_CONTROL,
+              "tapping a real lock notification opens Control Center");
 
         vqeaf_ui_show(VQEAF_PAGE_LOCK);
+        vqeaf_state.battery_valid = 0;
+        vqeaf_state.wifi_up = -1;
+        vqeaf_state.storage_valid = 0;
+        snprintf(vqeaf_state.clock_text, sizeof(vqeaf_state.clock_text), "--:--");
+        snprintf(vqeaf_state.date_text, sizeof(vqeaf_state.date_text),
+                 "Chưa đặt thời gian");
+        vqeaf_pages_refresh();
         settle();
-        CHECK(find_label(lv_screen_active(), "Vuốt để mở khóa", 0) != NULL,
-              "lock screen keeps its unlock pill");
-        CHECK(find_label(lv_screen_active(), "Lưu trữ", 0) != NULL &&
-              find_label(lv_screen_active(), "Pin", 0) != NULL,
-              "lock widget shows real battery/storage labels");
-        CHECK(find_label(lv_screen_active(), "Đèn pin", 0) != NULL &&
-              find_label(lv_screen_active(), "Máy ảnh", 0) != NULL,
-              "lock corners expose the two hardware affordances");
-        snapshot("lock-widget");
+        CHECK(find_label(lv_screen_active(), "--:--", 100) != NULL &&
+              find_label(lv_screen_active(), "Chưa rõ", 100) != NULL &&
+              find_label(lv_screen_active(), "--", 100) != NULL &&
+              find_label(lv_screen_active(), "76%", 100) == NULL,
+              "unknown providers stay unknown after a live refresh");
+        vqeaf_state = saved_state;
+        vqeaf_pages_refresh();
+        settle();
+
+        label = find_label(lv_screen_active(), "Vuốt để mở khóa", 0);
+        if(label != NULL && label_target(label, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME,
+              "no-PIN lock tap opens Home");
+
+        CHECK(vqeaf_settings_set_str("lock.pin", "2468") == 0,
+              "test PIN is stored through Settings Service");
+        vqeaf_ui_show(VQEAF_PAGE_LOCK);
+        settle();
+        CHECK(find_label(lv_screen_active(), "Nhấn để nhập PIN", 0) != NULL &&
+              find_label(lv_screen_active(), "Vuốt để mở khóa", 0) == NULL,
+              "PIN-enabled lock advertises PIN entry");
+        snapshot("lock-pin");
+        label = find_label(lv_screen_active(), "Nhấn để nhập PIN", 0);
+        if(label != NULL && label_target(label, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_PIN,
+              "PIN-enabled lock opens the real keypad");
+        {
+            static const char *const wrong[] = { "1", "3", "5", "7" };
+            static const char *const correct[] = { "2", "4", "6", "8" };
+            for(size_t i = 0; i < 4; i++) {
+                label = find_label(lv_screen_active(), wrong[i], 0);
+                if(label != NULL && label_target(label, &x, &y) == 0) tap(x, y);
+                settle();
+            }
+            CHECK(vqeaf_ui_page() == VQEAF_PAGE_PIN &&
+                  find_label(lv_screen_active(), "PIN sai. Thử lại.", 0) != NULL,
+                  "wrong PIN is rejected on the keypad");
+            for(size_t i = 0; i < 4; i++) {
+                label = find_label(lv_screen_active(), correct[i], 0);
+                if(label != NULL && label_target(label, &x, &y) == 0) tap(x, y);
+                settle();
+            }
+            CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME,
+                  "correct PIN opens Home");
+        }
+        CHECK(vqeaf_settings_set_str("lock.pin", "") == 0,
+              "test PIN is cleared after the unlock regression");
+        vqeaf_state = saved_state;
+
+        vqeaf_pages_home_page_set(0);
+        vqeaf_ui_show(VQEAF_PAGE_HOME);
+        settle();
+        long_press(12, 700);
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_APPS_EDIT,
+              "long-press on blank Home wallpaper opens launcher edit mode");
+        CHECK(!vqeaf_ui_dock_visible() && !vqeaf_ui_gesture_pill_visible() &&
+              !vqeaf_tools_taskbar_visible(VQEAF_PAGE_APPS_EDIT),
+              "launcher edit mode hides stock dock, pill and tools taskbar");
+        snapshot("apps-edit-longpress");
+        label = find_label(lv_screen_active(), "Xong", 0);
+        if(label != NULL && label_target(label, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME,
+              "Xong returns from long-press edit mode to Home");
 
         vqeaf_ui_show(VQEAF_PAGE_APPS_EDIT);
         settle();
-        CHECK(find_label(lv_screen_active(), "Sửa màn hình chính", 0) != NULL,
-              "launcher edit mode has its own header");
-        CHECK(find_label(lv_screen_active(), "Hình nền", 0) != NULL &&
+        CHECK(find_label(lv_screen_active(), "Sửa màn hình chính", 0) == NULL,
+              "launcher edit mode is an overlay, not a separate headed page");
+        CHECK(find_label(lv_screen_active(), "Điện thoại", 0) != NULL &&
+              find_label(lv_screen_active(), "Hình nền", 0) != NULL &&
               find_label(lv_screen_active(), "Tiện ích", 0) != NULL,
-              "edit mode offers wallpaper and widgets");
+              "edit mode previews the real grid and offers wallpaper/widgets");
         snapshot("apps-edit");
+        label = find_label(lv_screen_active(), "Tiện ích", 0);
+        if(label != NULL && label_target(label, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(find_label_contains(lv_layer_top(), "Chưa có bộ chọn tiện ích", 0) != NULL,
+              "Widgets explains the missing picker instead of faking one");
+
+        swipe(620, 700, 120, 700, 24);
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_APPS_EDIT &&
+              vqeaf_pages_home_page() == 1,
+              "edit preview pages with the same horizontal gesture");
+        CHECK(find_label(lv_screen_active(), "Công cụ", 0) != NULL,
+              "edit preview page two shows the remaining real apps");
+        snapshot("apps-edit-page-2");
+        vqeaf_pages_home_page_set(0);
+        vqeaf_ui_show(VQEAF_PAGE_APPS_EDIT);
+        settle();
         label = find_label(lv_screen_active(), "Xong", 0);
         if(label != NULL && label_target(label, &x, &y) == 0) {
             tap(x, y);
@@ -1758,51 +2768,233 @@ int main(int argc, char **argv)
                   "Xong returns to the home grid");
         }
 
-        vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+        vqeaf_ui_show(VQEAF_PAGE_HOME);
         settle();
+        step(600);
+        vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+        snapshot("control-open-early");
+        step(70);
+        snapshot("control-open-mid");
+        vqeaf_ui_control_close();
+        step(30);
+        CHECK(vqeaf_ui_control_visible(),
+              "close requested during opening stays in progress");
+        step(600);
+        settle();
+        CHECK(!vqeaf_ui_control_visible() &&
+              vqeaf_ui_page() == VQEAF_PAGE_HOME,
+              "close during opening restores Home without animation races");
+        vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+        step(600);
+        settle();
+        CHECK(vqeaf_ui_control_visible(), "control centre opens as an overlay");
         CHECK(find_label(lv_screen_active(), "Trung tâm điều khiển",
                          0) != NULL,
               "control centre header is present");
-        CHECK(find_label(lv_screen_active(), "Xoay màn hình", 0) != NULL &&
+        CHECK(find_label(lv_screen_active(), "Tự xoay", 0) != NULL &&
               find_label(lv_screen_active(), "Đang tắt", 0) != NULL,
               "auto-rotate tile reports the real display flag");
         CHECK(find_label(lv_screen_active(), "Không hỗ trợ", 0) != NULL,
               "tiles without a backend say so instead of faking a toggle");
-        CHECK(find_label(lv_screen_active(), "Kết nối", 0) != NULL &&
-              find_label(lv_screen_active(), "Tiện ích", 0) != NULL &&
-              find_label(lv_screen_active(), "Màn hình", 0) != NULL,
-              "quick tiles are grouped into three sections");
+        CHECK(find_label(lv_screen_active(), "Phát Wi-Fi", 0) == NULL,
+              "compact mode keeps the 5x2 quick grid");
+        CHECK(vqeaf_ui_media_session() == NULL &&
+              find_label(lv_screen_active(), "Phương tiện", 0) == NULL &&
+              find_label(lv_screen_active(), "Đang phát", 0) == NULL,
+              "no media card appears without a real playback session");
+        CHECK(find_label(lv_screen_active(), "Độ sáng", 0) != NULL &&
+              find_label(lv_screen_active(), "Âm lượng", 0) != NULL,
+              "quick panel keeps side-by-side sliders without media");
+        CHECK(vqeaf_ui_media_session_start(VQEAF_UI_MEDIA_NONE,
+                                           "Bài hát kiểm thử", NULL) == -1 &&
+              vqeaf_ui_media_session_start(VQEAF_UI_MEDIA_AUDIO,
+                                           NULL, NULL) == -1,
+              "an empty or invalid session cannot activate the media card");
         snapshot("control-tiles");
+        {
+            lv_obj_t *label = find_label(lv_screen_active(), "Wi-Fi", 0);
+            lv_obj_t *cell = label != NULL ? lv_obj_get_parent(label) : NULL;
+            uint32_t count = cell != NULL ? lv_obj_get_child_count(cell) : 0;
+            lv_obj_t *circle = count >= 4 ? lv_obj_get_child(cell, 1) : NULL;
+            lv_obj_t *status = count >= 4 ? lv_obj_get_child(cell, 3) : NULL;
+            lv_area_t cell_area, circle_area, status_area;
+            int centered = cell != NULL && circle != NULL && status != NULL;
+            if(centered) {
+                lv_obj_get_coords(cell, &cell_area);
+                lv_obj_get_coords(circle, &circle_area);
+                lv_obj_get_coords(status, &status_area);
+                centered = LV_ABS((cell_area.x1 + cell_area.x2) -
+                                  (circle_area.x1 + circle_area.x2)) <= 1 &&
+                          LV_ABS((cell_area.y1 + cell_area.y2) -
+                                 (circle_area.y1 + status_area.y2)) <= 1;
+            }
+            CHECK(centered,
+                  "Control icon, title and status form a centered quick-tile group");
+        }
 
-        label = find_label(lv_screen_active(), "Sửa", 0);
+        CHECK(vqeaf_ui_media_session_start(VQEAF_UI_MEDIA_AUDIO,
+                  "Bài hát kiểm thử", "WAV · 44,1 kHz") == 0,
+              "a real playback backend can publish an audio session");
+        step(20);
+        settle();
+        CHECK(vqeaf_ui_media_session() != NULL &&
+              vqeaf_ui_media_session()->kind == VQEAF_UI_MEDIA_AUDIO &&
+              strcmp(vqeaf_ui_media_session()->title, "Bài hát kiểm thử") == 0,
+              "the shell retains the active session metadata");
+        label = find_label(lv_screen_active(), "Bài hát kiểm thử", 0);
+        CHECK(label != NULL &&
+              find_label(lv_screen_active(), "WAV · 44,1 kHz", 0) != NULL &&
+              find_label(lv_screen_active(), "Âm thanh", 0) != NULL &&
+              find_label(lv_screen_active(), "Đang phát", 0) != NULL,
+              "an active audio session shows its real title, detail and kind");
+        CHECK(find_label(lv_screen_active(), "Độ sáng", 0) != NULL &&
+              find_label(lv_screen_active(), "Âm lượng", 0) != NULL,
+              "sliders remain present while media is active");
+        CHECK(find_label(lv_screen_active(), VQEAF_SYM_SKIP_PREVIOUS, 0) == NULL &&
+              find_label(lv_screen_active(), VQEAF_SYM_SKIP_NEXT, 0) == NULL,
+              "the media card has no unsupported transport controls");
+        if(label != NULL)
+            lv_obj_scroll_to_view_recursive(label, LV_ANIM_OFF);
+        step(600);
+        snapshot("control-media-audio");
+
+        CHECK(vqeaf_ui_media_session_start(VQEAF_UI_MEDIA_VIDEO,
+                  "Video kiểm thử", "QVF · RGB565") == 0,
+              "a video backend can replace the session metadata");
+        step(20);
+        settle();
+        CHECK(vqeaf_ui_media_session() != NULL &&
+              vqeaf_ui_media_session()->kind == VQEAF_UI_MEDIA_VIDEO &&
+              find_label(lv_screen_active(), "Video kiểm thử", 0) != NULL,
+              "a video session refreshes the open control centre");
+        CHECK(vqeaf_ui_media_session_start(VQEAF_UI_MEDIA_OTHER,
+                  "Media kiểm thử", "PNG") == 0,
+              "other real media sessions use the same shell registry");
+        step(20);
+        settle();
+        CHECK(vqeaf_ui_media_session() != NULL &&
+              vqeaf_ui_media_session()->kind == VQEAF_UI_MEDIA_OTHER &&
+              find_label(lv_screen_active(), "Media kiểm thử", 0) != NULL,
+              "other media sessions refresh the open control centre");
+
+        vqeaf_ui_media_session_stop();
+        step(20);
+        settle();
+        CHECK(vqeaf_ui_media_session() == NULL &&
+              find_label(lv_screen_active(), "Media kiểm thử", 0) == NULL &&
+              find_label(lv_screen_active(), "Đang phát", 0) == NULL,
+              "stopping real output removes the media card immediately");
+        CHECK(find_label(lv_screen_active(), "Độ sáng", 0) != NULL &&
+              find_label(lv_screen_active(), "Âm lượng", 0) != NULL,
+              "stopping media leaves the sliders intact");
+        label = find_label(lv_screen_active(), "Âm lượng", 0);
+        if(label != NULL)
+            lv_obj_scroll_to_view_recursive(label, LV_ANIM_OFF);
+        step(600);
+        snapshot("control-media-stopped");
+        label = find_label(lv_screen_active(), "Trung tâm điều khiển", 0);
+        if(label != NULL)
+            lv_obj_scroll_to_view_recursive(label, LV_ANIM_OFF);
+        settle();
+        CHECK(vqeaf_ui_control_visible(),
+              "media session updates keep the control centre open");
+
+        label = find_label_topmost(lv_screen_active(), "Mở rộng", 0);
+        CHECK(label != NULL, "control centre offers expanded mode");
+        if(label != NULL && label_self_target(label, &x, &y) == 0) {
+            tap(x, y);
+            step(600);
+            settle();
+            CHECK(find_label(lv_screen_active(), "Phát Wi-Fi", 0) != NULL &&
+                  find_label(lv_screen_active(), "Máy bay", 0) != NULL &&
+                  find_label(lv_screen_active(), "Quay màn hình", 0) != NULL,
+                  "expanded mode exposes every available control");
+            snapshot("control-expanded");
+            label = find_label_topmost(lv_screen_active(), "Thu gọn", 0);
+            if(label != NULL && label_self_target(label, &x, &y) == 0) {
+                tap(x, y);
+                step(600);
+                settle();
+            }
+        }
+
+        label = find_label_topmost(lv_screen_active(), "Sửa", 0);
         CHECK(label != NULL, "control centre offers tile editing");
         if(label != NULL && label_self_target(label, &x, &y) == 0) {
             tap(x, y);
+            step(600);
             settle();
             CHECK(find_label(lv_screen_active(), "Đặt lại", 0) != NULL &&
                   find_label(lv_screen_active(), "Xong", 0) != NULL,
                   "edit mode offers reset and done");
-            label = find_label(lv_screen_active(), "× Bỏ", 0);
+            label = find_label_topmost(lv_screen_active(), VQEAF_SYM_REMOVE, 0);
             CHECK(label != NULL, "edit mode marks tiles removable");
             snapshot("control-edit");
+
+            lv_obj_t *wifi = find_label(lv_screen_active(), "Wi-Fi", 0);
+            lv_obj_t *bluetooth = find_label(lv_screen_active(), "Bluetooth", 0);
+            CHECK(wifi != NULL && bluetooth != NULL,
+                  "edit mode exposes two reorderable tiles");
+            if(wifi != NULL && bluetooth != NULL &&
+               label_target(wifi, &x, &y) == 0) {
+                int tx, ty;
+                if(label_target(bluetooth, &tx, &ty) == 0) {
+                    hold_drag_to(x, y, tx, ty, 12);
+                    CHECK(vqeaf_drag_active(),
+                          "Control Center hold creates an active drag");
+                    snapshot("control-reorder");
+                    release_hold();
+                    step(600);
+                    settle();
+                    wifi = find_label(lv_screen_active(), "Wi-Fi", 0);
+                    bluetooth = find_label(lv_screen_active(), "Bluetooth", 0);
+                    if(wifi != NULL && bluetooth != NULL &&
+                       label_self_target(wifi, &x, &y) == 0 &&
+                       label_self_target(bluetooth, &tx, &ty) == 0)
+                        CHECK(tx < x,
+                              "Control Center drag changes the visible tile order");
+                    else
+                        CHECK(0, "reordered Control Center tiles remain present");
+                    CHECK(vqeaf_ui_control_visible() && !vqeaf_drag_active(),
+                          "Control Center reorder keeps the panel open");
+                }
+            }
+
+            label = find_label_topmost(lv_screen_active(), VQEAF_SYM_REMOVE, 0);
             if(label != NULL && label_self_target(label, &x, &y) == 0) {
                 tap(x, y);
+                step(600);
                 settle();
-                CHECK(find_label(lv_screen_active(), "× Bỏ", 0) != NULL,
+                CHECK(find_label(lv_screen_active(), VQEAF_SYM_REMOVE, 0) != NULL,
                       "removing one tile keeps the edit mode usable");
             }
-            label = find_label(lv_screen_active(), "Đặt lại", 0);
+            label = find_label_topmost(lv_screen_active(), "Đặt lại", 0);
             if(label != NULL && label_self_target(label, &x, &y) == 0) {
                 tap(x, y);
+                step(600);
                 settle();
+                CHECK(find_label(lv_screen_active(), "Phát Wi-Fi", 0) != NULL,
+                      "reset restores the session tile list");
+                int rx, ry;
+                wifi = find_label(lv_screen_active(), "Wi-Fi", 0);
+                bluetooth = find_label(lv_screen_active(), "Bluetooth", 0);
+                if(wifi != NULL && bluetooth != NULL &&
+                   label_self_target(wifi, &x, &y) == 0 &&
+                   label_self_target(bluetooth, &rx, &ry) == 0)
+                    CHECK(x < rx,
+                          "reset restores the default Control Center order");
+                else
+                    CHECK(0, "reset keeps the default tiles present");
             }
-            label = find_label(lv_screen_active(), "Xong", 0);
+            label = find_label_topmost(lv_screen_active(), "Xong", 0);
             if(label != NULL && label_self_target(label, &x, &y) == 0) {
                 tap(x, y);
+                step(600);
                 settle();
             }
-            CHECK(find_label(lv_screen_active(), "Sửa", 0) != NULL,
-                  "Xong leaves tile editing");
+            CHECK(find_label(lv_screen_active(), "Sửa", 0) != NULL &&
+                  find_label(lv_screen_active(), "Phát Wi-Fi", 0) == NULL,
+                  "Xong returns to the compact grid");
         }
 
         label = find_label(lv_screen_active(), "Đèn pin", 0);
@@ -1817,6 +3009,26 @@ int main(int argc, char **argv)
                 lv_obj_delete(lv_obj_get_child(lv_layer_top(), 0));
             settle();
         }
+
+        g_point.x = 360;
+        g_point.y = 1120;
+        g_pressed = 1;
+        step(30);
+        g_point.y = 1080;
+        step(20);
+        step(120);
+        settle();
+        CHECK(vqeaf_ui_control_visible(),
+              "swipe-up starts an animated close");
+        snapshot("control-close-mid");
+        g_pressed = 0;
+        step(60);
+        step(240);
+        settle();
+        CHECK(!vqeaf_ui_control_visible(),
+              "swipe-up removes the control overlay");
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_HOME,
+              "closing the control panel restores Home");
 
         vqeaf_ui_power_menu_show();
         settle();
@@ -1865,6 +3077,8 @@ int main(int argc, char **argv)
         vqeaf_ui_show(VQEAF_PAGE_MUSIC);
         settle();
         CHECK(vqeaf_ui_page() == VQEAF_PAGE_MUSIC, "the music page opens");
+        CHECK(vqeaf_ui_media_session() == NULL,
+              "opening Music does not claim playback without an audio backend");
         CHECK(find_label_contains(lv_screen_active(), "kHz", 0) != NULL,
               "player shows a real codec/sample-rate line");
         CHECK(find_label_contains(lv_screen_active(),
@@ -1913,6 +3127,8 @@ int main(int argc, char **argv)
             CHECK(find_label_contains(lv_layer_top(),
                   "Chưa có codec âm thanh", 0) != NULL,
                   "a play tap reports the missing codec via snackbar");
+            CHECK(vqeaf_ui_media_session() == NULL,
+                  "an unsupported play tap cannot activate a media session");
             snapshot("music-play-snack");
             /* Dismiss directly: idling 2.7 s here would trip the screen
              * timeout and sleep the shell to LOCK mid-test. */
@@ -2045,6 +3261,21 @@ int main(int argc, char **argv)
         }
         CHECK(vqeaf_pages_music_view() == 0,
               "the queue button returns to the player");
+        CHECK(vqeaf_ui_media_session() == NULL,
+              "track selection and queue edits never fabricate playback");
+        vqeaf_ui_show(VQEAF_PAGE_HOME);
+        step(400); settle();
+    }
+
+    /* The built-in Video page decodes a still QVF frame for inspection. That
+     * is not timed output and must not activate the Control Center media card. */
+    {
+        vqeaf_ui_show(VQEAF_PAGE_VIDEO);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_VIDEO,
+              "the video inspection page opens");
+        CHECK(vqeaf_ui_media_session() == NULL,
+              "a static QVF frame preview is not a playback session");
         vqeaf_ui_show(VQEAF_PAGE_HOME);
         step(400); settle();
     }
@@ -2189,6 +3420,254 @@ int main(int argc, char **argv)
     CHECK(find_label(lv_screen_active(), "Truyền tệp · ổ QEAFRESCUE", 0) !=
               NULL,
           "the Settings row shows the rescue drive is back");
+
+    /* 16. Security centre: passive Wi-Fi inventory and offline CVE lookup.
+     * The provider-off state must remain explicit; enabling the host provider
+     * exposes the real scan fixture without adding any active-attack control. */
+    {
+        lv_obj_t *lab;
+        lv_obj_t *ta;
+        int saved_wifi_present = vqeaf_state.wifi_if_present;
+        char saved_wifi_ifname[sizeof(vqeaf_state.wifi_ifname)];
+        snprintf(saved_wifi_ifname, sizeof(saved_wifi_ifname), "%s",
+                 vqeaf_state.wifi_ifname);
+
+        vqeaf_state.wifi_if_present = 0;
+        vqeaf_state.wifi_ifname[0] = '\0';
+        vqeaf_ui_show(VQEAF_PAGE_SECURITY);
+        settle();
+        CHECK(find_label(lv_screen_active(), "Trung tâm bảo mật", 0) != NULL,
+              "Security hub renders its own identity");
+        CHECK(find_label(lv_screen_active(), "Wi-Fi chưa sẵn sàng", 0) != NULL,
+              "Security hub reflects the unavailable Wi-Fi provider");
+        snapshot("security-hub");
+        lab = find_label(lv_screen_active(), "Kiểm tra Wi-Fi", 0);
+        if(lab != NULL && label_target(lab, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_WIFI_AUDIT,
+              "Security hub opens the Wi-Fi audit page");
+        CHECK(find_label(lv_screen_active(),
+                         "Không có giao diện mạng (thiếu driver/firmware).",
+                         0) != NULL,
+              "missing Wi-Fi provider is reported, not simulated");
+        snapshot("wifi-audit-unavailable");
+
+        vqeaf_state.wifi_if_present = 1;
+        snprintf(vqeaf_state.wifi_ifname, sizeof(vqeaf_state.wifi_ifname),
+                 "wlan0");
+        lab = find_label(lv_screen_active(), "Quét lại", 0);
+        if(lab != NULL && label_target(lab, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_WIFI_AUDIT,
+              "rescan rebuilds the audit from the provider");
+        CHECK(find_label(lv_screen_active(), "TOTOLINK_A720R", 0) != NULL &&
+              find_label(lv_screen_active(), "QEAF-GUEST", 0) != NULL,
+              "audit lists networks returned by the scan provider");
+        CHECK(find_label(lv_screen_active(), "Mạng mở", 0) != NULL,
+              "an open network receives a defensive risk label");
+        CHECK(find_label(lv_screen_active(), "Dừng", 0) == NULL &&
+              find_label(lv_screen_active(), "Tấn công", 0) == NULL,
+              "passive audit exposes no attack or stop controls");
+        snapshot("wifi-audit");
+
+        lab = find_label(lv_screen_active(), VQEAF_SYM_ARROW_BACK, 0);
+        if(lab != NULL && label_target(lab, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_SECURITY,
+              "Wi-Fi audit back affordance returns to Security");
+        lab = find_label(lv_screen_active(), "Cơ sở dữ liệu lỗ hổng", 0);
+        if(lab != NULL && label_target(lab, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_ADVISORIES,
+              "Security hub opens the offline advisory catalog");
+        CHECK(find_label_contains(lv_screen_active(), "8 kết quả", 0) != NULL,
+              "advisory page reports the real catalog result count");
+
+        ta = find_textarea(lv_screen_active());
+        CHECK(ta != NULL, "advisory page has a real search textarea");
+        if(ta != NULL) lv_textarea_set_text(ta, "eternalblue");
+        settle();
+        CHECK(find_label(lv_screen_active(), "CVE-2017-0144", 0) != NULL &&
+              find_label(lv_screen_active(), "CVE-2021-44228", 0) == NULL,
+              "typing refreshes advisory results in place");
+        snapshot("advisories-search-ui");
+        lab = find_label(lv_screen_active(), "CVE-2017-0144", 0);
+        if(lab != NULL && label_target(lab, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_ADVISORY_DETAIL,
+              "tapping an advisory opens its detail page");
+        CHECK(find_label(lv_screen_active(), "Khắc phục", 0) != NULL &&
+              find_label(lv_screen_active(), "Microsoft", 0) != NULL,
+              "advisory detail shows source metadata and remediation");
+        snapshot("advisory-detail-ui");
+        lab = find_label(lv_screen_active(), VQEAF_SYM_ARROW_BACK, 0);
+        if(lab != NULL && label_target(lab, &x, &y) == 0) tap(x, y);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_ADVISORIES,
+              "advisory detail returns to the filtered list");
+
+        vqeaf_pages_advisory_query_set("");
+        vqeaf_state.wifi_if_present = saved_wifi_present;
+        snprintf(vqeaf_state.wifi_ifname, sizeof(vqeaf_state.wifi_ifname),
+                 "%s", saved_wifi_ifname);
+        vqeaf_ui_show(VQEAF_PAGE_HOME);
+        step(400);
+        settle();
+    }
+
+    int saved_volume = vqeaf_state.volume;
+    vqeaf_state.volume = 60;
+    vqeaf_sound_shutdown();
+    g_sound_write_fail = 0;
+    vqeaf_sound_set_backend(&test_sound_backend);
+    CHECK(vqeaf_sound_init() == 0, "shell sound status uses a probed PCM backend");
+    vqeaf_ui_show(VQEAF_PAGE_HOME);
+    vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+    label = find_label(lv_screen_active(), "PCM kiểm thử", 0);
+    CHECK(label != NULL, "Control Center displays the live PCM backend");
+    g_sound_write_fail = 1;
+    step(50);
+    vqeaf_pages_refresh();
+    if(label != NULL)
+        CHECK(strcmp(lv_label_get_text(label), "PCM ghi âm thanh thất bại") == 0,
+              "Control Center refreshes a runtime PCM failure without rebuilding");
+    else
+        CHECK(0, "Control Center retains its PCM status label");
+    vqeaf_sound_shutdown();
+    vqeaf_sound_set_backend(NULL);
+    vqeaf_sound_init();
+    vqeaf_ui_show(VQEAF_PAGE_HOME);
+    step(50);
+    vqeaf_state.volume = saved_volume;
+
+    {
+        char key[32];
+        int saved_theme = vqeaf_theme_get();
+        vqeaf_settings_backend_t backend = {
+            setup_settings_save, setup_settings_load, NULL
+        };
+
+        vqeaf_settings_reset();
+        vqeaf_setup_reset();
+        vqeaf_ui_show(VQEAF_PAGE_HOME);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETUP && vqeaf_setup_required(),
+              "clearing the completion marker redirects Home back to setup");
+        CHECK(tap_text(lv_screen_active(), "Bắt đầu") == 0,
+              "setup flow can restart after a settings reset");
+        for(int i = 0; i < VQEAF_SETTINGS_MAX - 1; i++) {
+            snprintf(key, sizeof(key), "setup.test.%d", i);
+            CHECK(vqeaf_settings_set_int(key, i) == 0,
+                  "settings rejection fixture fills the real store");
+        }
+        CHECK(tap_text(lv_screen_active(), "Tạo PIN") == 0,
+              "security opens the setup PIN keypad");
+        CHECK(vqeaf_setup_subpage_active(VQEAF_PAGE_PIN),
+              "setup PIN is an allowed temporary subpage");
+        CHECK(enter_digits("1357") == 0 && enter_digits("1357") == 0,
+              "setup PIN keypad accepts numeric input");
+        CHECK(find_label(lv_screen_active(),
+                         "Settings Service từ chối PIN. Thử lại sau.", 0) != NULL,
+              "PIN storage rejection is reported instead of accepted");
+        CHECK(tap_text(lv_screen_active(), "Hủy") == 0,
+              "cancelling setup PIN returns to setup security");
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETUP &&
+              find_label(lv_screen_active(), "Bảo mật", 0) != NULL,
+              "PIN cancel does not open normal Security");
+        snapshot("setup-security");
+
+        vqeaf_settings_reset();
+        vqeaf_setup_reset();
+        vqeaf_setup_show_step(1);
+        CHECK(tap_text(lv_screen_active(), "Tạo PIN") == 0 &&
+              enter_digits("2468") == 0 && enter_digits("1357") == 0,
+              "setup PIN accepts the first entry and a mismatched confirmation");
+        CHECK(find_label(lv_screen_active(), "Không khớp. Nhập lại PIN mới.", 0) != NULL,
+              "mismatched setup PIN restarts confirmation without storing it");
+        CHECK(enter_digits("2468") == 0 && enter_digits("2468") == 0,
+              "setup creates and confirms a PIN through Settings Service");
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETUP &&
+              find_label(lv_screen_active(), "Mạng", 0) != NULL &&
+              strcmp(vqeaf_settings_get_str("lock.pin", ""), "2468") == 0,
+              "confirmed setup PIN advances to network and is readable");
+        tap_text(lv_layer_top(), "OK");
+        snapshot("setup-network");
+        CHECK(vqeaf_state.wifi_if_present ?
+              find_label(lv_screen_active(), vqeaf_state.wifi_ifname, 0) != NULL :
+              find_label(lv_screen_active(), "Không có", 0) != NULL,
+              "setup network renders the actual Wi-Fi interface state");
+        CHECK(tap_text(lv_screen_active(), "Xem trạng thái Wi-Fi") == 0,
+              "setup opens the existing Wi-Fi detail page");
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_WIFI &&
+              vqeaf_setup_subpage_active(VQEAF_PAGE_WIFI),
+              "setup Wi-Fi subpage is routed and tracked");
+        CHECK(tap_text(lv_screen_active(), VQEAF_SYM_ARROW_BACK) == 0 &&
+              find_label(lv_screen_active(), "Mạng", 0) != NULL,
+              "Wi-Fi back returns to setup network instead of Settings");
+        swipe(710, 700, 570, 700, 12);
+        swipe(360, 1545, 360, 1300, 12);
+        swipe(360, 8, 360, 200, 12);
+        settle();
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETUP &&
+              find_label(lv_screen_active(), "Mạng", 0) != NULL &&
+              !vqeaf_ui_control_visible(),
+              "network-step shell gestures cannot bypass setup");
+        CHECK(tap_text(lv_screen_active(), "Tiếp tục") == 0,
+              "network advances to appearance");
+        snapshot("setup-appearance");
+        CHECK(tap_text(lv_screen_active(),
+                       vqeaf_theme_get() == VQEAF_THEME_DARK ? "Sáng" : "Tối") == 0,
+              "appearance offers the opposite real theme");
+        CHECK(vqeaf_theme_get() != saved_theme &&
+              vqeaf_ui_page() == VQEAF_PAGE_SETUP,
+              "theme selection applies immediately without leaving setup");
+        CHECK(tap_text(lv_screen_active(), "Hoàn tất") == 0,
+              "appearance advances to ready");
+        snapshot("setup-ready");
+        CHECK(find_label(lv_screen_active(), "Sẵn sàng!", 0) != NULL &&
+              find_label(lv_screen_active(), "Đã đặt (phiên)", 0) != NULL,
+              "ready summarizes the real PIN and setup state");
+
+        vqeaf_settings_reset();
+        for(int i = 0; i < VQEAF_SETTINGS_MAX; i++) {
+            snprintf(key, sizeof(key), "setup.test.%d", i);
+            vqeaf_settings_set_int(key, i);
+        }
+        vqeaf_setup_show_step(4);
+        CHECK(tap_text(lv_screen_active(), "Vào hệ điều hành") == 0,
+              "ready finish can be exercised");
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_SETUP && vqeaf_setup_required() &&
+              find_label_contains(lv_layer_top(),
+                                  "Settings Service không lưu được", 0) != NULL,
+              "completion rejection keeps setup open and explains why");
+
+        vqeaf_settings_reset();
+        setup_settings_save_fail = 0;
+        CHECK(vqeaf_settings_attach_backend(&backend) == 0,
+              "failing durable backend attaches for setup write-through test");
+        setup_settings_save_fail = 1;
+        vqeaf_setup_reset();
+        vqeaf_setup_show_step(4);
+        CHECK(tap_text(lv_screen_active(), "Vào hệ điều hành") == 0,
+              "finish runs against the failing durable backend");
+        CHECK(vqeaf_ui_page() == VQEAF_PAGE_LOCK && !vqeaf_setup_required() &&
+              vqeaf_settings_persistent() &&
+              find_label_contains(lv_layer_top(),
+                                  "Setup chỉ hoàn tất trong phiên", 0) != NULL,
+              "durable save failure permits only an honestly warned session completion");
+        snapshot("setup-complete-lock");
+
+        vqeaf_settings_reset();
+        vqeaf_setup_reset();
+        CHECK(vqeaf_setup_required(),
+              "setup returns after simulated reboot with session-only settings");
+        vqeaf_setup_show_step(4);
+        CHECK(tap_text(lv_screen_active(), "Vào hệ điều hành") == 0 &&
+              vqeaf_ui_page() == VQEAF_PAGE_LOCK && !vqeaf_setup_required() &&
+              !vqeaf_settings_persistent(),
+              "normal session-only setup completion reaches lock");
+        vqeaf_theme_set(saved_theme);
+    }
 
     printf(g_failures == 0 ? "ALL OK\n" : "%d FAILURES\n", g_failures);
     free(framebuffer);

@@ -1,0 +1,28 @@
+{
+  "target_device": "violet",
+  "source_repository": "MiCode/Xiaomi_Kernel_OpenSource",
+  "source_branch": "violet-q-oss",
+  "source_commit": "1488fa3d05e2f9be5fc62e0bb16ad85d96db2076",
+  "source_kernel_base": "4.14.117",
+  "embedded_config_header": "4.14.122",
+  "target_kernel_release": "4.14.215-azure-Pixel+",
+  "kernel_source_exact_match": false,
+  "kernel_compatibility": "official SM6150/Violet board DTS reference; exact 4.14.215 source commit unproven",
+  "production_ready": false,
+  "role": "Violet-labelled IDP-derived host-tested reference DTB/DTBO; do not flash",
+  "board_id": 34,
+  "msm_id": 355,
+  "panels": [
+    {"name": "FT8719 Tianma", "width": 1080, "height": 2340, "te_gpio": 90, "reset_gpio": 91},
+    {"name": "NT36672A Shenchao", "width": 1080, "height": 2340, "te_gpio": 90, "reset_gpio": 91}
+  ],
+  "device_panel_identified": false,
+  "base_dtb": {"file": "violet-sm6150.dtb", "size": 650634, "sha256": "b74c5bb4607482676a7e2243ffd112b0c92463910fe9231b826b29fa0e0970b8"},
+  "overlay_dtbo": {"file": "violet-sm6150-overlay.dtbo", "size": 893, "sha256": "969f1a5489ca3560016edc567ff275773ea1a10b8a3f06371a61823aefd934a1"},
+  "merged_dtb": {"file": "violet-sm6150-merged.dtb", "size": 650706, "sha256": "6539ce8caf68575cf3266800525fd38c10180443fffc47ae549866095f85e324"},
+  "both_panel_descriptors_present": true,
+  "both_panel_nodes_active": true,
+  "dwc3_usb0_usb1_quirks_present": true,
+  "overlay_applied_to_base": true,
+  "device_boot_tested": false
+}

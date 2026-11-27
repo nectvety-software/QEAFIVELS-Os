@@ -1,0 +1,24 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 5,
+  "runtime": "native",
+  "id": "org.vqeaf.toolhub",
+  "name": "QEAF Tool Hub",
+  "version": "1.0.0",
+  "description": "Catalog cong cu QEAF, kiem tra quyen va console lenh cuc bo khong shell",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/arm64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.3.0",
+  "architecture": [
+    "arm64"
+  ],
+  "permissions": [
+    "ui.display",
+    "input.receive"
+  ],
+  "dependencies": [],
+  "signature": null
+}

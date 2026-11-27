@@ -25,6 +25,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <libs/lodepng/lodepng.h>
+
 #include "lvgl.h"
 #include "drm_kms.h"
 #include "panel_scale.h"
@@ -37,6 +39,10 @@
 #include "vqeaf_shutdown.h"
 #include "violet_input.h"
 #include "violet_power.h"
+#include "violet.h"
+#include "violet_drivers.h"
+#include "qvf_encode.h"
+#include "volume_lock.h"
 
 #include "hal/include/display.h"
 #include "hal/include/usb_gadget.h"
@@ -59,8 +65,8 @@ static struct vio_drm drm;
 static struct vio_lun lun;
 static int drm_ready;
 static volatile sig_atomic_t ui_ready;
+static VioDriverEvidence driver_evidence;
 
-static pthread_mutex_t volume_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_t rescue_thread;
 static volatile sig_atomic_t rescue_thread_up;
 static const char *volatile boot_stage = "start";
@@ -144,10 +150,313 @@ static int snapshot_scanout(struct fat16_volume *vol)
         return -2;
     vio_log("snap: wrote SCREEN.RAW (%dx%d RGB565, frame %u)",
             RESCUE_SCREEN_W, RESCUE_SCREEN_H, (unsigned)snap_frame);
-    vqeaf_ui_notify("Cứu hộ", "Đã ghi ảnh màn hình vào SCREEN.RAW",
-                    VQEAF_SYM_IMAGE, 0x35E0C8);
+    vqeaf_ui_notify_event("Cứu hộ", "Đã ghi ảnh màn hình vào SCREEN.RAW",
+                          VQEAF_SYM_IMAGE, 0x35E0C8,
+                          VQEAF_SOUND_CAPTURE);
     return (int)sizeof(snap_image);
 }
+
+static unsigned shot_frame;
+static char g_last_shot[64];
+
+static int capture_write(struct fat16_volume *vol, const char *dir,
+                         const char *name, const unsigned char *data,
+                         size_t len)
+{
+    char path[64];
+
+    snprintf(path, sizeof(path), "%s%s", dir, name);
+    return fat16_write_path(vol, path, data, len);
+}
+
+static int screenshot_png(struct fat16_volume *vol, char *name, size_t cap)
+{
+    unsigned char *rgba;
+    unsigned char *png = NULL;
+    size_t png_len = 0;
+    unsigned w, h, x, y;
+    unsigned lode_err;
+    int rc = -1;
+
+    if(vol == NULL || name == NULL || cap == 0 ||
+       !drm_ready || drm.map == NULL) return -1;
+    w = drm.width;
+    h = drm.height;
+    if(w == 0 || h == 0 || (size_t)w > SIZE_MAX / 4u / (size_t)h) return -3;
+    rgba = malloc((size_t)w * (size_t)h * 4u);
+    if(rgba == NULL) return -2;
+
+    for(y = 0; y < h; y++) {
+        const uint32_t *row = (const uint32_t *)(drm.map +
+                                                (size_t)y * drm.pitch);
+        unsigned char *out = rgba + (size_t)y * w * 4u;
+        for(x = 0; x < w; x++) {
+            uint32_t p = row[x];
+            out[x * 4u + 0u] = (unsigned char)((p >> 16) & 0xff);
+            out[x * 4u + 1u] = (unsigned char)((p >> 8) & 0xff);
+            out[x * 4u + 2u] = (unsigned char)(p & 0xff);
+            out[x * 4u + 3u] = 255;
+        }
+    }
+
+    lode_err = lodepng_encode32(&png, &png_len, rgba, w, h);
+    if(lode_err != 0 || png == NULL || png_len == 0) {
+        size_t stride = ((size_t)w * 3u + 3u) & ~(size_t)3u;
+        size_t bmp_len;
+        unsigned char *bmp;
+        unsigned char *pixels;
+
+        free(rgba);
+        if(stride > SIZE_MAX - 54u || (size_t)h > (SIZE_MAX - 54u) / stride)
+            return -3;
+        bmp_len = 54u + stride * (size_t)h;
+        bmp = malloc(bmp_len);
+        if(bmp == NULL) return -3;
+        memset(bmp, 0, 54);
+        bmp[0] = 'B'; bmp[1] = 'M';
+        bmp[2] = (unsigned char)(bmp_len & 0xff);
+        bmp[3] = (unsigned char)((bmp_len >> 8) & 0xff);
+        bmp[4] = (unsigned char)((bmp_len >> 16) & 0xff);
+        bmp[5] = (unsigned char)((bmp_len >> 24) & 0xff);
+        bmp[10] = 54;
+        bmp[14] = 40;
+        bmp[18] = (unsigned char)(w & 0xff);
+        bmp[19] = (unsigned char)((w >> 8) & 0xff);
+        bmp[22] = (unsigned char)(h & 0xff);
+        bmp[23] = (unsigned char)((h >> 8) & 0xff);
+        bmp[26] = 1; bmp[28] = 24;
+        bmp[34] = (unsigned char)(bmp_len & 0xff);
+        bmp[35] = (unsigned char)((bmp_len >> 8) & 0xff);
+        bmp[36] = (unsigned char)((bmp_len >> 16) & 0xff);
+        bmp[37] = (unsigned char)((bmp_len >> 24) & 0xff);
+        pixels = bmp + 54;
+        for(y = 0; y < h; y++) {
+            const uint32_t *row = (const uint32_t *)(drm.map +
+                (size_t)(h - 1u - y) * drm.pitch);
+            unsigned char *out = pixels + (size_t)y * stride;
+            for(x = 0; x < w; x++) {
+                uint32_t c = row[x];
+                out[x * 3u + 0u] = (unsigned char)(c & 0xff);
+                out[x * 3u + 1u] = (unsigned char)((c >> 8) & 0xff);
+                out[x * 3u + 2u] = (unsigned char)((c >> 16) & 0xff);
+            }
+        }
+        snprintf(name, cap, "SHOT%04u.BMP", ++shot_frame);
+        snprintf(g_last_shot, sizeof(g_last_shot), "%s", name);
+        rc = capture_write(vol, "UserData/Pictures/", name, bmp, bmp_len) < 0 ?
+             -4 : (int)bmp_len;
+        free(bmp);
+        if(rc > 0) {
+            vio_log("shot: PNG encoder error %u; wrote BMP %s (%d bytes)",
+                    lode_err, name, rc);
+            vqeaf_ui_notify_event("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8,
+                                  VQEAF_SOUND_CAPTURE);
+            vqeaf_ui_show_capture_thumb(name);
+        }
+        return rc;
+    }
+    free(rgba);
+
+    snprintf(name, cap, "SHOT%04u.PNG", ++shot_frame);
+    snprintf(g_last_shot, sizeof(g_last_shot), "%s", name);
+    if(capture_write(vol, "UserData/Pictures/", name, png, png_len) < 0)
+        rc = -4;
+    else
+        rc = (int)png_len;
+    free(png);
+
+    if(rc > 0) {
+        vio_log("shot: %s (%ux%u PNG, %d bytes)", name, w, h, rc);
+        vqeaf_ui_notify_event("Ảnh màn hình", name, VQEAF_SYM_IMAGE, 0x35E0C8,
+                                  VQEAF_SOUND_CAPTURE);
+        vqeaf_ui_show_capture_thumb(name);
+    }
+    return rc;
+}
+
+const char *vio_last_screenshot(void) { return g_last_shot; }
+
+int vio_screenshot_now(void)
+{
+    char name[64];
+    int rc;
+
+    if(!drm_ready || drm.map == NULL) return -1;
+    volume_lock_acquire();
+    rc = lun.ready ? screenshot_png(&lun.volume, name, sizeof(name)) : -1;
+    if(rc > 0) {
+        snprintf(g_last_shot, sizeof(g_last_shot), "%s", name);
+        rescue_flush_log(&lun.volume);
+    }
+    volume_lock_release();
+    if(rc <= 0)
+        vqeaf_ui_notify_event("Ảnh màn hình", "Chụp không thành công",
+                              VQEAF_SYM_DELETE, 0xFF8A7A,
+                              VQEAF_SOUND_WARNING);
+    return rc;
+}
+
+#define REC_W 240u
+#define REC_H 416u
+#define REC_BUDGET (6u * 1024u * 1024u)
+#define REC_MAX_SECONDS 60
+#define REC_DIR "UserData/Videos/"
+
+static uint8_t *g_rec_buf;
+static size_t g_rec_cap, g_rec_used;
+static uint32_t *g_rec_xrgb;
+static unsigned g_rec_frames, g_rec_limit;
+static unsigned g_rec_interval_ms, g_rec_next_ms;
+static int g_rec_active, g_rec_fps;
+static unsigned g_rec_file;
+static char g_rec_status[128] = "idle";
+static char g_rec_name[24];
+
+static size_t rec_budget(void)
+{
+    size_t free_bytes = 0, budget = REC_BUDGET;
+
+    volume_lock_acquire();
+    free_bytes = lun.ready ? fat16_free_bytes(&lun.volume) : 0;
+    volume_lock_release();
+    if(free_bytes / 2u < budget) budget = free_bytes / 2u;
+    if(budget < (size_t)REC_W * REC_H * 2u) return 0;
+    return budget;
+}
+
+static int rec_capture_frame(void)
+{
+    unsigned x, y;
+
+    if(!drm_ready || drm.map == NULL) return -1;
+    if(g_rec_buf == NULL || g_rec_xrgb == NULL) return -1;
+    for(y = 0; y < REC_H; y++) {
+        unsigned sy = (y * (unsigned)drm.height) / REC_H;
+        const uint32_t *row = (const uint32_t *)(drm.map +
+                                                 (size_t)sy * drm.pitch);
+        for(x = 0; x < REC_W; x++) {
+            unsigned sx = (x * (unsigned)drm.width) / REC_W;
+            g_rec_xrgb[y * REC_W + x] = row[sx];
+        }
+    }
+    return vio_qvf_append(g_rec_buf, g_rec_cap, &g_rec_used, g_rec_xrgb,
+                          REC_W, REC_H);
+}
+
+static void rec_save(const char *reason)
+{
+    char path[64];
+    int rc = -1;
+
+    if(g_rec_frames == 0 || g_rec_buf == NULL || g_rec_used <= VIO_QVF_HEADER) {
+        snprintf(g_rec_status, sizeof(g_rec_status),
+                 "stopped: no frame captured (%s)", reason);
+        vio_log("rec: %s", g_rec_status);
+        return;
+    }
+    vio_qvf_set_frames(g_rec_buf, g_rec_used, g_rec_frames);
+    snprintf(g_rec_name, sizeof(g_rec_name), "VID%04u.QVF", ++g_rec_file);
+    snprintf(path, sizeof(path), "%s%s", REC_DIR, g_rec_name);
+    volume_lock_acquire();
+    if(lun.ready)
+        rc = fat16_write_path(&lun.volume, path, g_rec_buf, g_rec_used);
+    if(rc == 0) rescue_flush_log(&lun.volume);
+    volume_lock_release();
+
+    if(rc == 0) {
+        snprintf(g_rec_status, sizeof(g_rec_status),
+                 "saved %s (%u frames, %u bytes, %s)", g_rec_name,
+                 g_rec_frames, (unsigned)g_rec_used, reason);
+        vio_log("rec: %s", g_rec_status);
+        vqeaf_ui_notify_event("Quay màn hình", g_rec_name, VQEAF_SYM_MOVIE,
+                              0xFF7A7A, VQEAF_SOUND_RECORD);
+    }
+    else {
+        snprintf(g_rec_status, sizeof(g_rec_status),
+                 "save failed after %u frames (%s)", g_rec_frames, reason);
+        vio_log("rec: %s", g_rec_status);
+        vqeaf_ui_notify_event("Quay màn hình", "Không ghi được tệp video",
+                              VQEAF_SYM_MOVIE, 0xFF8A7A,
+                              VQEAF_SOUND_WARNING);
+    }
+}
+
+static void rec_tick(void)
+{
+    unsigned now;
+
+    if(!g_rec_active) return;
+    now = (unsigned)vio_monotonic_ms();
+    if(g_rec_next_ms != 0u && now < g_rec_next_ms) return;
+    g_rec_next_ms = now + g_rec_interval_ms;
+
+    if(rec_capture_frame() != 0) {
+        g_rec_active = 0;
+        rec_save("clip budget reached");
+        return;
+    }
+    g_rec_frames++;
+    if(g_rec_frames >= g_rec_limit) {
+        g_rec_active = 0;
+        rec_save("time limit reached");
+        return;
+    }
+    snprintf(g_rec_status, sizeof(g_rec_status),
+             "recording %u/%u frames (%ux%u @%d fps)",
+             g_rec_frames, g_rec_limit, REC_W, REC_H, g_rec_fps);
+}
+
+int vio_rec_start(int fps, int seconds)
+{
+    size_t budget;
+
+    if(g_rec_active) return -16;
+    if(!drm_ready || drm.map == NULL) return -19;
+    if(fps < 1 || fps > 15) fps = 8;
+    if(seconds < 1 || seconds > REC_MAX_SECONDS) seconds = 10;
+
+    budget = rec_budget();
+    if(budget == 0) {
+        snprintf(g_rec_status, sizeof(g_rec_status),
+                 "refused: no room on the rescue volume");
+        vio_log("rec: %s", g_rec_status);
+        return -28;
+    }
+    if(g_rec_buf == NULL) g_rec_buf = malloc(REC_BUDGET);
+    if(g_rec_xrgb == NULL)
+        g_rec_xrgb = malloc((size_t)REC_W * REC_H * sizeof(uint32_t));
+    if(g_rec_buf == NULL || g_rec_xrgb == NULL) return -12;
+
+    g_rec_cap = budget;
+    g_rec_used = vio_qvf_header(g_rec_buf, g_rec_cap, REC_W, REC_H,
+                                (uint16_t)fps);
+    if(g_rec_used == 0) return -22;
+    g_rec_frames = 0;
+    g_rec_fps = fps;
+    g_rec_limit = (unsigned)fps * (unsigned)seconds;
+    g_rec_interval_ms = 1000u / (unsigned)fps;
+    g_rec_next_ms = 0;
+    g_rec_active = 1;
+    snprintf(g_rec_status, sizeof(g_rec_status),
+             "recording 0/%u frames (%ux%u @%d fps)", g_rec_limit,
+             REC_W, REC_H, fps);
+    vio_log("rec: started, %ux%u @%d fps, %u frame(s), %u-byte budget",
+            REC_W, REC_H, fps, g_rec_limit, (unsigned)g_rec_cap);
+    vqeaf_sound_play(VQEAF_SOUND_RECORD);
+    return 0;
+}
+
+int vio_rec_stop(void)
+{
+    if(!g_rec_active) return -1;
+    g_rec_active = 0;
+    rec_save("stopped by user");
+    return 0;
+}
+
+int vio_rec_active(void) { return g_rec_active; }
+
+const char *vio_rec_status(void) { return g_rec_status; }
 
 static void status_fields(char *resp, int cap)
 {
@@ -186,7 +495,7 @@ static void *rescue_worker(void *arg)
     for(;;) {
         const char *stage = (const char *)boot_stage;
 
-        pthread_mutex_lock(&volume_lock);
+        volume_lock_acquire();
         if(strcmp(stage, logged) != 0) {
             char line[64];
             snprintf(line, sizeof(line),
@@ -197,7 +506,7 @@ static void *rescue_worker(void *arg)
         }
         rescue_poll(&lun.volume);
         vio_lun_poll(&lun);
-        pthread_mutex_unlock(&volume_lock);
+        volume_lock_release();
         vio_sleep_ms(200);
     }
     return NULL;
@@ -302,9 +611,11 @@ static int start_phone_ui(void)
     touch.fd = -1;
     found = vio_find_touch_device(path, sizeof(path));
     if(found && vio_touch_open(&touch, found, &panel) == 0) {
+        driver_evidence.touch_open = 1;
         vio_log("ui: LVGL touch input bound to %s", path);
     }
     else {
+        driver_evidence.touch_open = 0;
         vio_log("ui: no touch device; shell accepts rescue taps only");
     }
     {
@@ -322,6 +633,8 @@ static int start_phone_ui(void)
             }
         }
     }
+    driver_evidence.power_input_open = power_btn.nfd > 0;
+    vio_drivers_set_evidence(&driver_evidence);
 
     indev = lv_indev_create();
     if(indev) {
@@ -433,6 +746,7 @@ static void ui_fault(int sig, siginfo_t *info, void *context)
     /* Keep PID 1 alive; the main loop's setjmp point repaints or restarts
      * the shell. The real signal number reaches the log, not a guess. */
     vio_log("fault: signal %d on the UI thread", sig);
+    volume_lock_drop_on_fault();
     if(in_ui) siglongjmp(ui_recovery, 1);
     if(main_thread == pthread_self()) siglongjmp(main_recovery, 1);
     for(;;) pause();
@@ -494,6 +808,8 @@ int main(void)
     install_ui_fault_handlers();
     drm.fd = -1;
     lun.fd = -1;
+    vio_drivers_evidence_init(&driver_evidence);
+    vio_drivers_set_evidence(&driver_evidence);
 
     vio_setup_environment();
     vio_log("boot: " QEAF_OS_STRING " init on %s (PID %d)", mtk_board_name(),
@@ -507,6 +823,7 @@ int main(void)
     }
 
     rescue_set_snapshot_hook(snapshot_scanout);
+    rescue_set_screenshot_hook(screenshot_png);
     rescue_set_status_hook(status_fields);
     rescue_set_tap_hook(ui_tap_hook);
     rescue_set_hold_hook(ui_hold_hook);
@@ -528,6 +845,8 @@ int main(void)
         else {
             vio_log("boot: QEAFRESCUE volume unavailable");
         }
+        driver_evidence.usb_gadget_bound = lun.ready && lun.gadget;
+        vio_drivers_set_evidence(&driver_evidence);
         in_ui = 0;
     }
     else {
@@ -573,6 +892,8 @@ int main(void)
                        display_orientation_degrees(display_orientation()));
         if(vio_drm_init(&drm, MTK_PANEL_W, MTK_PANEL_H) == 0) {
             drm_ready = 1;
+            driver_evidence.drm_modeset_ok = 1;
+            vio_drivers_set_evidence(&driver_evidence);
             vio_panel_set_stride(&panel, (int)(drm.pitch / 4));
             vio_display_bind(&panel);
             set_stage("splash");
@@ -653,6 +974,7 @@ int main(void)
                             vqeaf_ui_activity();
                         }
                         lv_timer_handler();
+                        rec_tick();
                         if(!vqeaf_shutdown_active() && power_btn.nfd > 0) {
                             int pr = vio_power_poll(&power_btn);
                             if(power_btn.volume_delta != 0)
@@ -675,10 +997,11 @@ int main(void)
                                     pick == VQEAF_USB_CHARGE ? USB_MODE_CHARGE
                                                              : USB_MODE_MTP;
                                 if(vio_lun_set_mode(&lun, mode) < 0)
-                                    vqeaf_ui_notify("USB",
-                                                    "Không đổi được chế độ USB",
-                                                    VQEAF_SYM_DELETE,
-                                                    0xFF8A7A);
+                                    vqeaf_ui_notify_event("USB",
+                                                          "Không đổi được chế độ USB",
+                                                          VQEAF_SYM_DELETE,
+                                                          0xFF8A7A,
+                                                          VQEAF_SOUND_WARNING);
                                 else
                                     vqeaf_ui_notify("USB",
                                                     pick == VQEAF_USB_CHARGE ?
@@ -707,6 +1030,8 @@ int main(void)
                 in_ui = 1;
                 if(vio_lun_start_gadget(&lun) == 0)
                     vio_log("boot: USB gadget bound on retry");
+                driver_evidence.usb_gadget_bound = lun.ready && lun.gadget;
+                vio_drivers_set_evidence(&driver_evidence);
                 in_ui = 0;
             }
             else {
@@ -716,10 +1041,12 @@ int main(void)
         }
 
         if(lun.ready && !rescue_thread_up) {
+            volume_lock_init();
             if(pthread_mutex_trylock(&volume_lock) == 0) {
+                volume_lock_depth++;
                 rescue_poll(&lun.volume);
                 vio_lun_poll(&lun);
-                pthread_mutex_unlock(&volume_lock);
+                volume_lock_release();
             }
         }
     }

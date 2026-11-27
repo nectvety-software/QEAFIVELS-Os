@@ -100,6 +100,11 @@ class NativeQEAPPTests(unittest.TestCase):
         self.assertIn("runtime must be native",
                       " ".join(qeaf.validate_manifest(native_manifest(runtime="declarative"))))
 
+    def test_native_v2_requires_one_architecture(self):
+        self.assertIn("exactly one architecture",
+                      " ".join(qeaf.validate_manifest(native_manifest(
+                          architecture=["arm64", "x86_64"]))))
+
     def test_bad_entry_extension_rejected(self):
         self.assertIn("entry must be a relative .qen path",
                       " ".join(qeaf.validate_manifest(native_manifest(entry="src/main.qe"))))
@@ -168,6 +173,8 @@ class NativeQEAPPTests(unittest.TestCase):
             self.assertEqual(qeaf.validate_manifest(manifest), [])
             module = (target / manifest["entry"]).read_bytes()
             self.assertEqual(qen.validate_module(module, "arm64"), [])
+            self.assertEqual(int.from_bytes(module[53:55], "little"),
+                             manifest["abi_version"])
             self.assertFalse((target / "src" / "main.qe").exists())
 
 

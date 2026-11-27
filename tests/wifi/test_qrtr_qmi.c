@@ -20,6 +20,7 @@ typedef struct {
     uint8_t last_tx[128];
     size_t last_tx_len;
     int sends;
+    int indications_seen;
 } mock_t;
 
 static int m_send(void *p, const vqeaf_qrtr_addr_t *dst,
@@ -54,6 +55,15 @@ static int m_recv(void *p, uint8_t *buf, size_t cap, size_t *out_len,
 }
 
 static uint64_t m_now(void *p) { return ((mock_t *)p)->now; }
+static void m_indication(void *p, uint16_t msg_id, const uint8_t *payload,
+                         size_t payload_len)
+{
+    mock_t *m = (mock_t *)p;
+    (void)msg_id;
+    (void)payload;
+    (void)payload_len;
+    m->indications_seen++;
+}
 
 static void mock_init(mock_t *m)
 {
@@ -215,6 +225,22 @@ int main(int argc, char **argv)
     assert(vqeaf_qmi_result_decode(buf + 7, 7, &res) == 0);
     assert(res.result == 0 && res.error == 0);
     assert(qc.sent == 1 && qc.received == 1 && qc.timeouts == 0);
+
+    /* Indications are delivered from received bytes and can be awaited without
+     * fabricating a response or losing non-matching indications. */
+    memcpy(wrong, ind, n_ind);
+    wrong[3] = 0x21; wrong[4] = 0;
+    mock_init(&m);
+    mock_push(&m, wrong, n_ind);
+    mock_push(&m, ind, n_ind);
+    fixture_io(&m, &io);
+    vqeaf_qmi_client_init(&qc, &io);
+    vqeaf_qmi_client_reset(&qc, VQEAF_QMI_LINK_UP);
+    vqeaf_qmi_client_set_indication_handler(&qc, m_indication, &m);
+    assert(vqeaf_qmi_wait_indication(&qc, 0x20, buf, sizeof(buf), &olen,
+                                     100) == 0);
+    assert(olen == n_ind && memcmp(buf, ind, n_ind) == 0);
+    assert(m.indications_seen == 2 && qc.indications == 2);
 
     /* QMI failure result is an honest answer, not a transport error. */
     mock_init(&m);

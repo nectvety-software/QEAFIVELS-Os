@@ -1,39 +1,124 @@
 # QEAFIVELS OS Architecture
 
-QEAFIVELS OS is a freestanding, independent operating system. Its production phone target is ARM64 Violet. It must not depend on Linux kernel/userspace, a vendor mobile-platform stack, vendor app runtime, vendor framework/HAL, or a Linux distribution at runtime.
+Status: Linux-core architecture approved 2026-11-25.
 
-The canonical architecture, hardware confidence ledger, boot safety policy and stage gates are maintained in `docs/INDEPENDENT_OS_CHARTER.md`.
+QEAFIVELS OS uses Linux as the kernel core for the whole product. The Violet
+production target uses the vendor Linux `4.14.215-azure-Pixel+` AArch64
+kernel. The x86_64/QEMU reference target now uses a separately pinned upstream
+Linux 4.14.215 baseline. QEMU boots QEAF PID 1, starts QEAF services and runs
+the native x86_64 Puzzle `.qeapp` through the sandboxed device launcher.
+QEAFIVELS owns the native userspace, PID 1/init, services, framework, UI,
+QEAPP runtime, rescue and tooling above Linux.
+
+The canonical hardware-confidence ledger, boot safety policy and migration
+gates are maintained in `docs/INDEPENDENT_OS_CHARTER.md`. The filename is
+retained for continuity; the charter now describes a Linux-core OS.
 
 ## Current repository components
 
-- `kernel/arch/x86_64`: existing freestanding UEFI reference implementation. Useful for host/QEMU kernel algorithm development; not the Violet target.
-- `bootloader/core`: existing x86_64 UEFI boot manager and handoff. Not a Violet bootloader.
-- `recovery/core`: existing x86_64 standalone recovery reference.
-- `kernel/core`: architecture-neutral memory/scheduler/IPC/VFS primitives; audit each module before ARM64 reuse. `security.c` (capability policy), `vfs.c` (per-task handles, owner/mode checks) and `ramfs.c` (kernel root namespace) are shared by the AArch64 kernel.
-- `kernel/arch/aarch64`: freestanding AArch64 kernel (QEMU virt) with entry/vectors, MMU, GICv2, generic timer, preemptive scheduler, ELF/.qen loader, IPC, compositor/window manager and the F4 credential model. Gate: `scripts/test_kernel_aarch64.py` (emulated only; no Violet hardware evidence).
-- `system/core`, `framework`, `runtime/qeapp`, `sdk`: native OS work in progress; inspect implementation status before claiming feature completeness.
-- `platform/lvgl`: vendored LVGL library. It is a UI toolkit dependency only, not an OS kernel or runtime.
-- `platform/violet`: currently contains a Linux-musl PID 1/initramfs transport prototype using the stock kernel. It is explicitly legacy/interim and is not QEAFIVELS Kernel.
+- `platform/violet`: production Linux-core PID 1/initramfs path. It uses the
+  stock Violet kernel, DRM/KMS, evdev, configfs and Linux services. It is no
+  longer an interim freestanding-kernel transport.
+- `drives/violet`: QEAF-owned userspace provider registry and readiness policy
+  over Linux interfaces. It does not own kernel probe, MMIO, IRQ or DMA.
+- `drives/`: freestanding SM6150 driver contracts (SPMI PMIC arbiter/regulator,
+  GENI I2C, DISP_CC, DSI packets/panel, touch) plus `drives/core/drive_catalog`
+  which registers them in `system/core/driver.c`. Built as `vqeaf_drives` and as
+  an AArch64 archive; not linked into the Violet PID 1, which must not do MMIO.
+  See `docs/MRE_DRIVES.md`.
+- `platform/linux-x86_64`: separate headless QEMU path with static Linux PID 1,
+  service supervisor and native QEAPP runner. Its `bzImage`, `kernel.config`,
+  `System.map`, initramfs and manifest live under `build/linux-x86_64/` and do
+  not replace the freestanding x86_64 UEFI artifacts.
+- `system/core`, `framework`, `runtime/qeapp`, `sdk`: QEAF-owned userspace
+  work. Inspect implementation status before claiming feature completeness.
+- `platform/lvgl`: UI toolkit dependency only, not an OS kernel or runtime.
+- `kernel/arch/aarch64`: retained freestanding AArch64 reference kernel with
+  QEMU virt evidence. It is not the production Violet kernel and must not be
+  flashed or described as Linux.
+- `kernel/arch/x86_64`, `bootloader/core`, `recovery/core`: retained
+  freestanding x86_64 UEFI reference implementations. The Linux x86_64/QEMU
+  migration must use separate artifact names and gates.
+- `integrations/MRE-Os`: reference integration and porting material. Linux
+  drivers, not these freestanding modules, own production hardware.
 
-## Kernel strategy
+## Kernel and boot ownership
 
-The phone target requires a new freestanding AArch64 kernel, entered through a documented boot transport. Implement ARM64 exception vectors, MMU/page tables, GIC, generic timer, allocator, scheduler, IPC and syscall ABI independently. Do not link musl or invoke Linux syscalls in the target kernel.
+Linux owns scheduling, memory, interrupts, timers, VFS/filesystems,
+namespaces, kernel security primitives and kernel drivers. QEAF PID 1 owns
+init lifecycle, service supervision, rescue, package/storage policy and
+controlled shutdown. QEAF services own policy and privileged device
+operations; the framework exposes stable app-facing APIs; the interface
+renders service state and never manipulates drivers directly.
 
-### Kernel security model (AArch64, milestone F4)
+Violet packaging reuses the stock kernel payload byte-for-byte and replaces
+only the ramdisk. `scripts/package_violet.py --verify-only` checks the
+existing image against the stock reference, verifies the embedded Linux
+release and AArch64 Image header, extracts `/init` from the ramdisk, requires
+a static AArch64 ELF, runs the structural/rescue gates and prints a
+provenance manifest. Normal packaging writes
+`dist/boot-vqeaf-violet.manifest.json` only after all gates pass.
 
-Threat model: a hostile or buggy EL0 process; EL1 (the kernel) is trusted. The trust boundary is the `svc` instruction and every user pointer crossing it.
+The matching Violet 4.14 source tree and vendor revision are not present
+locally. The current kernel is therefore verified binary provenance, not a
+reproducible source build. The x86_64 reference kernel is reproducibly built
+from upstream Linux 4.14.215 source pinned by SHA-256
+`9a844e290c61b39dd23df507ba1d9c2b2b4365e5993a978b19f1eb5610b926da`.
+`build/linux-x86_64/manifest.json` records the source URL, effective config,
+artifact hashes, toolchain, QEMU result and limitations. Source archive GPG
+verification and the kernel security backport/CVE review are still pending.
 
-- **Identity.** Each `VqeafTask` carries `VqeafCred {uid, gid, caps}` (`kernel/include/vqeaf/security.h`). Kernel tasks and kernel-internal EL0 harnesses run as uid 0 with `VQEAF_CAP_ALL`. AMS gives every `.qen` app its own uid in the app band plus a capability bundle (`VQEAF_CAPS_APP_UI`, `VQEAF_CAPS_APP_HEADLESS`); apps never receive `VQEAF_CAP_SYSTEM` or `VQEAF_CAP_FS_ADMIN`. `vqeaf_task_create_user_cred()` rejects a NULL credential, so no user task can silently inherit the system identity.
-- **Authorization.** `kernel/core/security.c` maps each syscall number (from `vqeaf/el0_abi.h`) to the capability it needs; the EL0 dispatcher in `kernel/arch/aarch64/irq.c` checks that before reading arguments, returns `-EACCES`, and prints `SEC: deny uid= sys= need=` as an audit line. User buffers are validated with `vqeaf_vm_user_range_mapped()` and copied through a bounded kernel buffer.
-- **VFS.** `VqeafVnode` carries uid/gid/mode (nine-bit rwx triplets). Handles live in a per-task-slot table (`VQEAF_VFS_HANDLE_MAX` per task); open checks owner/mode, read/write re-check it, and task exit releases the whole slot. Root namespace today is `/system/version` (0444) and `/data/<uid>/private` (0600, RAM only).
-- **Failure mode.** Denial is a returned error plus an audit line; kernel state is untouched and no partial copy is performed.
-- **Evidence.** `scripts/test_kernel_aarch64.py` asserts the boot self-test markers (allowed vs denied syscalls, cross-app open refused with EACCES, read-only write refused, per-slot handle isolation) and that the restricted window app still completes the F3 chain. Emulated QEMU virt evidence only.
-- **Not implemented:** revocation of a running process, persistent storage behind `/data`, device-object broker (EL0 has no device syscall and no MMIO mapping), and per-app identity on Violet hardware.
+## Driver and capability model
 
-## Hardware truth
+Linux owns device probe/remove, IRQ, DMA, clocks, regulators, resets and
+runtime power. QEAF's driver/capability registries remain service-side
+bookkeeping and policy: they report what Linux and QEAF services actually
+probed. A capability becomes READY only after a real provider succeeds and,
+for hardware claims, a documented physical test passes.
 
-See `docs/VIOLET_HARDWARE.md` and `docs/INDEPENDENT_OS_CHARTER.md`. Existing DRM/KMS, evdev, configfs USB gadget and sysfs observations were made under the stock Linux kernel and are not native-driver implementations. The local storage dump identifies mmcblk0/eMMC, not UFS. Resolve the SM6150/SDM660 discrepancy from the actual device before silicon-specific drivers.
+Firmware is an external, versioned input. Record its source, version and
+hash. Android HAL binaries are not the QEAF framework or OS foundation; any
+retained vendor binary is an explicitly inventoried compatibility dependency,
+not proof of a QEAF service. Apps never receive MMIO access. A missing provider
+stays UNSUPPORTED, PRESENT, BLOCKED_FIRMWARE, DEGRADED or ERROR as evidence
+permits.
 
-## Release claims
+## Linux security model
 
-Never call the current x86_64 QEMU image a Violet build. Never call the current Violet Linux PID 1 image an independent OS. Never claim hardware support from emulator tests or UI screenshots. Every stage needs a reproducible artifact and evidence.
+Threat model: a hostile or buggy QEAPP process on the Linux-core target;
+PID 1 and privileged QEAF services are trusted only for their bounded role.
+The trust boundaries are process creation, filesystem/device access, IPC and
+package installation.
+
+- QEAPP children drop root identity, clear supplementary groups, close
+  inherited descriptors, apply `no_new_privs`, seccomp and resource limits.
+- Apps receive no direct MMIO, kernel memory or privileged device nodes.
+  Hardware access goes through permissioned QEAF services.
+- Verify namespaces, seccomp, cgroup/device controls and LSM/SELinux settings
+  from the actual target kernel configuration; never assume them.
+- Signed package/update verification, persistent private storage, revocation,
+  rollback and hardware-backed key storage remain separate implementation
+  gates.
+
+The x86_64/QEMU path proves the startup and lifecycle chain, not production
+isolation. Its QEAPP arena is still RWX, `setrlimit()` results are not checked,
+and namespaces, chroot, device cgroups, LSM policy and a storage broker are not
+implemented. The embedded development HMAC detects image-relative tampering;
+it is not publisher authentication. Do not describe this path as a hardened
+production sandbox.
+
+The former freestanding AArch64 credential/syscall/VFS model remains a
+reference security track. `scripts/test_kernel_aarch64.py` continues to gate
+that code, but its EL0 ABI is not the Linux production ABI.
+
+## Hardware truth and release claims
+
+See `docs/VIOLET_HARDWARE.md` and `docs/INDEPENDENT_OS_CHARTER.md`. Existing
+DRM/KMS, evdev, configfs and sysfs observations are Linux-kernel evidence.
+The local storage dump identifies mmcblk0/eMMC, not UFS. Resolve board and
+SoC identity from the actual device before silicon-specific changes.
+
+Never call an x86_64 image a Violet build. Never call QEMU evidence physical
+hardware proof. Never claim a kernel source build when only a stock binary is
+available. Every release artifact needs source/config provenance, hashes,
+tests, logs and explicit limitations.

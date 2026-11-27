@@ -39,4 +39,9 @@ mre_status_t mre_fdt_find_property_string(const mre_fdt_t *fdt, const char *prop
                                            mre_fdt_node_t *out);
 mre_status_t mre_fdt_find_child(const mre_fdt_t *fdt, mre_fdt_node_t parent,
                                 uint32_t *cursor, mre_fdt_node_t *out);
+mre_status_t mre_fdt_find_descendant_property(const mre_fdt_t *fdt,
+                                               mre_fdt_node_t parent,
+                                               const char *property,
+                                               uint32_t *cursor,
+                                               mre_fdt_node_t *out);
 #endif

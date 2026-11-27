@@ -68,7 +68,7 @@ def fnv1a32(data):
     return value
 
 
-def build_stub(arch="arm64", min_api=0, abi_version=None):
+def build_stub(arch="arm64", min_api=None, abi_version=None):
     """Build a structurally valid module with no code.
 
     The stub is what ``qeaf create --native`` and the compiler emit when no
@@ -83,6 +83,7 @@ def build_stub(arch="arm64", min_api=0, abi_version=None):
     abi = ABI_VERSION if abi_version is None else int(abi_version)
     if abi not in IMPORT_BY_ABI:
         raise ValueError("unsupported module abi_version: %s" % abi)
+    min_api = abi if min_api is None else int(min_api)
     payload = b""
     header = _HEADER.pack(
         MAGIC,
@@ -101,7 +102,7 @@ def build_stub(arch="arm64", min_api=0, abi_version=None):
         0,
         0,
         fnv1a32(payload),
-        int(min_api),
+        min_api,
         b"\0" * 9,
     )
     assert len(header) == HEADER_SIZE

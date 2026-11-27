@@ -37,7 +37,10 @@ typedef struct {
     int32_t rows;            /* key rows incl. optional number row */
     int32_t number_row;      /* 1 when a number row is added (wide/landscape) */
     int32_t gap;             /* split-mode centre gap */
-    int32_t key_font;        /* rasterised face size: 20 / 24 / 28 */
+    int32_t row_gap;         /* vertical space between key rows */
+    int32_t column_gap;      /* horizontal space between keys */
+    int32_t padding;         /* IME window padding */
+    int32_t key_font;        /* rasterised face size: 20 / 24 / 28 / 34 */
 } vqeaf_ime_metrics_t;
 
 void vqeaf_ime_metrics(int32_t w, int32_t h, int32_t dpi,
@@ -47,7 +50,7 @@ void vqeaf_ime_metrics(int32_t w, int32_t h, int32_t dpi,
 #define VQEAF_IME_PORTRAIT_MIN_PCT 27
 #define VQEAF_IME_PORTRAIT_MAX_PCT 39
 #define VQEAF_IME_LANDSCAPE_MIN_PCT 30
-#define VQEAF_IME_LANDSCAPE_MAX_PCT 55
+#define VQEAF_IME_LANDSCAPE_MAX_PCT 68
 /* One-handed keeps ~78% width; floating is a free ~62% window. */
 #define VQEAF_IME_ONE_HAND_PCT 78
 #define VQEAF_IME_FLOATING_PCT 62
@@ -65,6 +68,8 @@ void vqeaf_ime_set_mode(vqeaf_ime_mode_t mode);
 vqeaf_ime_mode_t vqeaf_ime_get_mode(void);
 void vqeaf_ime_restyle(void);            /* re-apply the applied keyboard theme */
 lv_obj_t *vqeaf_ime_window(void);        /* the top-layer window, NULL if hidden */
+lv_obj_t *vqeaf_ime_grid(void);           /* key grid inside the window */
+lv_obj_t *vqeaf_ime_suggestions(void);    /* local candidate strip */
 int vqeaf_ime_haptics_available(void);
 int vqeaf_ime_sound_available(void);
 

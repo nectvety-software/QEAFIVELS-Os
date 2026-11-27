@@ -1,0 +1,31 @@
+From 111a6a5c490ff21a28bec4aab99527c48e29d20c Mon Sep 17 00:00:00 2001
+From: Srihitha Tangudu <quic_tangudu@quicinc.com>
+Date: Thu, 22 Sep 2022 19:18:48 +0530
+Subject: [PATCH] disp: msm: dsi: clear the panel esd_recovery_pending in power
+ on commit
+
+Currently the panel esd_recovery_pending flag is cleared for every mode
+set. The ESD recovery completes only after the suspend and resume. Clear
+the flag only during power on commit.
+
+Change-Id: I97e370feba0aad34558e4675168b4bcb7f5901ca
+Signed-off-by: Srihitha Tangudu <quic_tangudu@quicinc.com>
+Backport-source: AxionAOSP-devices/android_kernel_xiaomi_violet@111a6a5c490ff21a28bec4aab99527c48e29d20c
+Target-base: MiCode/Xiaomi_Kernel_OpenSource@1488fa3d05e2f9be5fc62e0bb16ad85d96db2076
+---
+ drivers/gpu/drm/msm/dsi-staging/dsi_drm.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/dsi-staging/dsi_drm.c b/drivers/gpu/drm/msm/dsi-staging/dsi_drm.c
+--- a/drivers/gpu/drm/msm/dsi-staging/dsi_drm.c
++++ b/drivers/gpu/drm/msm/dsi-staging/dsi_drm.c
+@@ -181,7 +181,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
+ 		return;
+ 	}
+ 
+-	atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
++	if (bridge->encoder->crtc->state->active_changed)
++		atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
+ 
+ 	if (c_bridge->display->is_prim_display && atomic_read(&prim_panel_is_on)) {
+ 		cancel_delayed_work_sync(&prim_panel_work);

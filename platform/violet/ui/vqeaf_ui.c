@@ -11,6 +11,9 @@
 #include "vqeaf_qeapp_device.h"
 #include "vqeaf_state.h"
 #include "vqeaf_theme.h"
+#include "vqeaf_components.h"
+#include "vqeaf_drag.h"
+#include "vqeaf_sound.h"
 #include "violet.h"
 #include "vqeaf_shutdown.h"
 #include <vqeaf/settings.h>
@@ -29,6 +32,10 @@ static lv_obj_t *g_sysnav;
 static int g_virtual_keys;
 static lv_timer_t *g_state_timer;
 static vqeaf_page_t g_page = VQEAF_PAGE_LOCK;
+static lv_obj_t *g_control_overlay;
+static lv_timer_t *g_control_rebuild_timer;
+static vqeaf_page_t g_control_return = VQEAF_PAGE_HOME;
+static int g_control_closing;
 static uint64_t g_last_activity_ms = 0;
 /* Real sleep state: the backlight is off and PID 1 stops LVGL refreshes.
  * g_dimmed is the "screen going dark" step just before the timeout. */
@@ -46,15 +53,16 @@ static const vqeaf_page_t nav_pages[4] = {
     VQEAF_PAGE_HOME, VQEAF_PAGE_APPS,
     VQEAF_PAGE_CONTROL, VQEAF_PAGE_SETTINGS
 };
-/* Dock move mode. Long-press opens the app info sheet everywhere in the
- * shell; the sheet's "Di chuyển" button arms this mode, and the next dock
- * tap drops the app into that slot. The dock content lives in vqeaf_pages.c. */
+/* Fluent taskbar move mode. Long-press opens the app info sheet; in Fluent
+ * Home the sheet's "Di chuyển" button arms this mode and the next taskbar tap
+ * drops the app into that slot. Stock Home has no dock. */
 static int g_move_app = -1;
 static vqeaf_sync_list_fn g_sync_list;
 static vqeaf_sync_read_fn g_sync_read;
 
 static void build_dock_items(void);
 static void update_navigation(void);
+static void control_rebuild(void);
 
 /* The bottom bar follows the QeafdropOs launcher dock: a floating glass slab
  * with the same portrait fractions (82/844 H tall, 8/390 W side margins, 39%
@@ -217,10 +225,11 @@ static void state_timer_cb(lv_timer_t *timer)
         }
         if(vqeaf_state.battery_valid &&
            vqeaf_state.charging != g_prev_charging) {
-            vqeaf_ui_notify("Pin", vqeaf_state.charging ?
-                            "Đang sạc" : "Đã rút sạc",
-                            VQEAF_SYM_BATTERY_CHARGING_FULL,
-                            vqeaf_state.charging ? 0x35E0C8 : 0x8A9A98);
+            vqeaf_ui_notify_event("Pin", vqeaf_state.charging ?
+                                  "Đang sạc" : "Đã rút sạc",
+                                  VQEAF_SYM_BATTERY_CHARGING_FULL,
+                                  vqeaf_state.charging ? 0x35E0C8 : 0x8A9A98,
+                                  VQEAF_SOUND_CHARGE);
             g_prev_charging = vqeaf_state.charging;
         }
     }
@@ -267,6 +276,7 @@ int vqeaf_ui_read_file(const char *name, uint8_t **out, size_t *size)
 
 static vqeaf_notification_t g_notifications[VQEAF_NOTIFY_MAX];
 static int g_notification_count;
+static vqeaf_ui_media_session_t g_media_session;
 
 static void copy_text(char *dst, size_t cap, const char *src)
 {
@@ -275,8 +285,43 @@ static void copy_text(char *dst, size_t cap, const char *src)
     snprintf(dst, cap, "%s", src);
 }
 
+int vqeaf_ui_media_session_start(vqeaf_ui_media_kind_t kind,
+                                 const char *title,
+                                 const char *detail)
+{
+    vqeaf_ui_media_session_t next = {0};
+
+    if(kind <= VQEAF_UI_MEDIA_NONE || kind > VQEAF_UI_MEDIA_OTHER ||
+       title == NULL || title[0] == '\0')
+        return -1;
+    next.kind = kind;
+    copy_text(next.title, sizeof(next.title), title);
+    copy_text(next.detail, sizeof(next.detail), detail);
+    g_media_session = next;
+    control_rebuild();
+    return 0;
+}
+
+void vqeaf_ui_media_session_stop(void)
+{
+    memset(&g_media_session, 0, sizeof(g_media_session));
+    control_rebuild();
+}
+
+const vqeaf_ui_media_session_t *vqeaf_ui_media_session(void)
+{
+    return g_media_session.kind == VQEAF_UI_MEDIA_NONE ? NULL : &g_media_session;
+}
+
 void vqeaf_ui_notify(const char *title, const char *body, const char *symbol,
                      uint32_t color)
+{
+    vqeaf_ui_notify_event(title, body, symbol, color, VQEAF_SOUND_NOTIFY);
+}
+
+void vqeaf_ui_notify_event(const char *title, const char *body,
+                           const char *symbol, uint32_t color,
+                           vqeaf_sound_event_t event)
 {
     int i;
 
@@ -291,6 +336,7 @@ void vqeaf_ui_notify(const char *title, const char *body, const char *symbol,
               symbol);
     g_notifications[0].color = color;
     g_notifications[0].uptime_s = vqeaf_state.uptime_s;
+    vqeaf_sound_play(event);
 }
 
 int vqeaf_ui_notification_count(void)
@@ -340,6 +386,7 @@ void vqeaf_ui_set_auto_rotate(int on)
 
 void vqeaf_ui_dock_move_arm(int app_id)
 {
+    if(g_page != VQEAF_PAGE_HOME) return;
     if(vqeaf_app_by_id(app_id) == NULL) return;
     g_move_app = app_id;
     update_navigation();
@@ -372,7 +419,10 @@ static void dock_event_cb(lv_event_t *event)
     if(g_move_app >= 0) {
         int moving = g_move_app;
         g_move_app = -1;
-        vqeaf_dock_drop(moving, slot);
+        if(vqeaf_dock_slot(slot) != moving) {
+            vqeaf_dock_drop(moving, slot);
+            vqeaf_sound_play(VQEAF_SOUND_DROP);
+        }
         lv_timer_t *timer = lv_timer_create(dock_refresh_cb, 30, NULL);
         if(timer != NULL) lv_timer_set_repeat_count(timer, 1);
         return;
@@ -382,19 +432,50 @@ static void dock_event_cb(lv_event_t *event)
         vqeaf_ui_show(app->page);
 }
 
-static void dock_info_cb(lv_event_t *event)
+static int dock_drag_target(lv_point_t point, void *context)
 {
-    int slot = (int)(intptr_t)lv_event_get_user_data(event);
-    int app_id = vqeaf_dock_slot(slot);
+    (void)context;
+    for(int i = 0; i < VQEAF_DOCK_SLOTS; i++) {
+        lv_area_t area;
+        if(g_nav_items[i] == NULL) continue;
+        lv_obj_get_coords(g_nav_items[i], &area);
+        if(point.x >= area.x1 && point.x <= area.x2 &&
+           point.y >= area.y1 && point.y <= area.y2)
+            return i;
+    }
+    return -1;
+}
 
-    if(app_id >= 0)
-        vqeaf_pages_app_info(app_id);
+static void dock_drag_commit(lv_obj_t *source, int target, void *context)
+{
+    (void)context;
+    for(int i = 0; i < VQEAF_DOCK_SLOTS; i++) {
+        if(g_nav_items[i] != source) continue;
+        if(i == target) return;
+        vqeaf_dock_move(i, target);
+        vqeaf_sound_play(VQEAF_SOUND_DROP);
+        lv_timer_t *timer = lv_timer_create(dock_refresh_cb, 30, NULL);
+        if(timer != NULL) lv_timer_set_repeat_count(timer, 1);
+        return;
+    }
+}
+
+static void dock_drag_fallback(lv_obj_t *source, void *context)
+{
+    (void)context;
+    for(int i = 0; i < VQEAF_DOCK_SLOTS; i++) {
+        if(g_nav_items[i] != source) continue;
+        int app_id = vqeaf_dock_slot(i);
+        if(app_id >= 0) vqeaf_pages_app_info(app_id);
+        return;
+    }
 }
 
 static void status_event_cb(lv_event_t *event)
 {
     (void)event;
-    if(g_page != VQEAF_PAGE_LOCK)
+    if(vqeaf_setup_required()) return;
+    if(g_page != VQEAF_PAGE_LOCK && g_page != VQEAF_PAGE_CONTROL)
         vqeaf_ui_show(VQEAF_PAGE_CONTROL);
 }
 
@@ -426,6 +507,7 @@ static int shell_gesture_page(vqeaf_page_t page)
     case VQEAF_PAGE_LOCK:
     case VQEAF_PAGE_HOME:
     case VQEAF_PAGE_APPS:
+    case VQEAF_PAGE_APPS_EDIT:
     case VQEAF_PAGE_CONTROL:
     case VQEAF_PAGE_SETTINGS:
     case VQEAF_PAGE_RECENTS:
@@ -455,7 +537,7 @@ static int settings_detail_page(vqeaf_page_t page)
 static int gesture_blocked_by_overlay(void)
 {
     return vqeaf_ime_visible() || vqeaf_ui_usb_dialog_visible() ||
-           vqeaf_pages_app_info_visible();
+           vqeaf_pages_app_info_visible() || vqeaf_lg_any_overlay_visible();
 }
 
 static int g_recent_index;   /* highlighted card in the task switcher */
@@ -558,7 +640,11 @@ static void gesture_cb(lv_event_t *event)
     int index, from_status, from_pill, from_nav;
 
     if(indev == NULL) return;
-    if(gesture_blocked_by_overlay()) return;
+    if(vqeaf_setup_required()) {
+        vqeaf_ui_activity();
+        return;
+    }
+    if(vqeaf_drag_active() || gesture_blocked_by_overlay()) return;
     vqeaf_ui_activity();
     from_status = (origin == g_status);
     from_pill = (origin == g_home_bar);
@@ -566,6 +652,11 @@ static void gesture_cb(lv_event_t *event)
 
     if(g_page == VQEAF_PAGE_LOCK) {
         if(dir == LV_DIR_TOP) vqeaf_lock_unlock();
+        return;
+    }
+    if(g_page == VQEAF_PAGE_CONTROL && dir == LV_DIR_TOP) {
+        lv_indev_wait_release(indev);
+        vqeaf_ui_control_close();
         return;
     }
 
@@ -646,14 +737,22 @@ static void gesture_cb(lv_event_t *event)
         gesture_show(indev, VQEAF_PAGE_APPS);
         return;
     }
-    if(settings_detail_page(g_page)) {
-        gesture_show(indev, VQEAF_PAGE_SETTINGS);
+    /* Stock Home and its edit preview are pagers. The setter clamps at the
+     * first/last page, so an outward swipe never wraps into another section. */
+    if(g_page == VQEAF_PAGE_APPS_EDIT ||
+       (g_page == VQEAF_PAGE_HOME && !vqeaf_theme_fluent())) {
+        vqeaf_pages_home_page_set(vqeaf_pages_home_page() +
+                                  (dir == LV_DIR_LEFT ? 1 : -1));
+        gesture_show(indev, g_page);
         return;
     }
-    /* A right swipe from Home is the launcher's "all apps" gesture. Without
-     * this branch the nav index would wrap around to Settings instead. */
-    if(dir == LV_DIR_RIGHT && g_page == VQEAF_PAGE_HOME) {
+    if(g_page == VQEAF_PAGE_HOME && vqeaf_theme_fluent() &&
+       dir == LV_DIR_RIGHT) {
         gesture_show(indev, VQEAF_PAGE_APPS);
+        return;
+    }
+    if(settings_detail_page(g_page)) {
+        gesture_show(indev, VQEAF_PAGE_SETTINGS);
         return;
     }
     /* Horizontal nav switching only from the dock itself (or plain chrome);
@@ -676,12 +775,12 @@ static void build_status_bar(lv_obj_t *screen)
     lv_obj_set_size(g_status, lv_pct(100), VQEAF_STATUS_H);
     lv_obj_set_style_pad_left(g_status, 30, 0);
     lv_obj_set_style_pad_right(g_status, 30, 0);
-    /* The wallpaper fills the screen, so the chrome must sit on top of the
-     * photo rather than draw its own light slab. */
+    /* Chrome stays translucent over the procedural cobalt wallpaper. */
     lv_obj_set_style_bg_color(g_status,
-        vqeaf_wallpaper_active() ? lv_color_black() : VQEAF_C_BG, 0);
+        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? lv_color_white() :
+                                                lv_color_hex(0x082E78), 0);
     lv_obj_set_style_bg_opa(g_status,
-        vqeaf_wallpaper_active() ? 120 : LV_OPA_TRANSP, 0);
+        vqeaf_theme_get() == VQEAF_THEME_LIGHT ? 150 : 55, 0);
     if(vqeaf_theme_liquid_glass()) {
         vqeaf_glass_surface(g_status, 0, LV_OPA_40);
         lv_obj_set_style_border_width(g_status, 0, 0);
@@ -719,6 +818,7 @@ static void build_status_bar(lv_obj_t *screen)
 static void home_bar_event_cb(lv_event_t *event)
 {
     (void)event;
+    if(vqeaf_setup_required()) return;
     if(g_page != VQEAF_PAGE_LOCK)
         vqeaf_ui_show(VQEAF_PAGE_HOME);
 }
@@ -737,16 +837,19 @@ static void build_navigation(lv_obj_t *screen)
          * bare icons floating over the wallpaper. */
         vqeaf_acrylic_surface(g_nav, 20);
     }
+    else if(vqeaf_theme_liquid_glass()) {
+        vqeaf_glass_surface(g_nav, m.radius, (lv_opa_t)175);
+    }
     else {
-        /* Keep the dock icons, remove the enclosing slab/frame. */
-        lv_obj_set_style_bg_color(g_nav,
-            vqeaf_wallpaper_active() ? lv_color_black() : VQEAF_C_SURFACE_2, 0);
-        lv_obj_set_style_bg_opa(g_nav,
-            vqeaf_wallpaper_active() ? 120 : LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(g_nav, 0, 0);
+        lv_obj_set_style_bg_color(g_nav, VQEAF_C_SURFACE_2, 0);
+        lv_obj_set_style_bg_opa(g_nav, 235, 0);
+        lv_obj_set_style_bg_grad_dir(g_nav, LV_GRAD_DIR_NONE, 0);
+        lv_obj_set_style_border_width(g_nav, 1, 0);
+        lv_obj_set_style_border_color(g_nav, VQEAF_C_LINE, 0);
+        lv_obj_set_style_border_opa(g_nav, LV_OPA_50, 0);
         lv_obj_set_style_radius(g_nav, m.radius, 0);
-        lv_obj_set_style_shadow_width(g_nav, 0, 0);
-        lv_obj_set_style_shadow_opa(g_nav, LV_OPA_0, 0);
+        lv_obj_set_style_shadow_width(g_nav, 14, 0);
+        lv_obj_set_style_shadow_opa(g_nav, 35, 0);
     }
     lv_obj_set_style_pad_hor(g_nav, 10, 0);
     lv_obj_set_flex_flow(g_nav, LV_FLEX_FLOW_ROW);
@@ -773,6 +876,7 @@ static void sysnav_cb(lv_event_t *event)
     lv_indev_t *indev = lv_indev_active();
     vqeaf_page_t page;
 
+    if(vqeaf_setup_required()) return;
     if(indev != NULL) lv_indev_wait_release(indev);
     if(id == 1) {
         page = VQEAF_PAGE_HOME;
@@ -782,10 +886,15 @@ static void sysnav_cb(lv_event_t *event)
         page = VQEAF_PAGE_RECENTS;
     } else if(settings_detail_page(g_page)) {
         page = VQEAF_PAGE_SETTINGS;
+    } else if(g_page == VQEAF_PAGE_APPS_EDIT) {
+        page = VQEAF_PAGE_HOME;
     } else if(g_page == VQEAF_PAGE_APPS) {
         page = VQEAF_PAGE_HOME;
+    } else if(g_page == VQEAF_PAGE_HOME && vqeaf_pages_home_page() > 0) {
+        vqeaf_pages_home_page_set(vqeaf_pages_home_page() - 1);
+        page = VQEAF_PAGE_HOME;
     } else if(g_page == VQEAF_PAGE_HOME) {
-        return;                 /* Back is a no-op on the launcher */
+        return;                 /* Back is a no-op on the first launcher page */
     } else {
         page = VQEAF_PAGE_APPS;
     }
@@ -830,12 +939,16 @@ void vqeaf_ui_set_virtual_keys(int on)
     g_virtual_keys = on ? 1 : 0;
     vqeaf_settings_set_bool("nav.virtual_keys", g_virtual_keys);
     if(g_sysnav != NULL) {
-        if(g_virtual_keys) lv_obj_clear_flag(g_sysnav, LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_add_flag(g_sysnav, LV_OBJ_FLAG_HIDDEN);
+        if(g_virtual_keys && !vqeaf_setup_required())
+            lv_obj_clear_flag(g_sysnav, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_add_flag(g_sysnav, LV_OBJ_FLAG_HIDDEN);
     }
     if(g_home_bar != NULL) {
-        if(g_virtual_keys) lv_obj_add_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
-        else lv_obj_clear_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
+        if(g_virtual_keys || vqeaf_setup_required())
+            lv_obj_add_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
+        else
+            lv_obj_clear_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -866,7 +979,7 @@ static void build_dock_items(void)
         lv_obj_t *plate = lv_obj_create(item);
         lv_obj_remove_style_all(plate);
         lv_obj_set_size(plate, m.icon, m.icon);
-        lv_obj_set_style_radius(plate, m.icon * 3 / 10, 0);
+        lv_obj_set_style_radius(plate, 10, 0);
         const lv_image_dsc_t *dsc =
             app != NULL ? vqeaf_app_icon(app->icon) : NULL;
         int app_gradient = app != NULL && dsc == NULL &&
@@ -879,7 +992,7 @@ static void build_dock_items(void)
         lv_obj_set_style_border_width(plate,
             vqeaf_theme_liquid_glass() || app_gradient ? 1 : 0, 0);
         lv_obj_set_style_border_color(plate,
-            vqeaf_theme_liquid_glass() ? lv_color_hex(0xF2D8FF) :
+            vqeaf_theme_liquid_glass() ? lv_color_hex(0xEAF5FF) :
             app_gradient ? lv_color_white() : VQEAF_C_ACCENT, 0);
         if(vqeaf_theme_liquid_glass())
             lv_obj_set_style_border_opa(plate, LV_OPA_70, 0);
@@ -907,9 +1020,9 @@ static void build_dock_items(void)
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 
         if(app != NULL) {
+            vqeaf_drag_attach(item, i, app->symbol, dock_drag_target,
+                              dock_drag_commit, dock_drag_fallback, NULL);
             lv_obj_add_event_cb(item, dock_event_cb, LV_EVENT_SHORT_CLICKED,
-                                (void *)(intptr_t)i);
-            lv_obj_add_event_cb(item, dock_info_cb, LV_EVENT_LONG_PRESSED,
                                 (void *)(intptr_t)i);
         }
     }
@@ -931,32 +1044,46 @@ static void refresh_chrome(void)
     if(screen != NULL)
         lv_obj_set_style_bg_color(screen, VQEAF_C_BG, 0);
     if(g_status != NULL) {
-        lv_obj_set_style_bg_color(g_status, VQEAF_C_BG, 0);
+        lv_obj_set_style_bg_color(g_status,
+            vqeaf_theme_get() == VQEAF_THEME_LIGHT ? lv_color_white() :
+                                                    lv_color_hex(0x082E78), 0);
         if(vqeaf_theme_liquid_glass()) {
             vqeaf_glass_surface(g_status, 0, LV_OPA_40);
             lv_obj_set_style_border_width(g_status, 0, 0);
         }
         else {
             lv_obj_set_style_bg_grad_dir(g_status, LV_GRAD_DIR_NONE, 0);
-            lv_obj_set_style_bg_opa(g_status, LV_OPA_20, 0);
+            lv_obj_set_style_bg_opa(g_status,
+                vqeaf_theme_get() == VQEAF_THEME_LIGHT ? 150 : 55, 0);
             lv_obj_set_style_border_width(g_status, 0, 0);
         }
         if(g_status_time != NULL)
-            lv_obj_set_style_text_color(g_status_time, VQEAF_C_TEXT, 0);
+            lv_obj_set_style_text_color(g_status_time,
+                                        vqeaf_wallpaper_text_color(), 0);
         if(g_status_wifi != NULL)
             lv_obj_set_style_text_color(g_status_wifi, VQEAF_C_TEXT_MUTE, 0);
         if(g_status_battery != NULL)
             lv_obj_set_style_text_color(g_status_battery, VQEAF_C_TEXT_DIM, 0);
     }
     if(g_nav != NULL) {
-        lv_obj_set_style_bg_color(g_nav, VQEAF_C_SURFACE_2, 0);
-        lv_obj_set_style_bg_opa(g_nav, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_bg_grad_dir(g_nav, LV_GRAD_DIR_NONE, 0);
-        lv_obj_set_style_border_color(g_nav, VQEAF_C_LINE, 0);
-        lv_obj_set_style_border_opa(g_nav, LV_OPA_0, 0);
-        lv_obj_set_style_border_width(g_nav, 0, 0);
-        lv_obj_set_style_shadow_width(g_nav, 0, 0);
-        lv_obj_set_style_shadow_opa(g_nav, LV_OPA_0, 0);
+        nav_metrics_t m = nav_metrics();
+        if(vqeaf_theme_fluent()) {
+            vqeaf_acrylic_surface(g_nav, 20);
+        }
+        else if(vqeaf_theme_liquid_glass()) {
+            vqeaf_glass_surface(g_nav, m.radius, (lv_opa_t)175);
+        }
+        else {
+            lv_obj_set_style_bg_color(g_nav, VQEAF_C_SURFACE_2, 0);
+            lv_obj_set_style_bg_opa(g_nav, 235, 0);
+            lv_obj_set_style_bg_grad_dir(g_nav, LV_GRAD_DIR_NONE, 0);
+            lv_obj_set_style_border_color(g_nav, VQEAF_C_LINE, 0);
+            lv_obj_set_style_border_opa(g_nav, LV_OPA_50, 0);
+            lv_obj_set_style_border_width(g_nav, 1, 0);
+            lv_obj_set_style_radius(g_nav, m.radius, 0);
+            lv_obj_set_style_shadow_width(g_nav, 14, 0);
+            lv_obj_set_style_shadow_opa(g_nav, 35, 0);
+        }
         build_dock_items();
     }
     if(g_sysnav != NULL) {
@@ -969,7 +1096,182 @@ static void refresh_chrome(void)
             vqeaf_glass_surface(g_sysnav, 22, (lv_opa_t)190);
     }
     if(g_home_bar != NULL)
-        lv_obj_set_style_bg_color(g_home_bar, VQEAF_C_TEXT, 0);
+        lv_obj_set_style_bg_color(g_home_bar, vqeaf_wallpaper_text_color(), 0);
+}
+
+static void control_overlay_drop(void)
+{
+    if(g_control_rebuild_timer != NULL) {
+        lv_timer_delete(g_control_rebuild_timer);
+        g_control_rebuild_timer = NULL;
+    }
+    if(g_control_overlay != NULL) {
+        lv_obj_delete(g_control_overlay);
+        g_control_overlay = NULL;
+    }
+    g_control_closing = 0;
+}
+
+static void control_open_cb(lv_anim_t *anim)
+{
+    (void)anim;
+    g_control_closing = 0;
+}
+
+static void control_set_opa(void *var, int32_t value)
+{
+    lv_obj_set_style_opa((lv_obj_t *)var, (lv_opa_t)value, LV_PART_MAIN);
+}
+
+static lv_obj_t *control_panel(void);
+
+static void control_panel_swipe_cb(lv_event_t *event)
+{
+    lv_indev_t *indev = lv_indev_active();
+    lv_point_t vect;
+
+    if(indev == NULL) return;
+    lv_indev_get_vect(indev, &vect);
+    if(vect.y < 0 && LV_ABS(vect.y) > LV_ABS(vect.x)) {
+        lv_indev_wait_release(indev);
+        vqeaf_ui_control_close();
+        lv_event_stop_processing(event);
+    }
+}
+
+static void control_open(void)
+{
+    lv_obj_t *screen = lv_screen_active();
+    int32_t height = lv_display_get_vertical_resolution(g_display);
+    int32_t offset = -(height / 5);
+    lv_anim_t anim;
+
+    g_control_return = g_page;
+    g_page = VQEAF_PAGE_CONTROL;
+    g_control_overlay = vqeaf_obj(screen);
+    lv_obj_set_pos(g_control_overlay, 0, offset);
+    lv_obj_set_size(g_control_overlay, lv_pct(100), lv_pct(100));
+    lv_obj_remove_flag(g_control_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(g_control_overlay, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_opa(g_control_overlay, LV_OPA_TRANSP, LV_PART_MAIN);
+
+    vqeaf_pages_build(VQEAF_PAGE_CONTROL, g_control_overlay);
+    {
+        lv_obj_t *panel = control_panel();
+        if(panel != NULL)
+            lv_obj_add_event_cb(panel, control_panel_swipe_cb,
+                                LV_EVENT_SCROLL_BEGIN, NULL);
+    }
+    if(g_nav != NULL) lv_obj_add_flag(g_nav, LV_OBJ_FLAG_HIDDEN);
+    if(g_home_bar != NULL) lv_obj_add_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
+    if(g_sysnav != NULL) lv_obj_add_flag(g_sysnav, LV_OBJ_FLAG_HIDDEN);
+    if(g_status != NULL) {
+        lv_obj_set_style_bg_opa(g_status, LV_OPA_TRANSP, 0);
+        lv_obj_move_foreground(g_status);
+    }
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, g_control_overlay);
+    lv_anim_set_exec_cb(&anim, (lv_anim_exec_xcb_t)lv_obj_set_y);
+    lv_anim_set_values(&anim, offset, 0);
+    lv_anim_set_duration(&anim, VQEAF_M3_MOTION_MEDIUM);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_start(&anim);
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, g_control_overlay);
+    lv_anim_set_exec_cb(&anim, control_set_opa);
+    lv_anim_set_values(&anim, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_duration(&anim, VQEAF_M3_MOTION_SHORT);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_set_completed_cb(&anim, control_open_cb);
+    lv_anim_start(&anim);
+    update_navigation();
+    note_activity();
+}
+
+static lv_obj_t *control_panel(void)
+{
+    uint32_t i;
+    uint32_t count = g_control_overlay != NULL ?
+                     lv_obj_get_child_count(g_control_overlay) : 0;
+    for(i = 0; i < count; i++) {
+        lv_obj_t *child = lv_obj_get_child(g_control_overlay, i);
+        if(lv_obj_has_flag(child, LV_OBJ_FLAG_SCROLLABLE)) return child;
+    }
+    return NULL;
+}
+
+static void control_rebuild_apply(lv_timer_t *timer)
+{
+    int32_t scroll_y = 0;
+    lv_obj_t *panel;
+    (void)timer;
+    g_control_rebuild_timer = NULL;
+    if(g_control_overlay == NULL) return;
+    panel = control_panel();
+    if(panel != NULL) scroll_y = lv_obj_get_scroll_y(panel);
+    lv_obj_clean(g_control_overlay);
+    vqeaf_pages_build(VQEAF_PAGE_CONTROL, g_control_overlay);
+    panel = control_panel();
+    if(panel != NULL) {
+        lv_obj_add_event_cb(panel, control_panel_swipe_cb,
+                            LV_EVENT_SCROLL_BEGIN, NULL);
+        lv_obj_scroll_to_y(panel, scroll_y, LV_ANIM_OFF);
+    }
+    if(g_status != NULL) lv_obj_move_foreground(g_status);
+    update_navigation();
+}
+
+static void control_rebuild(void)
+{
+    if(g_control_overlay == NULL || g_control_rebuild_timer != NULL) return;
+    g_control_rebuild_timer = lv_timer_create(control_rebuild_apply, 1, NULL);
+    if(g_control_rebuild_timer != NULL)
+        lv_timer_set_repeat_count(g_control_rebuild_timer, 1);
+}
+
+static void control_close_done(lv_anim_t *anim)
+{
+    vqeaf_page_t return_page;
+    (void)anim;
+    if(g_control_overlay == NULL) return;
+    return_page = g_control_return;
+    control_overlay_drop();
+    g_page = return_page;
+    vqeaf_ui_show(return_page);
+}
+
+void vqeaf_ui_control_close(void)
+{
+    lv_anim_t anim;
+    int32_t offset;
+    if(g_control_overlay == NULL || g_control_closing) return;
+    g_control_closing = 1;
+    lv_anim_delete(g_control_overlay, NULL);
+    offset = -lv_display_get_vertical_resolution(g_display) / 4;
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, g_control_overlay);
+    lv_anim_set_exec_cb(&anim, (lv_anim_exec_xcb_t)lv_obj_set_y);
+    lv_anim_set_values(&anim, lv_obj_get_y(g_control_overlay), offset);
+    lv_anim_set_duration(&anim, VQEAF_M3_MOTION_MEDIUM);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_in);
+    lv_anim_set_completed_cb(&anim, control_close_done);
+    lv_anim_start(&anim);
+
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, g_control_overlay);
+    lv_anim_set_exec_cb(&anim, control_set_opa);
+    lv_anim_set_values(&anim, LV_OPA_COVER, LV_OPA_TRANSP);
+    lv_anim_set_duration(&anim, VQEAF_M3_MOTION_SHORT);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_in);
+    lv_anim_start(&anim);
+}
+
+int vqeaf_ui_control_visible(void)
+{
+    return g_control_overlay != NULL;
 }
 
 static void update_navigation(void)
@@ -989,11 +1291,11 @@ static void update_navigation(void)
                 vqeaf_theme_liquid_glass() || app_gradient ? 1 : 0, 0);
         if(plate && vqeaf_theme_liquid_glass())
             lv_obj_set_style_border_color(plate,
-                active ? lv_color_hex(0xFFFFFF) : lv_color_hex(0xD9B6E6), 0);
+                active ? lv_color_hex(0xFFFFFF) : lv_color_hex(0xD9EBFF), 0);
         if(label)
             lv_obj_set_style_text_color(label,
                 active ? VQEAF_C_TEXT :
-                vqeaf_theme_liquid_glass() ? lv_color_hex(0xEBD8F2) :
+                vqeaf_theme_liquid_glass() ? lv_color_hex(0xEAF5FF) :
                                              VQEAF_C_TEXT_DIM, 0);
     }
 }
@@ -1043,11 +1345,13 @@ void vqeaf_ui_create(lv_display_t *display)
     }
     vqeaf_state_refresh();
     update_status();
+    vqeaf_sound_init();
     vqeaf_ui_notify("Hệ thống", "VQEAF OS đã khởi động trên Redmi Note 7 Pro",
                     VQEAF_SYM_CHECK_CIRCLE, 0x35E0C8);
     if(g_state_timer == NULL)
         g_state_timer = lv_timer_create(state_timer_cb, 1000, NULL);
-    vqeaf_ui_show(VQEAF_PAGE_LOCK);
+    vqeaf_ui_show(vqeaf_setup_required() ? VQEAF_PAGE_SETUP :
+                                          VQEAF_PAGE_LOCK);
 }
 
 void vqeaf_ui_set_theme(vqeaf_theme_mode_t mode)
@@ -1062,12 +1366,30 @@ void vqeaf_ui_show(vqeaf_page_t page)
 {
     int i;
     int content_top;
+    int setup_mode;
     if(g_content == NULL || page < 0 || page >= VQEAF_PAGE_COUNT) return;
+    setup_mode = vqeaf_setup_required();
+    if(setup_mode && page != VQEAF_PAGE_SETUP &&
+       !vqeaf_setup_subpage_active(page))
+        page = VQEAF_PAGE_SETUP;
+    if(page != g_page && !g_sleeping && !vqeaf_shutdown_active())
+        vqeaf_sound_play(VQEAF_SOUND_NAVIGATE);
+
+    if(page == VQEAF_PAGE_CONTROL) {
+        if(g_control_overlay == NULL) control_open();
+        else if(!g_control_closing) control_rebuild();
+        return;
+    }
+    control_overlay_drop();
+
+    if(g_page == VQEAF_PAGE_QEAPP_NATIVE && page != VQEAF_PAGE_QEAPP_NATIVE)
+        vqeaf_qeapp_device_session_stop();
 
     /* Track recently opened app/detail pages for the task switcher. System
      * shells (lock/control) are not switchable tasks. */
-    if(page != VQEAF_PAGE_LOCK && page != VQEAF_PAGE_CONTROL &&
-       page != VQEAF_PAGE_RECENTS) {
+    if(!setup_mode && page != VQEAF_PAGE_LOCK && page != VQEAF_PAGE_SETUP &&
+       page != VQEAF_PAGE_CONTROL && page != VQEAF_PAGE_RECENTS &&
+       page != VQEAF_PAGE_APPS_EDIT) {
         for(i = 0; i < g_recent_count; i++)
             if(g_recent_pages[i] == page) break;
         if(i == g_recent_count) {
@@ -1096,7 +1418,7 @@ void vqeaf_ui_show(vqeaf_page_t page)
     }
     /* The taskbar owns its own strip under the status bar; page content
      * starts below it whenever the strip is visible. */
-    vqeaf_tools_taskbar_refresh(page);
+    vqeaf_tools_taskbar_refresh(setup_mode ? VQEAF_PAGE_SETUP : page);
     content_top = VQEAF_STATUS_H +
                   (vqeaf_tools_taskbar_visible(page) ? VQEAF_TASKBAR_H : 0);
     lv_obj_clean(g_content);
@@ -1109,11 +1431,20 @@ void vqeaf_ui_show(vqeaf_page_t page)
      * screen left the shell with no clock or battery. */
     lv_obj_clear_flag(g_status, LV_OBJ_FLAG_HIDDEN);
 
-    /* The dock/hotseat is a launcher affordance: it belongs to Home only.
-     * System apps, detail pages and running .qeapp apps own the screen like a
-     * phone launcher, leaving just the gesture pill for home/recents. */
+    /* Home keeps the floating dock and gesture pill in both stock and Fluent
+     * themes. Launcher edit mode alone uses the full canvas without chrome. */
     int home = (page == VQEAF_PAGE_HOME);
-    if(page == VQEAF_PAGE_LOCK) {
+    int launcher = page == VQEAF_PAGE_APPS_EDIT;
+    if(setup_mode) {
+        lv_obj_set_pos(g_content, 0, 0);
+        lv_obj_set_height(g_content,
+                          lv_display_get_vertical_resolution(g_display));
+        lv_obj_add_flag(g_content, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(g_nav, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(g_status, LV_OBJ_FLAG_HIDDEN);
+    }
+    else if(page == VQEAF_PAGE_LOCK) {
         lv_obj_set_pos(g_content, 0, 0);
         lv_obj_set_height(g_content,
                           lv_display_get_vertical_resolution(g_display));
@@ -1123,6 +1454,15 @@ void vqeaf_ui_show(vqeaf_page_t page)
         lv_obj_add_flag(g_nav, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_bg_opa(g_status, LV_OPA_TRANSP, 0);
+    }
+    else if(launcher) {
+        lv_obj_set_pos(g_content, 0, 0);
+        lv_obj_set_height(g_content,
+                          lv_display_get_vertical_resolution(g_display));
+        lv_obj_remove_flag(g_content, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(g_nav, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_bg_opa(g_status, LV_OPA_80, 0);
     }
     else if(page == VQEAF_PAGE_QEAPP_NATIVE) {
         /* A running native app owns the whole canvas: its frame is drawn for
@@ -1158,10 +1498,8 @@ void vqeaf_ui_show(vqeaf_page_t page)
                               lv_display_get_vertical_resolution(g_display) -
                               content_top);
         lv_obj_add_flag(g_content, LV_OBJ_FLAG_SCROLLABLE);
-        /* Home keeps the floating dock; every other page (system apps, detail
-         * pages) takes the full content area and hides the dock like a phone
-         * launcher. The gesture pill stays visible on all of them for
-         * home/recents. */
+        /* Fluent Home keeps the taskbar; stock Home and every other regular
+         * page hide it. The gesture pill stays visible for home/recents. */
         if(home)
             lv_obj_clear_flag(g_nav, LV_OBJ_FLAG_HIDDEN);
         else
@@ -1169,6 +1507,11 @@ void vqeaf_ui_show(vqeaf_page_t page)
         lv_obj_clear_flag(g_home_bar, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_bg_opa(g_status, LV_OPA_20, 0);
     }
+
+    if(g_virtual_keys && !setup_mode)
+        lv_obj_clear_flag(g_sysnav, LV_OBJ_FLAG_HIDDEN);
+    else
+        lv_obj_add_flag(g_sysnav, LV_OBJ_FLAG_HIDDEN);
 
     vqeaf_pages_build(page, g_content);
     update_navigation();
@@ -1241,7 +1584,9 @@ void vqeaf_ui_volume_show(void)
 
 void vqeaf_ui_volume_adjust(int delta)
 {
-    vqeaf_state_set_volume(vqeaf_state.volume + delta);
+    int previous = vqeaf_state.volume;
+    vqeaf_state_set_volume(previous + delta);
+    if(vqeaf_state.volume != previous) vqeaf_sound_play(VQEAF_SOUND_TAP);
     vqeaf_ui_volume_show();
     vqeaf_ui_activity();
 }

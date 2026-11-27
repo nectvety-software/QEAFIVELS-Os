@@ -59,6 +59,9 @@ def main():
     build_and_run("test_qrtr_qmi", [
         drv / "qrtr_transport.c", drv / "qmi_service.c",
         TESTS / "test_qrtr_qmi.c"], [str(TESTS / "fixtures")])
+    build_and_run("test_wlfw_client", [
+        drv / "qmi_service.c", drv / "wlfw_client.c",
+        TESTS / "test_wlfw_client.c"], [])
     build_and_run("test_firmware_boot", [
         drv / "firmware_boot.c", TESTS / "test_firmware_boot.c"], [])
     # Container validation is checked against synthetic images, then against

@@ -25,23 +25,25 @@ TEST = os.path.join(ROOT, "tests", "vqeaf_m3.c")
 LVGL = os.path.join(ROOT, "platform", "lvgl")
 FONTS = os.path.join(UI, "fonts")
 THEME = os.path.join(UI, "vqeaf_theme.c")
+COMPONENTS = os.path.join(UI, "vqeaf_components.c")
 SETTINGS = os.path.join(ROOT, "system", "core", "settings.c")
 
 WALLPAPER = os.path.join(UI, "wallpaper.c")
 SOURCES = [s for s in r.SOURCES
            if s.startswith(LVGL) or s.startswith(FONTS) or s == THEME
-           or s == SETTINGS or s == WALLPAPER]
+           or s == SETTINGS or s == WALLPAPER or s == COMPONENTS]
 SOURCES.append(TEST)
+TEST_CFLAGS = ["-DVQEAF_LG_TESTING"]
 
 
 def compile_one(src):
     rel = os.path.relpath(src, ROOT)
-    obj = os.path.join(OBJDIR, rel.replace(os.sep, "_").replace(".", "_") + ".o")
+    obj = os.path.join(OBJDIR, rel.replace(os.sep, "_").replace(".", "_") + ".lgtest.o")
     if os.path.isfile(obj) and os.path.getmtime(obj) >= os.path.getmtime(src):
         return obj, None
     os.makedirs(OBJDIR, exist_ok=True)
     cmd = [r.ZIG, "cc", "-target", "x86_64-windows-gnu"] + r.CFLAGS + \
-          r.INCLUDES + ["-c", src, "-o", obj]
+          r.INCLUDES + TEST_CFLAGS + ["-c", src, "-o", obj]
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace")
     if proc.returncode != 0:
@@ -67,7 +69,8 @@ def main():
         raise SystemExit(1)
 
     objects.sort()
-    cmd = [r.ZIG, "cc", "-target", "x86_64-windows-gnu", "-o", EXE] + objects
+    cmd = [r.ZIG, "cc", "-target", "x86_64-windows-gnu", "-o", EXE] + \
+          TEST_CFLAGS + objects
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace")
     if proc.returncode != 0:

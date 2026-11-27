@@ -16,7 +16,17 @@ Explicit opt-in with authentication, persistent audit event, visible indicator, 
 ## Browser and network
 TLS certificate validation on by default, safe URL handling, download controls, permission prompts and private-session cleanup. Never log credentials, cookies, tokens or private content.
 
-## Freestanding kernel enforcement (implemented, milestone F4)
+## Linux-core enforcement (production)
+Threat model: a hostile or buggy QEAPP process on Linux; PID 1 and privileged QEAF services are trusted only for bounded roles.
+
+- Drop root identity and supplementary groups, close inherited descriptors, apply `no_new_privs`, seccomp and resource limits before executing app code.
+- Give apps no direct MMIO, kernel memory or privileged device nodes. Route hardware access through permissioned QEAF services.
+- Verify namespaces, cgroup/device controls and LSM/SELinux from the actual target kernel config; never infer them from userspace success.
+- Keep package signatures, update verification, rollback, protected storage and secret redaction fail-closed. Record denial and audit evidence without secrets.
+
+The current x86_64/QEMU path proves PID 1/service/QEAPP startup and lifecycle only. It is not a hardened production sandbox: the arena is RWX, RLIMIT_CORE/RLIMIT_NOFILE/chdir failures are fail-closed but namespaces/chroot/device cgroups/LSM policy are absent, and the embedded development HMAC is not publisher authentication.
+
+## Freestanding kernel enforcement (reference track, milestone F4)
 Threat model: a hostile or buggy EL0 process on the QEAFIVELS AArch64 kernel; EL1 is trusted. Trust boundary is the `svc` instruction and each user pointer crossing it.
 
 - **Identity:** per-task uid/gid/capability mask. Apps get a per-app uid in the app band and a capability bundle (`VQEAF_CAPS_APP_UI`, `VQEAF_CAPS_APP_HEADLESS`); they never hold `VQEAF_CAP_SYSTEM` or `VQEAF_CAP_FS_ADMIN`. `vqeaf_task_create_user_cred()` rejects NULL so a kernel-internal harness is the only way to get system credentials.
@@ -27,4 +37,6 @@ Threat model: a hostile or buggy EL0 process on the QEAFIVELS AArch64 kernel; EL
 - **Review rule:** any new EL0 syscall needs a policy-table entry, a documented capability and a denial test; any new vnode provider must set uid/gid/mode before it is mounted.
 
 ## Tests
-Tampered signatures, revoked keys, replay/rollback, malicious QEAPP paths, IPC impersonation, permission revocation, lockout/rate limits, developer-mode disable, and kernel-level capability/ownership denials (`scripts/test_kernel_aarch64.py`).
+Linux-core: uid/gid drop, supplementary-group clearing, descriptor hygiene, `no_new_privs`, seccomp denial, resource limits, device/path denial, service authorization, tampered signatures, replay/rollback, permission revocation and developer-mode disable.
+
+Freestanding reference: kernel-level capability/ownership denials (`scripts/test_kernel_aarch64.py`).

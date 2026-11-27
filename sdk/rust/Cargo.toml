@@ -1,0 +1,13 @@
+[package]
+name = "qeapp-sdk"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "Freestanding Rust SDK for the QEAF native application ABI"
+license = "MIT"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []

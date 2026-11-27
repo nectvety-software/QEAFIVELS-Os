@@ -1,13 +1,4 @@
 /* SPDX-License-Identifier: MIT */
-/* platform/violet/ui/vqeaf_wifi.h - scan/connect seam for the Wi-Fi page.
- *
- * The UI never invents a network. Scanning uses the kernel's wireless
- * extensions on the live netdev; when the image has no netdev (no WCN3990
- * firmware) every call reports ENODEV and the page says so. A secure network
- * needs a WPA supplicant, which this initramfs does not carry, so the password
- * dialog collects the key but the connect call reports EOPNOTSUPP instead of
- * pretending the join succeeded.
- */
 #ifndef VQEAF_WIFI_H
 #define VQEAF_WIFI_H
 
@@ -22,32 +13,39 @@ typedef enum {
     VQEAF_WIFI_ENC_WEP,
     VQEAF_WIFI_ENC_WPA,
     VQEAF_WIFI_ENC_WPA2_PSK,
-    VQEAF_WIFI_ENC_WPA_WPA2
+    VQEAF_WIFI_ENC_WPA_WPA2,
+    VQEAF_WIFI_ENC_WPA3_SAE,
+    VQEAF_WIFI_ENC_OWE,
+    VQEAF_WIFI_ENC_EAP
 } vqeaf_wifi_enc_t;
 
 typedef struct {
     char ssid[33];
     char bssid[18];
     int signal;   /* 0..100 */
-    int secure;   /* 1 when privacy/RSN is advertised */
-    int enc;      /* vqeaf_wifi_enc_t, parsed from RSN/WPA IE when present */
+    int secure;
+    int enc;
 } vqeaf_wifi_net_t;
 
-/* Triggers a scan on the first wlan* netdev and returns the network count,
- * or -errno. Results are deduplicated by SSID, strongest signal first. */
+typedef struct {
+    char state[24];       /* wpa_state: DISCONNECTED, ASSOCIATING, COMPLETED */
+    char ssid[33];
+    char bssid[18];
+    char ip_address[46];
+    int connected;        /* true only when wpa_state=COMPLETED */
+} vqeaf_wifi_status_t;
+
+/* Scan through the real wpa_supplicant control interface. */
 int vqeaf_wifi_scan(vqeaf_wifi_net_t *out, int max);
-
-/* Open networks are joined with SIOCSIWESSID. A non-empty password returns
- * -EOPNOTSUPP because the 4-way handshake needs a supplicant. */
-int vqeaf_wifi_connect(const char *ssid, const char *password);
-
-/* Stable human-readable text for a scan/connect return code. */
+/* Queue open, WPA/WPA2-PSK, WPA3-SAE or OWE. Return 0 means accepted by
+ * supplicant, not that association/DHCP has completed; inspect status(). */
+int vqeaf_wifi_connect(const char *ssid, const char *password, int enc);
+int vqeaf_wifi_disconnect(void);
+int vqeaf_wifi_get_status(vqeaf_wifi_status_t *status);
 const char *vqeaf_wifi_error(int rc);
-/* Short label for a parsed encryption type, e.g. "WPA2-PSK". */
 const char *vqeaf_wifi_enc_name(int enc);
 
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* VQEAF_WIFI_H */
+#endif

@@ -191,7 +191,13 @@ static const vqeaf_page_t taskbar_pages[5] = {
 
 int vqeaf_tools_taskbar_visible(vqeaf_page_t page)
 {
-    return page != VQEAF_PAGE_LOCK && page != VQEAF_PAGE_QEAPP_NATIVE;
+    if(page == VQEAF_PAGE_LOCK || page == VQEAF_PAGE_SETUP ||
+       page == VQEAF_PAGE_QEAPP_NATIVE || page == VQEAF_PAGE_APPS_EDIT ||
+       page == VQEAF_PAGE_TERMINAL)
+        return 0;
+    if(page == VQEAF_PAGE_HOME && !vqeaf_theme_fluent())
+        return 0;
+    return 1;
 }
 
 static void taskbar_open_cb(lv_event_t *event)

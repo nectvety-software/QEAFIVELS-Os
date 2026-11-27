@@ -24,6 +24,7 @@ INCLUDES = [
     "-I", str(ROOT / "framework" / "simulator"),
     "-I", str(ROOT / "framework" / "security"),
     "-I", str(ROOT / "system" / "ui" / "include"),
+    "-I", str(ROOT / "system" / "core" / "include"),
 ]
 # -mno-red-zone: the API callbacks are sysv_abi but call Win64 libc (snprintf,
 # malloc). SysV's 128-byte red zone below rsp is not respected by Win64 callees,
@@ -33,6 +34,7 @@ CFLAGS = ["-O1", "-g", "-Wall", "-Wextra", "-std=c11", "-mno-red-zone",
           "-D__linux__", "-DLV_CONF_INCLUDE_SIMPLE", "-DLV_LVGL_H_INCLUDE_SIMPLE"]
 CORE_SOURCES = [
     UI / "vqeaf_qeapp.c",
+    ROOT / "platform" / "violet" / "qeapp_package.c",
     UI / "vqeaf_qeapp_native.c",
     ROOT / "framework" / "security" / "qeaf_broker.c",
     ROOT / "framework" / "simulator" / "qeaf_device.c",

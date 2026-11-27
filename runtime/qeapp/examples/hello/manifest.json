@@ -1,7 +1,7 @@
 {
   "format":"qeapp","format_version":1,"id":"org.vqeaf.hello",
   "name":"Hello VQEAF","version":"1.0.0","description":"Native QEAPP example",
-  "publisher":"Qeafivels Software","author":"VQEAF SDK","icon":"assets/icon.png",
+  "publisher":"Qeafivels Software","author":"VQEAF SDK","icon":"assets/icon.rgba",
   "entry":"main.qe","min_os":"0.1.0","permissions":[],
   "architecture":["arm64","x86_64"],"dependencies":[],"signature":null
 }

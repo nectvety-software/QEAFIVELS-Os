@@ -15,7 +15,7 @@ Nguyên tắc:
 
 | # | Nguồn | URL / repo | Phiên bản | License | SHA-256 | Tái sử dụng | Viết lại | Trạng thái |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| S1 | **Xiaomi OSS violet-q-oss** (kernel downstream Android Q) | `github.com/MiCode/Xiaomi_Kernel_OpenSource` → branch `violet-q-oss` | `LA.UM.8.9.r1-04400-SM6xx.0-1` (E1) | GPL-2.0 | chưa clone → **UNVERIFIED** | Thuật toán/probe của DSI (nt36672a), touch nt36xxx, WCD937x, SDHCI, DWC3, WCN3990/icnss | toàn bộ lớp OS API (device model, IRQ, DMA, PM, firmware loader) | Chưa tải — Phase 2 sẽ clone đúng tag và ghi hash |
+| S1 | **Xiaomi OSS violet-q-oss** (kernel downstream Android Q) | `github.com/MiCode/Xiaomi_Kernel_OpenSource` → branch `violet-q-oss`, commit `1488fa3d05e2f9be5fc62e0bb16ad85d96db2076` | Linux `4.14.117`; tag Qualcomm `LA.UM.8.9.r1-04400-SM6xx.0-1` | GPL-2.0 | commit + SHA-256 file đã pin trong §7; **chưa khớp binary stock** | Thuật toán/probe của DSI (nt36672a), touch nt36xxx, WCD937x, SDHCI, DWC3, WCN3990/icnss | toàn bộ lớp OS API (device model, IRQ, DMA, PM, firmware loader) | Candidate base cho backport; không được coi là source của `4.14.215-azure-Pixel+` |
 | S2 | **Xiaomi OSS violet-p-oss** (Android P) | cùng repo → branch `violet-p-oss` | `LA.UM.7.9.r1-03500-sm6150.0` (E1) | GPL-2.0 | **UNVERIFIED** | Đối chiếu khi q-oss thiếu file; tham chiếu DT gốc | — | Chỉ tham chiếu |
 | S3 | **LineageOS kernel sm6150** | `github.com/LineageOS/android_kernel_xiaomi_sm6150` | branch `lineage-24.0`; wiki ghi kernel **4.14** (E1) | GPL-2.0 | **UNVERIFIED** | Bản kernel gần mainline nhất cho sm6150; tham chiếu binding + driver đã dọn | không dùng trực tiếp làm base | Chưa tải |
 | S4 | **LineageOS device tree violet** | `github.com/LineageOS/android_device_xiaomi_violet` | branch `lineage-23.2`, 3.655 commit (E1) | Apache-2.0 (header `device.mk` ghi `SPDX-License-Identifier: Apache-2.0`) | **UNVERIFIED** | `configs/` (audio/mixer/thermal), `rootdir/etc`, danh sách `proprietary-files.txt` để biết cần blob nào | toàn bộ phần Android (init/HAL/sepolicy) **không** port | Chưa tải |
@@ -23,11 +23,11 @@ Nguyên tắc:
 | S6 | **Linux mainline ath10k (qmi/wcn3990)** | `git.kernel.org` → `drivers/net/wireless/ath/ath10k/*` | nhánh mainline hiện hành (E1: driver `qmi_wcn3990` tồn tại) | GPL-2.0 | **UNVERIFIED** | Thuật toán CE, QMI/WLFW handshake, copy-engine ringing | thay toàn bộ netdev/skbuff bằng network stack của QEAF (chưa có) | Phase 6 |
 | S7 | LineageOS Wiki (violet) | `wiki.lineageos.org/devices/violet/`, `/fw_update/` | nội dung 2025-09 | CC BY-SA 3.0 | — | Thông số thiết bị, phiên bản firmware India/China | — | Đã dùng (E1) |
 | S8 | xmfirmwareupdater / mifirm | `xmfirmwareupdater.com/archive/miui/violet/`, `mifirm.net/model/violet.ttt` | — | trang tham chiếu | — | Chỉ đối chiếu tên bản MIUI | — | **Không tải file** |
+| S9 | **AxionAOSP Violet kernel** | `github.com/AxionAOSP-devices/android_kernel_xiaomi_violet` → branch `lineage-23.2`, commit `057098841e8bc82f87c3ae5fb11eb7c956416f15` | Linux `4.14.357-openela` | GPL-2.0 | commit + SHA-256 file/patch trong §7 | Ba fix DRM/MSM bus đã review; binding/config/DTS chỉ dùng để đối chiếu | Android HAL, vendor blob, scheduler tuning, fingerprint TEE rewrite và toàn bộ kernel tree | **Tham chiếu/backport candidate**, chưa áp dụng production |
 
-Các nhánh/phiên bản trên đều đã kiểm tra tồn tại ngày 2026-11-22; **chưa có SHA-256
-của source** vì chưa clone. Phase 2 bắt buộc: clone `violet-q-oss` + `lineage-23.2`
-device tree, ghi `git rev-parse HEAD` và hash của mỗi file được port vào
-`docs/platforms/VIOLET_SOURCE_PROVENANCE.md` (bảng phụ).
+Các nhánh/phiên bản trên đều đã kiểm tra tồn tại; S1 và S9 đã pin commit cùng
+SHA-256 của từng file dùng để backport. Việc pin commit **không** chứng minh source
+khớp binary stock `4.14.215-azure-Pixel+`; xem §7 cho kết quả apply-check và giới hạn.
 
 ## 2. Firmware — nguồn và hash đã đo
 
@@ -116,3 +116,32 @@ Thống kê SPDX trong `platform/violet`, `kernel/`, `platform/violet/hosttools/
 3. Hash mọi file DTS/DTSI sẽ port; thêm bảng "file nguồn → file đích" vào tài liệu này.
 4. Hash `CAMERA_ICP.elf` và liệt kê đủ 271 file firmware với SHA-256 (tool hiện có).
 5. Chốt biến thể `BDWLAN` của máy này bằng board ID thật (không đoán).
+
+## 7. AxionAOSP driver backport candidates (2026-11-26)
+
+Nguồn Axion được theo đúng manifest thiết bị: `AxionAOSP-devices` chứa kernel,
+device tree và vendor tree Violet; `AxionAOSP/android_hardware_xiaomi` chỉ chứa
+Android HAL/AIDL và không phải driver Linux. Kernel Axion đã pin ở S9; đây là bản
+`4.14.357-openela`, gần họ nhưng **không đồng nhất** với stock `4.14.215-azure-Pixel+`.
+
+Bộ patch tối thiểu nằm ở `platform/violet/kernel-patches/axion/`:
+
+| Patch | Nội dung | Nguồn Axion | Trạng thái |
+| --- | --- | --- | --- |
+| `0001-msm-bus-skip-qos-clocks-when-none.patch` | Không bật QoS clocks khi client không có clock QoS | `f0861798d3f8ad3fd5a168d4caf6cfe037795dbc` | Apply-check PASS trên S1 |
+| `0002-drm-msm-clear-drvdata-on-bind-failure.patch` | Xóa `platform_drvdata` khi DRM bind lỗi | `88a317d56295586d849bf2816f5e7b4b7c4b7257` | Logic backport, apply-check PASS trên S1 |
+| `0003-drm-msm-dsi-clear-esd-only-on-active-change.patch` | Chỉ clear ESD recovery khi CRTC đổi trạng thái active | `111a6a5c490ff21a28bec4aab99527c48e29d20c` | Context backport, apply-check PASS trên S1 |
+
+`provenance.json` ghi SHA-256 của từng patch/file nguồn, commit, license và trạng
+thái kiểm tra. `scripts/check_violet_axion_backports.py` kiểm tra hash/path/base;
+`--source <kernel-worktree> --apply` chỉ ghi patch sau khi mọi gate PASS.
+
+Kết quả thực tế: `git apply --check` rồi `git apply` PASS trên đúng ba file S1;
+`python -m unittest tests.test_violet_axion_backports -v`: **5/5 PASS**. Chưa build
+kernel, chưa test QEMU và chưa test phần cứng vì thiếu source/config/DTB production
+khớp binary. Không patch nào được áp dụng vào kernel payload stock hoặc image QEAF.
+
+Không đưa vào bộ patch: patch PPS-delay có fallback ghi đè giá trị sau lỗi parse,
+thay đổi CPU affinity của DRM worker, fingerprint TEE rewrite, DTS/config nguyên
+bản Axion và mọi vendor blob/HAL Android. Wi-Fi/Bluetooth vẫn giữ trạng thái theo
+bằng chứng firmware/service hiện có; ba patch trên không tuyên bố sửa các blocker đó.

@@ -1,5 +1,1356 @@
 # Milestone status
 
+## Thiết lập lần đầu QEAFIVELS OS (2026-11-26)
+
+- Thêm `VQEAF_PAGE_SETUP` với năm bước: chào mừng, PIN tùy chọn, Wi-Fi thật,
+  giao diện Sáng/Tối và hoàn tất. Video tham chiếu chỉ có một khung tĩnh nên
+  không suy diễn thêm ngôn ngữ, tài khoản, sinh trắc học hay màn hình hoàn tất
+  của bên thứ ba.
+- Router chung chặn mọi lối đi vòng qua Setup khi `setup.complete` chưa true;
+  chỉ subpage PIN/Wi-Fi tạm thời được mở. Ẩn toàn bộ chrome hệ thống, chặn
+  gesture/status/Home/Back/Recents/sleep-wake/power-menu Lock và không đưa Setup
+  vào recents.
+- PIN và marker đọc/ghi qua Settings Service, kiểm readback. Marker bị từ chối
+  thì giữ Setup; ghi-through lỗi nhưng RAM đã nhận thì cảnh báo hoàn tất phiên.
+  Wi-Fi dùng provider/scan/link thật; Gọi khẩn cấp báo thiếu dịch vụ thoại;
+  theme gọi API bảng màu thật.
+- `python scripts/test_violet_shell.py`: PASS `ALL OK`, 83 snapshot, có test
+  boot đầu, bypass, PIN reject/cancel, Wi-Fi return, theme, marker reject,
+  durable-save failure và simulated reboot. `python scripts/render_phone_ui.py`:
+  PASS 236 PNG cho hai hướng và hai profile; các khung Setup đã xem trực tiếp.
+- `python scripts/build_violet.py`: PASS 292 object, `/init` 12.639.296 byte,
+  SHA-256 `20ba713550b0cc8f1a60fc0f44fec9d93a005627156271bbcf01120952d325e1`.
+  `python scripts/build_mt689x.py`: PASS 285 object, `/init` 12.430.592 byte,
+  SHA-256 `6cfc4611571c0686ff646d9087b6eaee879f440f5dc70c9b744722c4d0a34db9`.
+- `python scripts/package_violet.py --skip-build` và `--verify-only`: PASS;
+  image 51.679.232 byte, SHA-256
+  `3b5678ca3ed7fb0ce816e8a5d6da0d18cf985d903dcc30ef237ce633efce229a`;
+  structural/rescue gates PASS, `/init` static AArch64, kernel trùng stock
+  reference, `physical_boot_tested=false`.
+- **Giới hạn:** Violet vẫn chưa có backend Settings bền vững nên Setup/PIN/theme
+  đặt lại sau reboot. Xung đột extent appstore 32–64 MiB với boot journal ở
+  64 MiB−16 KiB chưa xử lý; không ghi marker ad-hoc vào p77. Chưa nạp image,
+  chưa kiểm thử trên thiết bị, không ghi `p76/boot`, `userdata`, `misc` và không
+  commit. Chi tiết luồng và bằng chứng: `docs/PHONE_UI.md`.
+
+## Kéo-thả icon/Control Center và âm thanh OS (2026-11-26)
+
+- Thêm state machine `vqeaf_drag` dùng chung: giữ 900 ms, kéo qua 12 px tạo ghost,
+  khóa press/cuộn/gesture, giữ nguyên thông tin khi giữ tại chỗ và hủy an toàn khi
+  thả ngoài đích hoặc ghost bị xoá ngoài hệ thống. Dock hoán đổi bốn slot; Home
+  sắp xếp trong cùng trang; Control Center sắp xếp ở chế độ Sửa và Đặt lại khôi phục
+  thứ tự/hiển thị. Trạng thái chỉ nằm trong RAM; Apps drawer không thêm reorder.
+- Tạo tám WAV cục bộ bằng exporter của 8bit-composer, chuẩn hoá mono PCM16 22,05 kHz
+  và nhúng tĩnh. `python scripts/test_vqeaf_sound.py`: PASS 10 test/26.021 kiểm tra;
+  dữ liệu C trùng từng byte với tám WAV. Backend host là unsupported; đây chưa phải
+  bằng chứng âm thanh vật lý.
+- Nối tiếng thật với điều hướng, drop, thông báo, chụp/lưu ghi, sạc, cảnh báo và
+  phím âm lượng. OSS `/dev/dsp` chỉ READY sau open/configure/silence-write thành
+  công; Control Center hiện và làm mới trạng thái PCM thật. Không claim tiếng đã
+  phát khi backend không sẵn sàng.
+- `python scripts/test_violet_shell.py`: PASS `ALL OK`, 77 snapshot; bốn ảnh
+  kéo-thả mới đã xem trực tiếp, có regression ghost bị xoá và nhãn PCM lỗi lúc
+  chạy. `python scripts/render_phone_ui.py`: PASS 216 PNG.
+- `python scripts/build_violet.py`: PASS, `/init` 12.625.040 byte, 292 object,
+  SHA-256 `d2e0ec3fbc3bf041dbfb669a7c31df6654805bd5235b4bd06f3c4258c42b6a35`.
+  `python scripts/build_mt689x.py`: PASS, `/init` 12.395.368 byte, 285 object,
+  SHA-256 `421a9db2fe2fbbfe65f96bcdb9ee1edc3bec2bbf3c080fd9869c2450834a8f62`.
+- `python scripts/package_violet.py --skip-build`: PASS `validate_bootimg` và
+  `audit_rescue_channel`; image 51.666.944 byte, SHA-256
+  `450b9f46c9429f9b4f0cae07f03afe6c29ce2898841c9d9203b084a4aaa63a92`.
+  `python scripts/package_violet.py --verify-only`: PASS; manifest xác nhận
+  `/init` static AArch64, kernel trùng stock reference và `physical_boot_tested=false`.
+- **Giới hạn:** chưa kiểm tra kéo-thả/âm thanh trên thiết bị, chưa nạp image, không
+  ghi `p76/boot`, `userdata`, `misc` và không commit. Chi tiết hành vi, nguồn/hash
+  clip và log: `docs/PHONE_UI.md`.
+
+## Sửa crash IME, keyboard Termux, test terminal trên máy (2026-11-26 buổi 2)
+
+- **Truy vết crash PID 1**: crash record `sig=11 addr=0x90 pc=0x149c30c`,
+  `llvm-addr2line` trên `build/violet/vqeaf-init` chỉ vào
+  `ime_build_suggestions` → `ime_current_word` → `lv_label_get_text`:
+  IME giữ `g_target` trỏ vào textarea đã bị xoá khi trang Terminal được dựng
+  lại dưới keyboard đang mở. Sửa gốc rễ trong `vqeaf_ime.c`: đăng ký
+  `LV_EVENT_DELETE` trên textarea (`ime_target_delete_cb` gạt `g_target`,
+  ẩn IME), mọi deref đi qua `ime_target_valid()` (kiểm `lv_obj_is_valid`).
+  Sau khi nạp: boot khôi phục trang Terminal ngay lúc boot (`page=30`) mà
+  không crash; `term` chạy hàng loạt không làm rơi `ui=1`.
+- **`term` verb marshal**: trước đây rescue worker gọi `vqeaf_terminal_run`
+  trực tiếp ngoài UI thread (đụng LVGL objects). Giờ thêm
+  `rescue_set_term_hook` + hàng đợi `ui_term_request` trong `main_violet.c`,
+  command chạy trên UI thread; RESPONSE trả `term: queued for the UI thread`.
+- **Keyboard chuẩn Termux**: ENTER không đóng keyboard; chạm vùng console mở
+  keyboard khi ẩn và refocus khi đang mở. IME test: `test_ime.py` ALL OK
+  (thêm lại key MIC + dialog "Chưa hỗ trợ giọng nói" đã mất khỏi working tree,
+  thêm `system/core/clipboard.c` vào `test_ime.py`/`render_phone_ui.py`).
+- **Test gõ lệnh thật trên máy (boot-73/74)**: `page terminal` → chạm console →
+  IME mở; tap IME h/e/l/p → ô nhập `~>help`; keybar `→` chạy lệnh; output help
+  hiện đúng màu; keyboard giữ nguyên sau ENTER. Ảnh:
+  `build/screens/device/term-typed4.png`, `term-ran-help.png`.
+- **Nâng cấp terminal**: thêm lệnh `mem` (/proc/meminfo thật) và `ps` (liệt kê
+  /proc); đã thấy output trên máy (`uname`, `ps` trong SCREEN.RAW).
+- **`touch [seconds]`**: verb mới đếm sự kiện evdev thật (IRQ chạm vật lý) 1..10 s,
+  báo SYN frames, số contact và toạ độ panel. Lần chạy đầu: 0 event (không ai
+  chạm); cần chạy lại khi có người chạm màn hình thật.
+- **`dump persist`**: verb chỉ đọc p74 (64 MiB, 4 chunk, verify từng chunk);
+  dùng chung staging buffer với `dump boot`. Lần chạy đầu biên dịch xong,
+  thiết bị rơi khỏi USB giữa lúc đọc (LUN "No Media"); lần chạy sau đã
+  COMPLETE 4/4 chunk trên thiết bị. Bài học: tên file FAT16 phải đúng 8.3 —
+  `PERSIST001.BIN` (10+3) bị cắt thành `PERSIST0.BIN` và 4 chunk ghi đè nhau;
+  đã đổi sang `PERS0001..0004.BIN`. Sau lần nạp cuối, máy mất kết nối USB
+  (Generic Mass-Storage, No Media) → cần giữ nút vật lực để boot lại.
+- **Camera (census máy thật)**: `cam subs` thấy đủ pipeline trong kernel:
+  cam-cpas, cam-isp, 2×cam-csiphy, 3×cam-sensor, actuator, eeprom, jpeg, icp,
+  lrme, cam_sync, cam-req-mgr; `cam session` tạo handle thật; `cam caps` query
+  3 sensor OK (payload 40 B). Chưa có node capture/stream — bước còn thiếu là
+  media-controller link sensor→CSIPHY→ISP→video node trong kernel/DT.
+- **Wi-Fi provisioning**: `persist status`: `/dev/mmcblk0p74` 64 MiB ext4,
+  mounted, `wlan_mac.bin=absent`. Dump 64 MiB p74 (chỉ đọc) đã verify trên máy
+  4/4 chunk; ảnh trên host sẽ dùng làm cơ sở cho `persist restore` sau khi
+  kiểm ext4. Chưa boot modem (`wifi up`) trước khi có provisioning.
+- **Ảnh đang chạy**: 51.519.488 B, SHA-256
+  `6dbbdcb214af58ab9602c4ab669754c3a74f7ea434c2404d5b154277fc87e60b`
+  (nạp p77 qua fastboot, chỉ recovery). Ảnh sau cùng trên host:
+  `f78b03be890ef43092140a8a7f7b07f277e89bebd8dc2adb6fe9dc18d92cd525`.
+- **Cảnh báo**: có process khác trên host cùng ghi QEAF.CMD/RESPONSE (nonce
+  `devcheck…`) và viết lại tệp nguồn; cần phối hợp theo lượt. Lỗi shell của
+  agent (collapse `
+` trong heredoc) đã gây loạt lỗi biên dịch giả — mọi
+  chuỗi escape phải dựng bằng `chr(92)`.
+
+## Bộ 14 thành phần Liquid Glass tương tác (2026-11-26)
+
+- Thêm `platform/violet/ui/vqeaf_components.c/.h`: Button, Action Button, Tabs,
+  Badge, Slide to Confirm, Card, Slider, Switch, Checkbox, Select, Button Group,
+  Dropdown Menu, Popover và Menu. Trang **Thiết kế QEAF** dùng lại ID/điều hướng
+  cũ; mọi control có state/event thật, không gắn dữ liệu phần cứng giả.
+- API dùng `LV_EVENT_CLICKED`/`LV_EVENT_VALUE_CHANGED`, deep-copy item string và
+  giới hạn 64 item. State được đăng ký theo owner thay vì tin `user_data`; constructor
+  dọn cây tạo dở khi allocation/object/event thất bại.
+- Overlay scrim/neck/panel nằm trên `lv_layer_top()`, có context/thế hệ, cancel
+  async, kiểm tra lại sau callback reentrant và xử lý xoá scrim ngoài hệ thống.
+  Geometry được clamp cho widget hẹp và màn hình 8×8; shell gesture bị chặn khi
+  overlay hiện.
+- `python scripts/test_m3.py`: **PASS 139/139**, gồm fault sweep, reentrancy xoá
+  anchor/thay overlay/xoá scrim, async cancellation/failure, sai kiểu, deep-copy và
+  tiny geometry. Log: `build/liquid-hardening-m3.log`.
+- `python scripts/test_violet_shell.py`: **PASS 478/478**, 73 snapshot; log:
+  `build/liquid-hardening-shell.log`. `python scripts/render_phone_ui.py`: **PASS**,
+  216 PNG ở 720×1560/1560×720 với profile `unknown`/`providers`; log:
+  `build/liquid-hardening-render.log`.
+- `ctest --test-dir build-native --output-on-failure`: **PASS 32/32**; log:
+  `build/liquid-hardening-ctest.log`.
+- `python scripts/build_violet.py`: **PASS**, `/init` static AArch64 12.347.512
+  byte, 289 object, SHA-256
+  `a2088ba7568d72e6fc714a586dded1591c0eeb324cb6d8e68ff1bf432dd980d1`.
+- `python scripts/build_mt689x.py`: **PASS**, `/init` static AArch64 12.128.232
+  byte, 282 object, SHA-256
+  `b65ed1850f6dc9d8b076495a108ee8ff7e2fd33bfddb2c2110dc8c6087eaacd1`;
+  log `build/liquid-hardening-mt689x-build.log`. Đây chỉ là bằng chứng build.
+- `python scripts/package_violet.py --skip-build` và `--verify-only`: **PASS**.
+  Image `dist/boot-vqeaf-violet.img` 51.519.488 byte, SHA-256
+  `9111a1554bf7257b4da237eb7fb3a12473c5414e0ae1a06c0b809e737c74aa48`;
+  `validate_bootimg`/`audit_rescue_channel` PASS. Kernel payload trùng stock reference
+  `6d298f543cfee08f7b72687cf975b6ed232e4ed565d337156db39ceb0fc18513`.
+- **Giới hạn:** chỉ mô phỏng kính bằng gradient/alpha/scale/rim, chưa có backdrop
+  blur/refraction thật. Manifest ghi `physical_boot_tested=false`; chưa nạp thiết bị,
+  chưa ghi `p76/boot`, `userdata`, `misc` và chưa commit. Chi tiết API/kiểm chứng:
+  `docs/PHONE_UI.md`.
+
+## Tích hợp `drives/` vào lõi driver và SDK API (2026-11-26)
+
+- Viết 9 header hợp đồng còn thiếu cho `drives/` (`mre_reg_io`, `mre_dsi_packet`,
+  `mre_panel_nt36672a`, `mre_dsi_host_sm6150`, `mre_spmi`, `mre_pmic_arb`,
+  `mre_pmic_regulator`, `mre_geni_i2c`, `mre_touch`) từ chính mã nguồn drive,
+  cộng `mre_reg_io.c` để hiện thực cửa sổ thanh ghi có kiểm tra.
+- Nối bộ drive vào lõi: `drives/core/drive_catalog.c` đăng ký 6 descriptor
+  (`qcom,spmi-pmic-arb`, `qcom,geni-i2c`, `qcom,spmi-pmic-regulator`,
+  `qcom,sm6150-dispcc`, `mre,touchscreen`, `novatek,nt36672a-shenchao`) vào
+  `system/core/driver.c`. Thiếu tài nguyên đã xác minh ⇒ `DEFERRED` (không phải
+  FAILED, không phải READY); có tài nguyên ⇒ probe chạy đúng một giao dịch đọc
+  thật; panel nt36672a luôn DEFER vì bảng của nó không có lệnh ID.
+- Thêm SDK API đọc-only `framework/application_api/qeaf_drives_api.h` (v1, cố
+  định layout, không con trỏ) + `framework/core/qeaf_drives_api.c`.
+- `cmake --build build-native` exit 0; `ctest --test-dir build-native`
+  **PASS 31/31**, gồm `vqeaf_mre_drives_smoke` và `vqeaf_drive_catalog_smoke`.
+  Bộ parse PMIC arbiter chạy trên DTB ABL thật trong cây:
+  `core=0xc440000/4352 chnls=0xc600000/33554432 obsrvr=0xe600000/1048576
+  cnfg=0xc40a000/155648 ee=0 ch=0`.
+- `python scripts/build_violet.py`: `/init` 12.166.504 byte, 287 object, SHA-256
+  `0c40bee0…`; thêm archive `build/violet/libvqeaf-drives.a` 17 object AArch64
+  (302.830 byte, SHA-256 `5603d80c…`) **không link vào `/init`** vì Linux sở
+  hữu MMIO trên đường Violet production.
+- **Chặn:** `mre_dsi_host_sm6150.c` và `mre_dsi_phy14_sm6150.c` cần map thanh
+  ghi `dsi.xml.h`/`dsi_phy_14nm.xml.h` không có trong repo — không bịa offset;
+  `mre_panel_identity.c` mới chỉ được gate ở host.
+- **Chưa claim:** chưa nạp ảnh, chưa chạy trên máy, app runtime chưa expose
+  bảng `qeaf_drives_api_v1` cho module `.qen`. Chi tiết: `docs/MRE_DRIVES.md`.
+
+## Registry driver userspace Violet (2026-11-26)
+
+- Thêm `drives/violet/violet_drivers.c/.h`: ABI v1, 19 provider cố định cho
+  eMMC/UFS, DRM, input, USB, Wi-Fi, Bluetooth, audio, GPU, sensor, camera,
+  fingerprint, KVM, NFC và baseband. Linux vẫn sở hữu probe/remove, IRQ, DMA,
+  MMIO, clock/regulator/reset; registry chỉ đọc sysfs/dev node và nhận evidence
+  runtime, không cấp quyền phần cứng trực tiếp cho ứng dụng.
+- Nối evidence thật từ PID 1: DRM modeset/scanout, touch evdev, power-key evdev
+  và USB gadget bind. Camera chỉ READY sau `cam grab` có frame thật; GPU/sensor/
+  fingerprint/KVM tối đa PRESENT từ node. Verb QEAFRESCUE `drivers` in đầy đủ
+  trạng thái, interface Linux và blocker thật.
+- `cmake --build build-native -j4` và `ctest --test-dir build-native
+  --output-on-failure`: **PASS 29/29**, gồm `vqeaf_violet_drivers_test` với ca
+  wrong ABI, buffer nhỏ, camera thiếu frame và chuyển trạng thái firmware/netdev.
+- `python scripts/build_violet.py`: **PASS**, `/init` static AArch64
+  12.188.000 byte, 287 object, SHA-256
+  `2ddfda5c02720899be1e25354aeab163b8af448def2870f48beeb43fb2469039`.
+- `python scripts/package_violet.py --skip-build`: **PASS**. Image
+  `dist/boot-vqeaf-violet.img` 51.470.336 byte, SHA-256
+  `fed27a6eb46b68fb71bf1e1e67d7cd1ef88bdcb7bb03b5c84e239d493ba10593`;
+  `validate_bootimg` và `audit_rescue_channel` đều PASS, kernel payload vẫn trùng
+  stock reference.
+- **Giới hạn:** chưa test registry trên thiết bị, chưa nạp image, không ghi
+  `p76/boot`, `userdata`, `misc`, firmware hay bootloader. Wi-Fi/Bluetooth/audio/
+  camera vẫn giữ blocker theo bằng chứng cũ; node sysfs không được suy ra READY.
+- **Milestone kế tiếp:** khi được cho phép hardware-in-loop, chạy `drivers` trên
+  p77 và đối chiếu evidence vật lý trước khi mở rộng provider hoặc đổi kernel.
+
+## Nạp giao diện Cobalt Glass vào p77/recovery Violet (2026-11-26)
+
+- `python scripts/test_violet_shell.py`: **PASS** (`ALL OK`, 71 snapshot);
+  `python scripts/render_phone_ui.py`: **PASS**, 196 PNG host; `python
+  scripts/build_violet.py`: **PASS**, `/init` static AArch64 12.128.568 byte,
+  286 object. Đây là bằng chứng host/build, không thay cho kiểm tra vật lý.
+- `python scripts/package_violet.py`: **PASS**. Image
+  `dist/boot-vqeaf-violet.img` 51.445.760 byte, SHA-256
+  `1b72829fd7f0725cd1b0d9d647fc27fade604a7f5508e7307dd65b94e24f5b55`;
+  `/init` SHA-256
+  `1505976f13327ccfc7fbd3586de13fd6ddd479102cd91a7f7aadf448489373da`.
+  `validate_bootimg` và `audit_rescue_channel` đều PASS; kernel payload
+  17.505.611 byte vẫn trùng stock reference
+  `6d298f543cfee08f7b72687cf975b6ed232e4ed565d337156db39ceb0fc18513`.
+- **Phần cứng (PASS):** thiết bị `ca1af25d`, product `violet`. Đã dùng
+  `temp/flash_capture.py --image dist/boot-vqeaf-violet.img --reboot` để ghi
+  **chỉ p77/recovery** qua rescue worker, không ghi `p76/boot`, `userdata`,
+  `misc`, firmware hoặc bootloader. Proof 1: `flash: written and verified byte
+  for byte`; proof 2: `lun: verified - recovery and BOOTIMG.BIN agree byte for
+  byte over 51445760 bytes in 1 cluster runs`.
+- Sau reboot, `HOMOLOG.TXT` xác nhận `boot: QEAFIVELS OS 0.3.0 init on violet
+  (PID 1)`, USB mass-storage `a600000.dwc3`, DRM 1080×2340, splash/LVGL
+  720×1560 và `ui: LVGL phone shell active`; `device_check.py` PASS 11/11.
+  Ảnh vật lý đã xem trực tiếp:
+  `build/screens/device/cobalt-glass-20261126-075520/lock-device.png` (SHA-256
+  `bbd0fbb7f425b6dc0eaf1dbc174d9445507fd16f196f42bd89bf91cd601118a2`) và
+  `home-device.png` (SHA-256
+  `23ec9c5ccb263254f2e877b61abb7932d1c326783b1949aa3602ecc2920a502c`).
+  Log, manifest và hash nằm trong cùng thư mục bằng chứng.
+- **Còn hạn chế:** Wi-Fi/GNSS/biometrics vẫn thiếu provider/firmware thật;
+  Notes chưa có backend bền vững. Manifest package là bản ghi host-only
+  (`physical_boot_tested=false`), không tự biến thành bằng chứng vật lý.
+- **Milestone kế tiếp:** chụp thêm Control Center vật lý, sau đó xử lý xung đột
+  extent p77 giữa appstore và boot journal trước khi thêm lưu trữ Notes bền vững.
+
+## Backport driver Violet từ nguồn AxionAOSP (2026-11-26)
+
+- Đã pin nguồn thật của Violet qua manifest Axion:
+  `AxionAOSP-devices/android_kernel_xiaomi_violet`, branch `lineage-23.2`, commit
+  `057098841e8bc82f87c3ae5fb11eb7c956416f15`, Linux `4.14.357-openela`.
+  Nguồn này không được coi là source của binary stock `4.14.215-azure-Pixel+`.
+- Ba fix DRM/MSM bus có phạm vi hẹp được tách thành patch ở
+  `platform/violet/kernel-patches/axion/`: guard QoS clock, dọn drvdata khi bind
+  lỗi và chỉ clear ESD recovery khi active-mode thay đổi. Hash/file/commit được
+  ghi trong `provenance.json`; script `scripts/check_violet_axion_backports.py`
+  chặn path Android/proprietary, hash lệch và source chưa được xác minh.
+- `git apply --check` + `git apply`: **PASS** trên đúng ba file của MiCode commit
+  `1488fa3d05e2f9be5fc62e0bb16ad85d96db2076` (4.14.117).
+  `python -m unittest tests.test_violet_axion_backports -v`: **5/5 PASS**.
+- **Chưa build kernel, chưa boot QEMU, chưa test phần cứng và chưa áp dụng vào
+  production** vì thiếu source/config/DTB khớp binary stock. Kernel payload trong
+  image Violet vẫn giữ nguyên hash `6d298f543cfee08f7b72687cf975b6ed232e4ed565d337156db39ceb0fc18513`.
+- Không import HAL/vendor blob Android; loại patch PPS-delay nghi ngờ, scheduler
+  affinity, fingerprint TEE rewrite và DTS/config nguyên bản Axion. Wi-Fi,
+  Bluetooth, GNSS và fingerprint vẫn giữ trạng thái blocker theo bằng chứng cũ.
+- **Milestone kế tiếp:** lấy đúng source/revision, effective config và board DTBO
+  của binary stock; build kernel AArch64 có toolchain đã pin, chạy gate QEMU/host
+  rồi mới xét physical test trên thiết bị được cho phép. Không flash trong bước này.
+
+## Icon font Google Fonts cho COPY/PASTE keyboard (2026-11-26)
+
+- Them `content_paste` (E14F) vao subset Material Icons trong
+  `scripts/generate_lvgl_fonts.ps1` (list icon tu Google Fonts), chay lai
+  generator: vqeaf_icon_28/40 gio co 131 glyphs, gom `content_copy` (E14C)
+  va `content_paste` (E14F) o ca hai size.
+- IME dai goi y: hai nut COPY/PASTE text cap doi thanh glyph
+  `VQEAF_SYM_CONTENT_COPY` / `VQEAF_SYM_CONTENT_PASTE` qua `vqeaf_glyph`
+  + `VQEAF_ICON_SM`, dong bo voi cac phim icon khac (backspace, shift,
+  return, mui ten). Hanh vi copy/paste khong doi (ime_clipboard_cb).
+- Host: `test_ime.py` ALL OK, `render_phone_ui.py` ALL OK (anh
+  `build/screens/phone-ui/ime-extract-*.png` thay 2 icon moi),
+  `test_violet_shell.py` ALL OK (83 snapshots), build violet
+  12.663.160 B (292 objects); anh dong goi
+  `dist/boot-vqeaf-violet.img` 51.679.232 B, SHA-256
+  `8917afe489e16293ce802ce70a628998ce568c7f20279560830e14742a38d369`.
+
+## Cap nhat loi trinh cai dat QEAPP va SDK (2026-11-26)
+
+- **Kiem suc toan bo**: test_qeapp_runtime, test_qeapp_native_loader,
+  test_qeapp_simulator (61 kiem tra), test_qeapp_runtime_guard (25),
+  test_qeapp_broker (68+53 qua module that), test_qeapp_vm_touch (canvas
+  720x1560, touch chuot + phim mui ten doi framebuffer), test_puzzle_qeapp,
+  test_qeapp_aarch64 (hash 0x6cc394ad, 0 ro ri) - tat ca ALL OK.
+  unittest discover -s tests: 273 tests OK (1 skip).
+- **Installer core** (platform/violet/ui/vqeaf_qeapp.c, ~1234 dong thay doi
+  so voi HEAD): parser manifest JSON rieng (escape uXXXX, mang permissions),
+  kiem tra ID/entry/icon, ZIP central directory + CRC32, hash SHA-256, ghi
+  catalog v4 voi grants nguoi dung; API moi vqeaf_qeapp_last_status,
+  vqeaf_qeapp_persisted, vqeaf_qeapp_set_permission,
+  vqeaf_qeapp_effective_permissions.
+- **Sandbox 4 lop** (vqeaf_qeapp_sandbox.c): them getuid/getgid vao seccomp
+  allowlist (aarch64: 174/176; x86_64: 102/104) de app bao danh tinh that;
+  setrlimit gio tra loi that thay vi bo qua.
+- **SDK**: qeaf doctor bao toolchain + 2 target Rust; pipeline Rust native
+  (qenrust.py) tao module khong vo cho x86_64/aarch64; qeaf preview in JSON
+  xac dinh voi package_sha256, signature_verified; thu vien dung chung
+  sdk/qeapp chi de inspect, khong cai dat. Verify vong doi day tu host:
+  create -> build --config release -> validate -> preview OK (package
+  407.145 B, sha256 355d3fcc...).
+- **Anh thiet bi da chua installer moi**: build_violet lien ket
+  build/violet/vqeaf-init 12.625.288 B (292 objects), gom broker + sandbox
+  + runtime guard + catalog v4; anh dong goi
+  dist/boot-vqeaf-violet.img 51.666.944 B, SHA-256
+  127ecbc792037d6d25f51c65155b318b9d9f0d069bf4d14df26cd6ea64cb9f89.
+- Chua chay tren tay: thiet bi van ket LUN "No Media", can ep reboot vat ly
+  truoc khi verify cai dat/cap quyen tren thiet bi.
+
+## Review runtime QEAPP, provenance kernel và ảnh Violet mới (2026-11-25)
+
+- Sáu phát hiện review đã được sửa: giải phóng đôi/use-after-free khi gỡ app,
+  chặn stdout module giả mạo lifecycle/hash/identity, `waitpid(EINTR)` trong
+  deadline, timeout QEMU luôn FAIL, so sánh source tree với archive Linux đã
+  pin, và dùng lại byte package đã verify khi file gốc biến mất.
+- Bằng chứng hoàn tất QEAPP chỉ được ghi sau khi sandbox thành công và
+  `device_exec()` trả về 0 trong vùng nhớ chia sẻ; module gọi `exit(0)` sớm
+  không còn tạo PASS. `RLIMIT_CORE`, `RLIMIT_NOFILE` và `chdir("/")` fail-closed.
+- `python -m unittest tests.test_qeapp_security_contract
+  tests.test_linux_x86_64_baseline tests.test_linux_core_boundaries
+  tests.test_qeapp_native`: **69/69 PASS**. `python scripts/test_qeapp_runtime.py`:
+  **ALL OK**, gồm ca session-only install chạy từ byte package đã giữ lại.
+- QEMU golden path PASS; `python temp/qeapp_forgery_probe.py` tạo module xấu in
+  đủ lifecycle/hash/identity giả rồi thoát sớm, gate vẫn ghi
+  `QEAPP_RUN: FAIL error=device runtime: module exited before runtime completion`,
+  `QEAF_LINUX_X86_64_SYSTEM: FAIL` và poweroff sạch. Log nằm ở
+  `build/linux-x86_64/negative-qemu/forged-completion/boot.log`.
+- `python scripts/build_linux_x86_64.py --timeout 60`: PASS; script build kernel
+  chạy `tar -dJf` để so sánh source tree với archive trước `mrproper`/build.
+  `bzImage` 7.405.472 B, SHA-256
+  `a0e8a499edbdc0f90dba1cd57988410127b4288b739fae552b12725ee7f416a6`;
+  initramfs 92.577 B, SHA-256
+  `7125d645adcca17e2fe968260ec46d11d6d1e5724022b6df30d3d7be7cff47ad`.
+- `python scripts/build_violet.py`: PASS, `/init` static AArch64 12.044.504 B,
+  286 object. `python scripts/package_violet.py`: PASS; ảnh
+  `dist/boot-vqeaf-violet.img` 51.441.664 B, SHA-256
+  `5b5fc4a5ac084ed62445af2ec78a9f28ee03671f318c497d614ec878ccb55c18`;
+  `validate_bootimg` PASS, `audit_rescue_channel` PASS. Kernel payload vẫn trùng
+  stock reference, `/init` SHA-256
+  `9637a3f3f77c34f26f206fb603400f58df48629576baa45f1417dff9501f6519`.
+- **Phần cứng (PASS):** thiết bị `ca1af25d`, `product=violet`,
+  `partition-size:recovery=0x4000000`, bootloader unlocked. Đã chạy đúng một lần
+  `fastboot flash recovery dist/boot-vqeaf-violet.img` rồi `fastboot reboot recovery`;
+  fastboot trả `OKAY` cho cả ghi và reboot. Không ghi `boot`/`p76`, `userdata`,
+  `misc`, firmware hoặc ảnh x86_64.
+- Sau flash, QEAFRESCUE lên ổ `F:` và trả lời sống:
+  `QEAFIVELS OS 0.3.0; device violet; stage=loop; ui=1; drm=1`.
+  `HOMOLOG.TXT` xác nhận `boot: QEAFIVELS OS 0.3.0 init on violet (PID 1)`,
+  `usb: mass storage bound to a600000.dwc3`, `drm: verified - crtc 107 scans our
+  fb 188 at 1080x2340`, `ui: splash 720x1560 (portrait)` và
+  `ui: LVGL phone shell active`. Ảnh Home và màn hình khóa thật nằm ở
+  `build/screens/device/postflash-20261125/lock.png` (SHA-256
+  `647ec0dde3b1ce4ea0e66747620df708a117375e2cc7a5f7f0d806fd9c3852e2`) và
+  `lock-screen.png` (SHA-256
+  `b6a5f79b9f33a11c25ce78c163c637225e9ff796eb16c58fdd5eb4cf56bdbee0`).
+  Log fastboot/raw rescue được lưu cùng thư mục. Manifest package vẫn là bản ghi
+  host-only (`physical_boot_tested=false`); bằng chứng boot vật lý nằm trong bản
+  ghi này, không suy ra PASS từ manifest host.
+- **Còn hạn chế:** arena QEAPP vẫn RWX; chưa có namespace/chroot/device cgroup/
+  LSM, identity/storage broker per-app, revocation trực tiếp hay xác thực nhà
+  phát hành thật. Kernel Violet chưa reproducible từ source; source GPG verify,
+  security backport/CVE review và các negative case wrong ABI/architecture,
+  crash, hang/timeout, seccomp-unavailable vẫn chưa hoàn tất. Full suite chưa chạy
+  lại sau đợt sửa này; hai lỗi SDK/example cũ trong bản ghi dưới vẫn chưa được xử lý.
+
+## Chuyển nền tảng sang Linux core và gate provenance Violet (2026-11-25)
+
+- Quyết định kiến trúc: Linux là kernel core cho toàn bộ QEAFIVELS OS.
+  Violet dùng vendor Linux `4.14.215-azure-Pixel+`; x86_64/QEMU phải có
+  baseline Linux 4.14.215 riêng. QEAFIVELS giữ PID 1, services, framework,
+  UI, QEAPP, rescue và tooling phía trên Linux. Kernel freestanding x86_64/
+  AArch64 được giữ làm reference track, không còn là production foundation.
+- `scripts/package_violet.py`: thêm `--verify-only`, parser boot image/newc,
+  kiểm tra kernel payload trùng byte-for-byte với stock reference, release
+  Linux/AArch64 Image, `/init` static AArch64 và manifest SHA-256. Luồng
+  package chỉ ghi `dist/boot-vqeaf-violet.manifest.json` sau khi
+  `validate_bootimg` + `audit_rescue_channel` PASS.
+- `tests/test_violet_package_manifest.py`: 10 unit test PASS, gồm accept/deny
+  cho ELF static/dynamic/load segment, release kernel, cpio `/init`/trailer,
+  manifest và kernel bị thay đổi. `tests/test_linux_core_boundaries.py`: 3/3
+  test PASS, khóa
+  ranh giới Linux/kernel reference trong build và rescue verb.
+- Tách driver tham chiếu khỏi PID 1 Linux: `scripts/build_violet.py` không còn
+  link `wcn3990_bt.c`, `wcn3990_slim.c`, `slim_qcom_ngd.c` hay
+  `slim_ngd_bringup.c`; `bt_bringup.c` chỉ đọc DT/firmware/sysfs, `bt up` từ chối
+  mở radio userspace và `slim` không map MMIO. Các driver/provider cũ chỉ còn
+  trong host/reference tests. `python scripts/build_violet.py`: PASS, ELF AArch64
+  12.039.120 byte, 286 object.
+- `python scripts/package_violet.py --skip-build`: PASS, tạo image mới và
+  `dist/boot-vqeaf-violet.manifest.json`; `validate_bootimg` +
+  `audit_rescue_channel` PASS. Image 51.437.568 byte, SHA-256
+  `3a720e3097cc19fa75059ba9c28b732c650b89f49f8901363c02bbe663a1c369`;
+  kernel payload 17.505.611 byte, SHA-256
+  `6d298f543cfee08f7b72687cf975b6ed232e4ed565d337156db39ceb0fc18513`,
+  trùng stock reference; `/init` 12.039.120 byte, SHA-256
+  `b95658c5c8bb4b4e1d967d61eb477625fb09e7c9104598f84eacc4b9d00c6f4b`,
+  static AArch64. `python scripts/package_violet.py --verify-only`: PASS.
+- Cập nhật canonical rules/docs: `.agents/AGENTS.md`,
+  `.agents/prompts/QEAFIVELS_OS_MASTER_PROMPT.md`,
+  `.agents/prompts/MASTER_DEVELOPMENT_PROMPT.md`, `docs/ARCHITECTURE.md`,
+  `docs/INDEPENDENT_OS_CHARTER.md`, `docs/ROADMAP.md`, `README.md` và các
+  skill liên quan. `docs/DRIVERS_VIOLET.md` và
+  `docs/platforms/VIOLET_NATIVE_BOOT_INTEGRATION.md` nay đánh dấu rõ phần
+  freestanding là reference.
+- **Giới hạn:** chưa có source/revision vendor Violet 4.14 cục bộ nên kernel
+  hiện là binary provenance, chưa reproducible từ source. Chưa có kernel
+  Linux x86_64 build. Image mới chỉ được build/package/verify trên host, chưa
+  nạp `p77`, không ghi `boot`/`p76`, `userdata`, `misc`, không flash firmware
+  và không commit.
+- **Milestone kế tiếp:** pin/build Linux 4.14.215 x86_64 + initramfs, boot
+  `/init` tối thiểu trên QEMU với artifact riêng, không ghi đè `KERNEL.EFI`.
+
+## Linux x86_64/QEMU chạy QEAF PID 1, services và Puzzle `.qeapp` (2026-11-25)
+
+- Yêu cầu: “nhân Linux như sẽ chạy QEAF và ứng dụng hệ thống .qeapp”. Đã hoàn
+  thành golden path thật trên QEMU: upstream Linux `4.14.215` → QEAF PID 1 →
+  `package-store` + `qeapp-preflight` → Puzzle x86_64 → shutdown sạch. Đây là
+  bằng chứng **EMULATED**, không phải phần cứng vật lý.
+- `scripts/build_linux_x86_64_kernel.sh` pin source Linux 4.14.215 theo SHA-256
+  `9a844e290c61b39dd23df507ba1d9c2b2b4365e5993a978b19f1eb5610b926da`,
+  dùng config riêng và build `bzImage` monolithic. GCC 13 cần workaround hẹp
+  `-Wno-error=use-after-free` cho objtool Linux 4.14; đây chưa phải kernel
+  release đã hardening/backport.
+- `platform/linux-x86_64/init.c`: PID 1 thật mount proc/sysfs/devtmpfs/run/tmp,
+  chờ service READY qua pipe, giám sát process group, có timeout, reap child,
+  dừng services và poweroff qua Linux. `qeaf_services.c` mở/preflight gói
+  Puzzle trước READY; `qeapp_runner.c` tái xác minh rồi gọi launcher device đã
+  có trong process fork/sandbox riêng.
+- Initramfs `newc` + gzip deterministic chứa đúng bốn file thật: `/init`,
+  `/qeaf-services`, `/qeapp-runner`, `/system/apps/puzzle.qeapp`. Gate từ chối
+  file thiếu/thừa, trùng lặp, path không an toàn, mode sai, checksum sai, nội
+  dung đổi và dữ liệu sau trailer.
+- Bằng chứng boot trong `build/linux-x86_64/boot.log`:
+  `QEAF_SERVICES: READY`, `QEAPP_VERIFY: PASS`, `QEAPP_SANDBOX: PASS
+  uid=20000 gid=20000 no_new_privs seccomp`, `QEAPP_RUN: PASS ... lifecycle=
+  create start pause resume stop destroy hash=0xa181d6b1`,
+  `QEAF_SERVICES: STOPPED`, `QEAF_LINUX_X86_64_SYSTEM: PASS`,
+  `QEAF_LINUX_X86_64_INIT: POWEROFF`, `reboot: Power down`.
+- Artifact chính: `bzImage` 7.405.472 B, SHA-256
+  `a0e8a499edbdc0f90dba1cd57988410127b4288b739fae552b12725ee7f416a6`;
+  initramfs 93.092 B, SHA-256
+  `75032fd6807b20dc850cc7f77124a6c6608f6331f259872c17c4144d2df47b11`;
+  Puzzle 23.960 B, SHA-256
+  `6f4ff6884144745d990ea2d5d3a109530f1b102d40b828fcbeae8edb98052c2e`.
+  `manifest.json` ghi config/toolchain/hash, `qemu_boot=PASS`,
+  `qemu_exit_code=0`, `physical_boot_tested=false`.
+- Lệnh đã chạy: kernel rebuild PASS;
+  `python scripts/build_linux_x86_64.py --skip-kernel --timeout 60` PASS;
+  `--verify-only` PASS; `tests.test_linux_x86_64_baseline` **21/21 PASS**;
+  baseline + Linux boundaries + native QEAPP + security contract **66/66 PASS**.
+- **Giới hạn:** đường này headless; chưa nối system UI, rescue, persistence,
+  update. Arena QEAPP vẫn RWX; chưa kiểm kết quả `setrlimit()`; chưa có
+  namespace, chroot, device cgroup, LSM policy, storage broker, identity riêng
+  per-app hay revocation. HMAC dev chỉ phát hiện thay đổi tương đối, không phải
+  xác thực nhà phát hành. Đã chạy ba negative QEMU case thật: thiếu
+  `qeaf-services`, thiếu package và package bị đổi byte; cả ba đều không tới
+  service READY/QEAPP RUN, báo FAIL rồi poweroff sạch. Chưa chạy các case wrong
+  ABI/architecture, crash, hang/timeout và seccomp-unavailable; chưa hoàn tất
+  security backport/CVE review và GPG verify source.
+- Full suite vừa chạy lại: CTest **14/14 PASS**; Python **238 test**, vẫn đúng
+  hai lỗi cũ ngoài phạm vi `test_example_manifest_valid` và
+  `test_example_compiler_rejects_alternate_icon_path` (kỳ vọng
+  `Runtime icon must be assets/icon.rgba`, thực tế `icon must be assets/icon.rgba`),
+  1 skipped. Không sửa SDK/example để che lỗi cũ; toàn bộ suite không được ghi
+  nhận là PASS.
+- Không ghi đè `KERNEL.EFI`/`BOOTX64.EFI`/ESP/p77; không flash, không ghi
+  `boot`/`p76`, `userdata`, `misc`, không test phần cứng và không commit.
+
+## Bo góc icon ứng dụng 10 px (2026-11-24)
+
+- Yêu cầu: “các khung ngoài của icon hãy bo góc 10px”.
+  `platform/violet/ui/vqeaf_theme.c`: `vqeaf_icon_img()` đặt `radius = 10` cho
+  ảnh bitmap dùng chung, nên Home, Apps, dock và các mặt tiêu icon khác có cùng
+  góc ngoài. Pixel art 32×32 vẫn nearest-neighbor, không đổi kích thước, màu,
+  navigation, badge hay dữ liệu provider.
+- `tests/vqeaf_shell_interaction.c`: thêm hợp đồng kiểm bán kính 10 px và snapshot
+  `home-icon-corners`; `scripts/test_violet_shell.py` chuyển snapshot mới sang PNG.
+- `python scripts/test_violet_shell.py`: **ALL OK**, **70 snapshot**.
+  `python scripts/render_phone_ui.py`: PASS, **196 PNG**, 49 frame × 2 profile ×
+  2 hướng. Đã xem trực tiếp Home/Apps/dock ở portrait và landscape; góc ảnh bo
+  đều, pixel art vẫn nét.
+- `python scripts/build_violet.py`: PASS, ELF AArch64 **12.089.496 byte**, 290
+  object. `python scripts/package_violet.py --skip-build`: PASS; ảnh
+  `dist/boot-vqeaf-violet.img` **51.458.048 byte**, SHA-256
+  `b797dc48766dda845ad953e9d7ed2652ac048e7d4508321e4ce5edcd6710a810`;
+  `validate_bootimg` PASS, `audit_rescue_channel` PASS.
+- **Giới hạn:** bằng chứng render/host và cross-build, chưa chạy trên thiết bị
+  vật lý, chưa nạp `p77`, chưa ghi `boot`/`p76`, `userdata`, `misc` và chưa
+  commit.
+
+## Trung tâm bảo mật, kiểm tra Wi-Fi thụ động và advisory CVE ngoại tuyến (2026-11-24)
+
+- Yêu cầu: “triển khai tính năng như video”. Hai video chỉ dùng làm tham chiếu
+  chức năng; QEAFIVELS không sao chép tên, logo, giao diện hay tài sản của ứng
+  dụng bên thứ ba. Phạm vi đã chốt: quét/xem mạng ở chế độ thụ động và tra cứu
+  advisory công khai cục bộ. Không thêm root, monitor mode, WPS/Pixie Dust,
+  deauthentication, bắt mật khẩu, Web Scanner, GeoMac hoặc thực thi mã khai
+  thác.
+- `platform/violet/ui/vqeaf_pages.c/.h`: Trung tâm bảo mật Midnight V2 giữ PIN và
+  các mục chưa hỗ trợ, thêm hai trang thật: **Kiểm tra Wi-Fi** và **Cơ sở dữ
+  liệu lỗ hổng**. ID trang mới 35–37 được nối sau ID cũ, không đánh số lại hợp
+  đồng hiện có; `VQEAF_PAGE_COUNT` vẫn là trạng thái chưa có đích.
+- Wi-Fi audit gọi provider `vqeaf_wifi_scan()` hiện có, chỉ đọc SSID/BSSID/tín
+  hiệu/encryption quảng bá và phân loại phòng vệ. Không có netdev, driver hoặc
+  firmware thì hiện lỗi provider thật, không tạo kết quả. Trang ghi rõ chưa đánh
+  giá độ mạnh mật khẩu, WPS, khả năng khai thác hay thiết bị khác.
+- `platform/violet/ui/vqeaf_security.c/.h`: tám bản ghi CVE công khai thật, tìm
+  kiếm ngoại tuyến không cấp phát heap, không mạng và không ghi dữ liệu. Chi
+  tiết có ID, tiêu đề, sản phẩm, ngày công bố, mức độ, nguồn, tóm tắt và hướng
+  khắc phục. Catalog không phải ExploitDB, không chứa payload/khai thác và không
+  có cơ chế cập nhật trực tuyến.
+- Threat model: đối tượng là người quan sát thụ động gần đó, cấu hình mạng không
+  đáng tin hoặc người truy cập giao diện đã mở khoá; tài sản gồm metadata mạng,
+  thông tin xác thực và tính toàn vẹn thiết bị. Ranh giới tin cậy là UI → provider
+  Wi-Fi hiện có và UI → catalog chỉ đọc nhúng trong ảnh. Không cấp quyền phần
+  cứng/kernel mới. Lỗi hiện nguyên nhân, quay lại trang khác hoặc khởi động lại
+  không cần khôi phục; rủi ro còn lại là metadata hiển thị trên màn hình,
+  encryption quảng bá không chứng minh mạng an toàn và catalog không đầy đủ.
+- `scripts/test_violet_shell.py`: **ALL OK**, **69 snapshot**. Hồi quy bao gồm
+  hợp đồng tìm kiếm advisory, giới hạn đầu vào, provider Wi-Fi khả dụng/không khả
+  dụng, quét lại, nhãn mạng mở, textarea thật, mở/đóng chi tiết và không có nút
+  tấn công. `python scripts/render_phone_ui.py`: PASS, **196 PNG**, host LVGL 246
+  object, 49 frame × 2 profile × 2 hướng; đã xem trực tiếp các màn hình bảo mật,
+  Wi-Fi và advisory ở cả hai hướng. Đây là bằng chứng host, không phải thiết bị.
+- `python scripts/build_violet.py --clean`: PASS, ELF AArch64
+  `build/violet/vqeaf-init` **12.089.448 byte**, **290 object**.
+  `python scripts/package_violet.py --skip-build`: `validate_bootimg` PASS,
+  `audit_rescue_channel` PASS; ảnh `dist/boot-vqeaf-violet.img` **51.458.048
+  byte**, SHA-256
+  `523262c3335451f0dc56c33eb51f6f9c1de79aaca08bc3ec583a0726a65a1096`.
+- **Giới hạn:** chưa chạy trên thiết bị vật lý, chưa quét Wi-Fi thật, chưa nạp
+  `p77`, chưa ghi `boot`/`p76`, `userdata`, `misc` và chưa commit. Build MT689x bị
+  chặn bởi header Bluetooth `vqeaf/wcn3990_bt.h` thiếu ở `channel/fs/rescue.c`,
+  lỗi có sẵn ngoài phạm vi; không sửa hoặc vượt gate để che lỗi này.
+
+## Biểu tượng hệ thống pixel art VPEPixel (2026-11-24)
+
+- Yêu cầu: “vẽ lại các biểu tượng ứng dụng hệ thống như ví dụ bằng
+  D:\desktop-webapps\VPEPixel”. Đã dùng VPEPixel làm công cụ codec/export và vẽ
+  mới toàn bộ artwork QEAF; không sao chép icon mẫu, generator hay tài sản thứ ba
+  có quyền chưa rõ từ VPEPixel.
+- Tệp mới `assets/icons/vqeaf_os_pixel/`: 29 nguồn `.vpe` chỉnh sửa được, mỗi
+  tệp 32×32 RGB565, 2.064 byte, không có alpha và không dùng `0xFFFF` làm màu
+  trang trí. `_sheet.png` là contact sheet 690×774, 29 frame, scale 4.
+- `scripts/make_vqeaf_pixel_icons.py`: `--redraw` tạo artwork gốc, chế độ mặc định
+  xuất C từ `.vpe`, `--check` so khớp từng byte. Script kiểm tra thứ tự enum,
+  kích thước 32×32, transparency key và payload trước khi xuất.
+- `platform/violet/ui/icons/vqeaf_app_icons.c/.h`: 29 mảng RGB565 + 29 descriptor
+  LVGL, tổng **59.392 byte pixel**. `vqeaf_app_icon()` trả descriptor theo enum
+  và `NULL` ngoài dải; glyph fallback của shell vẫn được giữ.
+- `platform/violet/ui/vqeaf_theme.c/.h`: chỉ ảnh RGB565 32×32 dùng nearest-neighbor
+  để giữ nét pixel; icon QEAPP ARGB8888 vẫn khử răng cưa. Không đổi navigation,
+  paging, dock, dịch vụ hay dữ liệu provider.
+- `tests/vqeaf_shell_interaction.c`: thêm hợp đồng descriptor, tính độc nhất của
+  29 mảng pixel và kiểm ID `-1`/`COUNT` trả `NULL`.
+- Kiểm asset:
+  `python -B "D:/desktop-webapps/VPEPixel/.qoder/skills/vpe-game-assets/scripts/vpe_tool.py" inspect assets/icons/vqeaf_os_pixel/*.vpe`
+  PASS cho cả 29 tệp; lệnh `atlas` tạo `_sheet.png`. Đã xem trực quan contact
+  sheet và các khung Home, Apps, dock, app-info, recents.
+- `python -B scripts/make_vqeaf_pixel_icons.py --check`: PASS, 29 sprite khớp C.
+  `python scripts/test_violet_shell.py`: **ALL OK**, **64 snapshot**, gồm ba kiểm
+  icon mới. `python scripts/render_phone_ui.py`: PASS, host LVGL 245 object,
+  44 frame/kích thước/profile, **176 PNG** 720×1560/1560×720. Đã xem Home/trang 2,
+  Apps/Apps Fluent ở cả hai hướng và provider, app-info, recents; QEAPP vẫn giữ
+  icon ARGB8888 riêng.
+- `python scripts/build_violet.py`: PASS, `build/violet/vqeaf-init`
+  **12.052.856 byte**, 289 object. Đây là cross-build AArch64, không phải bằng
+  chứng chạy máy.
+- `python scripts/package_violet.py --skip-build`: PASS; ảnh
+  `dist/boot-vqeaf-violet.img` **51.441.664 byte**, SHA-256
+  `28e194c8bcb9ec1771811952707d7dc5194ba68617b4c4a7f4fed4369439935d`.
+  `validate_bootimg.py` PASS; `audit_rescue_channel.py` PASS với
+  `init_panel=1`, `init_gadget=6` trong ELF `/init`.
+- **Giới hạn:** chưa nạp `p77`, chưa ghi `boot`/`p76`, `userdata`, `misc`, chưa
+  chạy bộ icon này trên thiết bị vật lý và chưa commit. Ảnh đã đóng gói chỉ là
+  artifact sẵn sàng nếu người dùng uỷ quyền nạp riêng.
+- Bước kế tiếp nhỏ, kiểm chứng được: sau khi có uỷ quyền nạp `p77` riêng, đọc lại
+  ảnh đã ghi, chụp Home/Apps/dock và đối chiếu pixel art trên thiết bị; không
+  suy ra bằng chứng vật lý từ host render.
+
+## Giao diện ứng dụng hệ thống Midnight V2 theo ảnh tham chiếu (2026-11-24)
+
+- Yêu cầu: “UI giao diện các ứng dụng hệ thống”. Bố cục launcher lấy cảm hứng từ
+  mặt phải ảnh tham chiếu nhưng giữ danh tính QEAFIVELS: không sao chép tên/logo
+  ứng dụng bên thứ ba, không thêm badge thông báo hay thời gian sử dụng giả.
+- `platform/violet/ui/vqeaf_pages.c/.h` và `vqeaf_ui.c`: Home có tiện ích hệ thống
+  thật (uptime, RAM đã dùng, phần trăm lưu trữ), lưới bốn cột portrait hoặc tám
+  cột compact landscape, chấm trang, ô tìm kiếm và dock. Home chia 16 mục/trang
+  (16 + 14); Apps drawer vẫn tám mục/trang (bốn trang). Dock mặc định là Trình
+  duyệt/Máy ảnh/Thư viện/Nhạc và có thể đổi vị trí ở cả theme thường lẫn Fluent.
+- Ứng dụng chưa có trang nội dung vẫn hiển thị, icon mờ đi có badge `!`; chạm đưa
+  ra snackbar giải thích thay vì im lặng. Lưu trữ và Thông tin đã nối đúng các
+  trang thật. Tại thời điểm task này `vqeaf_app_icon()` vẫn trả `NULL`; bộ raster
+  VPEPixel đã được kích hoạt sau đó và ghi ở mục đầu file.
+- `python scripts/test_violet_shell.py`: **ALL OK**, **64 snapshot** PNG. Hồi quy
+  bao phủ dock bốn ứng dụng thật, swap/add dock, Home 16 + 14 mục, bốn cột,
+  widget thật, không có nhãn thời gian sử dụng, snackbar ứng dụng thiếu backend,
+  route Lưu trữ/Thông tin, vuốt trang và chrome Home/Settings/Lock.
+- `python scripts/render_phone_ui.py`: PASS, host LVGL 245 object, 44 frame cho
+  mỗi kích thước/profile, ghi **176 PNG** vào `build/screens/phone-ui/`. Đã xem
+  trực tiếp Home/Apps ở 720×1560 và 1560×720 với cả `providers`/`unknown`, cùng
+  Home trang hai, chữ đậm, Fluent và launcher edit; không phát hiện frame trống
+  hoặc trùng.
+- `python scripts/build_violet.py`: PASS, `build/violet/vqeaf-init` 11.986.416
+  byte, 289 object. Đây là cross-build AArch64, không phải bằng chứng chạy máy.
+- `python scripts/package_violet.py --skip-build`: PASS; ảnh
+  `dist/boot-vqeaf-violet.img` 51.441.664 byte, SHA-256
+  `d3c071782d275710845bf87a464c95ee0c50c2725f7512e59997b221c46c9da5`.
+  `validate_bootimg.py` PASS; `audit_rescue_channel.py` PASS với
+  `init_panel=1`, `init_gadget=6` trong ELF `/init`.
+- **Giới hạn:** chưa nạp `p77`, chưa ghi `boot`/`p76`, `userdata`, `misc`, chưa
+  chạy UI này trên thiết bị vật lý và chưa commit. Ảnh đã đóng gói chỉ là artifact
+  sẵn sàng cho một lượt nạp nếu người dùng uỷ quyền riêng.
+
+## Lõi driver: deferred probe, match và registry đọc được (2026-11-24)
+
+- Yêu cầu: “tiếp tục nâng cấp lõi drive”. Phạm vi là lõi driver dùng chung
+  (`system/core/driver.*`), không phải thêm driver phần cứng mới.
+- Hợp đồng ABI v1 được giữ nguyên: bind theo tên driver, `probe()` trả 0 là
+  đường duy nhất tới `READY`, probe lỗi lưu `FAILED` kèm errno đầu tiên. Các
+  driver đang có (`qcom-wcn3990-snoc`, `qcom-wcn3990-phase2`, …) không phải sửa.
+- Bổ sung, tất cả là tuỳ chọn:
+  - `VqeafDriver.match` cho lõi chọn driver theo thiết bị thay vì theo tên bus
+    phát hiện được (`vqeaf_driver_bind_match()`, không driver nào nhận → `-5`).
+  - `VQEAF_DRIVER_DEFER` (=1, ngoài dải errno) cho `probe()` nói “clock/firmware/
+    IRQ backend chưa có”; instance nằm ở `VQEAF_DRV_DEFERRED` và
+    `vqeaf_driver_retry_deferred()` probe lại. Thiếu tài nguyên không bị ghi
+    thành lỗi phần cứng, và `DEFERRED` không bao giờ là `READY`.
+  - `bind()` từ chối gắn cùng thiết bị vào cùng driver hai lần (`-4`), nên quét
+    lại bus không nhân bản instance.
+  - `unbind()` chỉ gọi `remove()` cho instance đã probe thành công; probe lỗi
+    không bị “dọn dẹp” thành thiết bị khoẻ.
+  - Truy vấn/báo cáo: `vqeaf_driver_count()`, `vqeaf_driver_instance_count()`,
+    `vqeaf_driver_find()`, `vqeaf_driver_state_name()`,
+    `vqeaf_driver_report()` (tự định dạng số, không dùng `snprintf`, nên link
+    được vào `KERNEL.EFI` freestanding).
+- Test mới `tests/driver_core_smoke.c` (7 nhóm: kiểm tra descriptor, bind/unbind/
+  bind trùng, probe lỗi, defer + retry, match, giới hạn bảng, report bị cắt an
+  toàn). Target `vqeaf_driver_core_smoke` + `add_test` trong `CMakeLists.txt`.
+- Kiểm: `cmake --build build-native` exit 0, `KERNEL` và `vqeaf_driver_core_smoke`
+  link sạch (không warning mới); `ctest` **23/23 PASS**. Đây là kiểm host, không
+  phải chạy trên máy Violet. Chưa commit.
+- Giới hạn: lõi này chưa được nối vào ảnh Violet (`system/core/driver.c` chưa có
+  trong `scripts/build_violet.py`, chưa có verb `drivers`), và chưa driver phần
+  cứng nào được đăng ký qua `match`.
+
+## Nạp màn hình khóa mới vào Violet `p77` và xác minh (2026-11-24)
+
+- Theo uỷ quyền “Nạp ảnh mới chỉ vào p77 recovery, không ghi boot/userdata/misc,
+  rồi chụp màn hình khóa để xác minh”, thiết bị Violet đang chạy QEAFRESCUE trên
+  ổ `F:`; `status` xác nhận `device violet`, `stage=loop`, `ui=1`, `drm=1`,
+  `power=on`. Không có thiết bị ở fastboot/adb.
+- Ảnh `dist/boot-vqeaf-violet.img` được đóng gói lại ngay trước khi ghi:
+  51.437.568 byte, SHA-256
+  `8a838204bf3957f4edae691f148bcb4d849c854625c4b73821d5674f98435099`;
+  `validate_bootimg.py` và `audit_rescue_channel.py` đều PASS.
+- `python scripts/device_check.py --volume F: --image
+  dist/boot-vqeaf-violet.img --flash ...` đã staged `BOOTIMG.BIN`, gọi đúng verb
+  `flash recovery BOOTIMG.BIN confirm`, nhận
+  **`flash: written and verified byte for byte`**, rồi reboot recovery.
+  Không ghi `boot`/`p76`, `userdata`, `misc`; không wipe, không unlock.
+- `HOMOLOG.TXT` xác nhận `boot: QEAFIVELS OS 0.3.0 init on violet (PID 1)`,
+  USB mass-storage `a600000.dwc3`, `drm: verified - crtc 107 scans our fb 188 at
+  1080x2340`, `ui: splash 720x1560 (portrait)` và
+  `ui: LVGL phone shell active at 720x1560`. Log: `5 checks, 0 failed`, PASS.
+- Ảnh chụp vật lý sau khi từ chối hộp thoại quyền USB:
+  `build/device-flash-lock-20261124-192541/lock-clean.png`, 70.914 byte,
+  SHA-256 `be18a6c0858678822f3a61565e9f327f2e75b33df474e6e62df223fb50007824`.
+  Nguồn `SCREEN.RAW` 249.640 byte, SHA-256
+  `dcc882df55aa5f73ef8b3fdfcf05d01b87926483acc540064283200d1bce8641`;
+  `snap` cung cấp RGB565 240×520, PNG được giải mã nearest-neighbor lên 720×1560.
+- Ảnh full-resolution: HELP liệt kê `shot` nhưng phản hồi verb là `unknown verb`;
+  tuy vậy `QEAFBOOT.LOG` có `screenshot written` và FAT chứa
+  `UserData/PICTURES/SHOT0001.BMP` 7.581.654 byte, header BMP 24-bit 1080×2340.
+  Chuỗi FAT của tệp chỉ nối được một cluster nên ổ mount báo lỗi đọc. Đọc thử
+  dải cluster liên tiếp ở chế độ chỉ-đọc cho BMP hợp lệ; chuyển sang
+  `build/device-flash-lock-20261124-192541/lock-full-recovered.png` (1080×2340,
+  387.372 byte, SHA-256
+  `4cf1a220fd5579ff016920bbb8454720cc16d66635faa639732ebdbaefd82d4d`).
+  BMP khôi phục có SHA-256
+  `e7ba0f98f532db235687abea3c8024fda8ba764bf192a751c9d5cc8ac1a14fda`.
+  Đây là bằng chứng trực quan bổ sung, đồng thời tái hiện đúng lớp lỗi FAT đang
+  mở ở task #84; không sửa FAT hay ghi thêm dữ liệu thiết bị.
+- Ảnh xác nhận đúng bố cục Midnight V2 mới: ngày phía trên vùng đồng hồ, ba thẻ
+  tròn, thẻ thông báo, vòng mở khóa và hai nút “Không hỗ trợ”. Trên máy, RTC ghi
+  epoch 1970 (`setting system clock to 1970-01-13...`) nên UI hiển thị
+  “Chưa đặt thời gian”/`--:--`; Wi-Fi “Chưa rõ” và lưu trữ `--` cũng là trạng thái
+  provider thật, không phải dữ liệu render giả.
+- Đây vẫn là PID 1 Violet chạy trên kernel vendor `4.14.215-azure-Pixel+`, không
+  phải boot QEAFIVELS Kernel. Chưa commit.
+
+## Màn hình khóa Midnight V2 theo ảnh tham chiếu (2026-11-24)
+
+- Yêu cầu: “UI LẠI màn hình chờ của os như hình ảnh”. Bố cục mới giữ ngôn ngữ
+  Midnight V2 của QEAFIVELS, không sao chép thương hiệu hay trạng thái phần cứng
+  từ ảnh tham chiếu.
+- `platform/violet/ui/vqeaf_pages.c` dựng lại Lock với ngày tiếng Việt phía trên
+  đồng hồ lớn, ba thẻ tròn pin/Wi-Fi/lưu trữ, thẻ thông báo thật, vòng mở khóa
+  trung tâm và hai nút đèn pin/máy ảnh ở đáy. Có bố cục riêng cho portrait và
+  landscape; thẻ thông tin tiêu thụ chạm để không vô tình mở khóa.
+- `vqeaf_font_bold_160.c` bổ sung font hiển thị 160 px cho Lock; hợp đồng font
+  đồng hồ 96 px dành cho PIN và UI cũ được giữ nguyên. Mặc định Lock dùng 160 px,
+  người dùng vẫn chọn 56/34/28 px và landscape tự giảm về 56 px.
+- Pin, trạng thái sạc, Wi-Fi, lưu trữ, ngày/giờ và thông báo đều lấy từ provider
+  hoặc nhật ký thông báo hiện có. Provider unknown hiển thị `--`, “Chưa rõ” hoặc
+  “Chưa đặt thời gian”; không thêm thời tiết/AQI, cuộc gọi khẩn, nhận dạng vân tay
+  hay thương hiệu sạc. Đèn pin và máy ảnh hiện “Không hỗ trợ” kèm giải thích vì
+  chưa có backend.
+- `python scripts/test_violet_shell.py`: **ALL OK**, 63 snapshot được chuyển đổi.
+  Hồi quy bao phủ dữ liệu thật/unknown, ngày trên đồng hồ, font 160 px, chạm thẻ
+  không mở khóa, đèn pin/máy ảnh không mở khóa, thông báo mở Control Center, vuốt
+  mở khóa không PIN, PIN sai `1357`, PIN đúng `2468` và không rò cờ clickable của
+  Lock sang Home.
+- `python scripts/render_phone_ui.py`: PASS, build host LVGL 245 object, 44 frame
+  trên mỗi kích thước/profile, ghi **176 PNG** vào `build/screens/phone-ui/`.
+  Đã kiểm tra trực quan bốn ảnh `lock-720x1560-{providers,unknown}.png`,
+  `lock-1560x720-{providers,unknown}.png` cùng `interaction-lock-{empty,widget,pin}.png`.
+- `python scripts/build_violet.py`: PASS, `build/violet/vqeaf-init` 11.982.008
+  byte, 289 object. Đây là cross-build AArch64, không phải bằng chứng chạy trên máy.
+- `python scripts/package_violet.py --skip-build`: PASS; ảnh
+  `dist/boot-vqeaf-violet.img` 51.437.568 byte, SHA-256
+  `8a838204bf3957f4edae691f148bcb4d849c854625c4b73821d5674f98435099`.
+  `validate_bootimg.py` PASS; `audit_rescue_channel.py` PASS với
+  `init_panel=1`, `init_gadget=6` trong ELF `/init`.
+- **Giới hạn:** bằng chứng vật lý sau khi nạp `p77` và chụp màn hình khóa ở mục
+  đầu file; host render/cross-build không được dùng thay cho bằng chứng thiết bị.
+  Chưa commit.
+
+## Provider Violet cho SLIMbus + nối kênh btfmslim (2026-11-24)
+
+- Yêu cầu: viết provider Violet cho `VqeafSlimNgdDesc` (map `0x62e40000`, cấp
+  ring DMA, request IRQ 291/292), rồi nối `vqeaf_slim_ngd_xfer`/`rx_pop` vào
+  kênh btfmslim của driver Bluetooth.
+- **Tệp mới:**
+  - `platform/violet/slim_ngd_bringup.h/.c` — provider: điền `VqeafSlimNgdDesc`
+    bằng đúng hằng số `sm6150.dtsi`, đọc `compatible` từ
+    `/proc/device-tree/soc/slim@62e40000`, map cửa sổ controller và BAM, rồi
+    `init`+`start` client. DMA/BAM/IRQ được chuyển tiếp qua `VioSlimNgdHooks`
+    (`map/unmap`, `dma_alloc/free`, `VqeafSlimNgdBamOps`, `VqeafSlimNgdIrqOps`)
+    do kernel freestanding cấp; thiếu hook nào thì primitive đó trả `-ENOSYS`
+    và client dừng đúng bước thiếu, không báo UP giả.
+  - `/dev/mem` **không** được mở mặc định: block này thuộc kernel stock và đọc
+    mù có thể SIGBUS PID 1; chỉ thử khi đặt `VIO_SLIM_NGD_DEVMEM=1`.
+  - `kernel/include/vqeaf/wcn3990_slim.h` +
+    `kernel/drivers/bluetooth/wcn3990_slim.c` — cầu btfmslim:
+    `vqeaf_bt_slim_open/close/write/read` gọi thẳng `vqeaf_slim_ngd_xfer` và
+    `vqeaf_slim_ngd_rx_pop`, và `vqeaf_bt_slim_compose()` ghép 4 callback
+    transport đó vào `vqeaf_bt_ops_t` (rail/firmware vẫn của platform).
+  - `platform/violet/bt_bringup.c` — `vio_bt_native_ops()` chỉ trả contract khi
+    client SLIMbus đã UP; `vio_bt_attempt()` (`bt up`) là lần thử thật duy nhất:
+    đọc `BTFM.bin`, kiểm container, rồi dừng ở `power_on` vì rail pm6150l thuộc
+    kernel stock. Verb mới `slim` in trạng thái provider.
+- **Kiểm:** host gate mới `vqeaf_slim_ngd_bringup_smoke` (3 nhóm: descriptor
+  không hook → `-EPERM`/`-ENOSYS`; bring-up đầy đủ hook → UP, IRQ 291, 32
+  descriptor RX; report `ready=0` khi thiếu backend) và
+  `vqeaf_wcn3990_slim_smoke` (2 nhóm: mở link chỉ khi controller UP, EA sai
+  → `-EINVAL`, frame 41 B → `-EMSGSIZE`, TX cần `TX_MSG_SENT`, RX qua `rx_pop`,
+  `-ENOSPC` không mất message; chạy `vqeaf_bt_start` thật qua cầu). `ctest`
+  **22/22 PASS**; `python scripts/build_violet.py` exit 0 (`vqeaf-init`
+  11.981.624 B, 289 object).
+- **Chưa xong (nói rõ):** bridge là transport *mức message*: không thêm/bớt
+  header SLIMbus, và header kênh btfmslim quanh gói HCI **chưa có bằng chứng**
+  trong repo nên không đoán. Vì vậy HCI hiện dừng ở `-EPROTO` ngay sau khi
+  nhận message đầu — test end-to-end khẳng định đúng biên này (`stage=failed`,
+  `hci_ready=0`), không có READY giả. Chưa có thiết bị để đo, chưa flash,
+  chưa commit.
+
+## Nạp QEAFIVELS OS lên Violet recovery `p77` (2026-11-24)
+
+- Theo yêu cầu “nạp os vào thiết bị”, thiết bị `ca1af25d` được xác nhận
+  `product=violet` ở fastboot; `partition-size:recovery = 0x4000000` (64 MiB).
+- `python scripts/package_violet.py` PASS: `/init` AArch64 11.677.528 byte,
+  ảnh `dist/boot-vqeaf-violet.img` 51.388.416 byte, SHA-256
+  `91953a7be9a7e85132e8d1e9aa5e1ed01241edeaf0268100c385ebfdbdb73bef`.
+  `validate_bootimg.py` và `audit_rescue_channel.py` đều PASS.
+- Chỉ ghi `recovery`/`p77` bằng `restore_p77.ps1 -Execute -ConfirmPartitionWrite`;
+  fastboot trả `Writing 'recovery' OKAY`. Không ghi `boot`/`p76`, `userdata`,
+  `misc`, không unlock, không wipe. Recovery sau đó ghi lại đúng ảnh và trả
+  `flash: written and verified byte for byte`, rồi reboot vào ảnh mới.
+- `HOMOLOG.TXT` của boot 30 xác nhận `QEAFIVELS OS 0.3.0 init on violet (PID 1)`,
+  USB mass-storage `a600000.dwc3`, `drm: verified - crtc 107 scans our fb 188 at
+  1080x2340`, `ui: splash 720x1560 (portrait)` và `ui: LVGL phone shell active`.
+- Ảnh chụp thiết bị: `build/device-flash-20261124-162733/screens/home.png`
+  (SHA-256 `8547d69078ecda0ae3c13b18b45c76149ad898f4ea5fd2b54817cb71c184ccde`)
+  và `settings.png`
+  (SHA-256 `573fd75d6e5f8bfc3341b75d5395c7ff8e3519ef5aa5422faaa4d4cd76fe5625`);
+  overlay USB hiện vì máy đang nối host, không phải lỗi render.
+- Đây vẫn là PID 1 Violet chạy trên kernel vendor `4.14.215-azure-Pixel+` như
+  phương tiện phát triển, **không phải boot QEAFIVELS Kernel**. Wi-Fi vật lý vẫn
+  chưa READY: log mới chỉ có lookup WLFW `0x45`, không có server `0x45`, nên
+  `wlan0` vẫn absent. Chưa commit.
+
+## SLIMbus client `qcom,slim-ngd` với MMIO/BAM/IRQ/DMA tiêm vào (2026-11-24)
+
+- Yêu cầu: viết driver SLIMbus client (`qcom,slim-ngd`) với hợp đồng
+  MMIO/BAM/IRQ tiêm vào như cách đã làm cho Copy Engine, dùng đúng base/IRQ
+  trong `sm6150.dtsi`.
+- **Hằng số phần cứng lấy từ `sm6150.dtsi`** (không đoán): `slim@62e40000`,
+  `compatible = "qcom,slim-ngd"`, `0x62e40000+0x2c000` (slimbus_physical),
+  `0x62e04000+0x20000` (slimbus_bam_physical), IRQ GIC SPI **291** và **292**.
+  Layout thanh ghi NGD lấy từ upstream `drivers/slimbus/qcom-ngd-ctrl.c`: block
+  tại offset **0x1000** trong cửa sổ controller (`CFG 0x00`, `STATUS 0x04`,
+  `RX_MSGQ_CFG 0x08`, `INT_EN 0x10`, `INT_STAT 0x14`, `INT_CLR 0x18`), mask
+  `DEF_NGD_INT_MASK`, timeout RX `0x10000`, **40 byte**/message,
+  **32 descriptor** mỗi chiều. Đây là fact của driver upstream, **chưa đo trên
+  máy violet**.
+- **Tệp mới:**
+  - `kernel/include/vqeaf/slim_qcom_ngd.h` — hợp đồng `VqeafSlimNgdDesc` gồm
+    `VqeafSlimNgdMmioOps` (read32/write32/barrier theo offset),
+    `VqeafSlimNgdBamOps` (pipe_init/queue/issue/terminate cho RX và TX),
+    `VqeafSlimNgdIrqOps` (request/enable/free) và `VqeafSlimNgdDmaOps`
+    (alloc/release ring).
+  - `kernel/drivers/slimbus/slim_qcom_ngd.c` — bring-up fail-closed: cấp 2 ring
+    32×40 B, init BAM RX/TX, đẩy 32 descriptor RX rồi issue, request IRQ, ghi
+    `INT_EN`, `RX_MSGQ_CFG |= TIMEOUT`, `CFG |= ENABLE|RX_MSGQ_EN|TX_MSGQ_EN`
+    và **đọc lại từng thanh ghi**; sai lệch read-back → `-EIO`.
+    `xfer()` chỉ *queue* (trả 0 = đã đưa vào BAM, không phải đã gửi) và trả
+    `-EBUSY` khi TX trước chưa được `TX_MSG_SENT` xác nhận; `irq()` đọc
+    `INT_STAT`, ghi `INT_CLR`, đếm lỗi, chỉ nhả `tx_busy` khi có
+    `TX_MSG_SENT`; `rx_pop()` đọc RL ở 5 bit thấp của word đầu, copy message
+    rồi re-arm descriptor, trả `-EPROTO` cho header RL=0/>40 và `-ENOSPC`
+    khi buffer nhỏ (không mất message).
+  - Unwinding ngược thứ tự: mask `INT_EN` (kể cả khi hỏng giữa chuỗi — nếu
+    không sẽ để mask bật trong khi IRQ đã free), tắt/free IRQ, terminate BAM
+    TX rồi RX, free ring; lỗi cleanup được trả lại thay vì báo "sạch".
+  - `tests/slim_qcom_ngd_smoke.c` + target `vqeaf_slim_qcom_ngd_smoke` trong
+    `CMakeLists.txt` — MMIO/BAM/IRQ/DMA đều fake; kiểm tra thứ tự đăng ký,
+    read-back, 4 nhánh hỏng lúc start, TX cần `TX_MSG_SENT`, lỗi đọc/ack
+    interrupt, `rx_pop` (RL, ENOSPC, EPROTO, re-arm lỗi), stop idempotent và
+    `check_violet_dt()` từ chối base/IRQ/size khác violet (ví dụ `slim@62dc0000`
+    của `slim_aud`).
+- **Kiểm:** `cmake --build build-native --target vqeaf_slim_qcom_ngd_smoke`
+  thành công; chạy tay → *7 groups of lifecycle checks passed*; `ctest` toàn bộ
+  **20/20 PASS**.
+- **Chưa làm:** chưa có provider MMIO/BAM/IRQ/DMA thật trong QEAFIVELS Kernel
+  hay trong PID 1 Violet, nên driver **chưa được gắn** vào phần cứng: không
+  `mmio_map`, không IOMMU/BAM thật, không request IRQ 291/292. Bluetooth vẫn
+  **BLOCKED**. Chưa nạp ảnh, chưa ghi partition, chưa commit.
+
+## Wi-Fi WCN3990: native WLFW client và gate readiness thật (2026-11-24)
+
+- Theo yêu cầu triển khai driver Wi-Fi dựa trên các tham khảo WCN3990: đã audit
+  license trước khi viết mã. `btfm_slim_wcn3990.c` chỉ là Bluetooth và GPL-2.0-only;
+  `LICENCE.agere` thuộc firmware Agere Bluetooth. Không copy mã GPL/vendor hoặc
+  firmware blob mới vào QEAFIVELS.
+- Đã thêm client WLFW MIT độc lập tại `kernel/drivers/wifi/wcn3990/wlfw_client.c`:
+  `IND_REGISTER`, MSA info/ready, CAP, BDF/CAL download, CAL report/update, MAC
+  và wait FW-ready. Client kiểm tra transaction/message ID, result TLV `0x00`,
+  thứ tự state, TLV bounds, segment 6144 B và tối đa 5 CAL ID; không tự tạo
+  endpoint, response, indication, MAC, calibration hay readiness.
+- `qmi_service.c` nay giao indication thật cho handler và có API
+  `vqeaf_qmi_wait_indication()`; indication không khớp được tiêu thụ có đếm,
+  hết deadline trả `-ETIMEDOUT`, không có packet giả. Buffer client tăng 512 →
+  6400 B để chứa segment WLFW.
+- `firmware_boot.c` thêm `WLFW_READY` và bắt buộc callback handshake thật trước
+  `WLAN_READY`; discovery service không còn là bằng chứng đủ. `FW_READY` không
+  được diễn giải thành BDF/CAL/HTC/WMI/netdev/RF/association/IP đã hoạt động.
+- Kiểm chứng host vừa chạy: `python scripts/wifi/run_hal_tests.py` PASS sáu dòng
+  `ALL OK`; ba wrapper `tests.wifi.test_qrtr_qmi`, `test_firmware_boot`,
+  `test_wlfw_client` PASS 8/8; `run_violet_platform_tests.py` PASS; compile
+  WLFW/client boot với `-Wall -Wextra -Werror` PASS.
+- Regression mới gồm BDF 7000 B hai segment, indication giữa request, status
+  FW_READY, discovery/indication thiếu, CAP thiếu, QMI error 90, result TLV méo,
+  indication ready trước register, MAC/input sai và CAL length vượt TLV/capacity.
+  `python scripts/build_kernel_aarch64.py` PASS, ELF 711.320 B.
+- **Chưa đạt Wi-Fi vật lý:** client native chưa nối backend `AF_QIPCRTR` thật.
+  Log flash recovery ngày 2026-11-24 vẫn chỉ có lookup WLFW `0x45`, không có
+  server `0x45`, nên `wlan0` vẫn absent. Ảnh recovery đã được nạp nhưng chưa
+  tích hợp backend/driver native này. Việc còn lại là tích hợp transport/driver
+  native và kiểm thử trên thiết bị được uỷ quyền; chưa commit.
+
+## Bluetooth WCN3990: đối chiếu lại hằng số với board source thật (2026-11-24)
+
+- Yêu cầu: dùng REA và port mã nguồn/driver cho thiết bị. Lượt này soi lại các
+  hằng số của driver Bluetooth vừa port xem có đúng nguồn thật không.
+- **Nguồn đúng là board source, không phải `violet-reference.dtb`:** tệp DTB đó
+  chỉ có 31 node (CPU/cache) nên không thể là nơi lấy node Bluetooth. Nguồn thật
+  nằm trong repo:
+  `platform/violet/device-tree/sources/guaiyihu-sm6150/arch/arm64/boot/dts/qcom/sm6150.dtsi`
+  với `bluetooth: bt_wcn3990`, `slim_qca: slim@62e40000` và con
+  `btfmslim_codec: wcn3990`. Comment trong header/driver đã sửa lại đúng tệp này.
+- **Ba hằng số trước đây sai, nay sửa theo đúng dtsi:**
+  - `qca,bt-vdd-pa-voltage-level = <1304000 1370000>` → driver dùng **1304000 uV**
+    (trước ghi 1300000).
+  - `qca,bt-vdd-ldo-voltage-level = <3312000 3400000>` → **3312000 uV**
+    (trước ghi 3300000). Core 1800000 uV và cả ba current-level = 1 vẫn đúng.
+  - `qcom,btfm-slim-ifd-elemental-addr = [00 00 20 02 17 02]` → IFD EA đúng là
+    `00 00 20 02 17 02` (trước ghi `00 02 00 02 17 02`).
+    `elemental-addr = [00 01 20 02 17 02]` không đổi.
+- **Hợp đồng rõ nghĩa hơn:** `slim_open(peer_ea, ifd_ea)` — `peer_ea` là địa chỉ
+  `btfmslim_slave` phía gửi tới, `ifd_ea` là địa chỉ interface device mang kênh
+  HCI. Hai mảng trong driver đặt tên `SLIM_PEER_EA` / `SLIM_IFD_EA` và giữ nguyên
+  byte như dtsi.
+- **Controller SLIMbus (bằng chứng mới, cùng tệp):** `slim@62e40000`,
+  `compatible = "qcom,slim-ngd"`, `reg` = `0x62e40000+0x2c000`
+  (`slimbus_physical`) và `0x62e04000+0x20000` (`slimbus_bam_physical`),
+  `interrupts = <0 291 0>, <0 292 0>` (GIC SPI 291/292), `status = "ok"`,
+  `qcom,iommu-s1-bypass`. Đây là các thông số một controller client thật sẽ cần;
+  QEAFIVELS Kernel vẫn chưa có driver đó nên Bluetooth vẫn BLOCKED.
+- **Platform đọc live tree thay vì in hằng số:** `platform/violet/bt_bringup.c`
+  đọc thêm `/proc/device-tree/soc/slim@62e40000/compatible` và in hai property
+  `elemental-addr` / `qcom,btfm-slim-ifd-elemental-addr` dạng hex đọc trực tiếp
+  từ máy; verb `bt` và `bt diag` có thêm dòng `controller=`, `slim-ea=`, `ifd-ea=`.
+- **Kiểm:** host smoke `wcn3990_bt_smoke` → *11 lifecycle checks passed*, nay
+  assert đúng **byte** hai elemental address và đúng **uV** từng rail
+  (1800000/1304000/3312000, uA 1); `ctest -R wcn3990_bt` → **1/1 Passed**;
+  `python scripts/build_violet.py` exit 0 (`vqeaf-init` 11.677.528 B,
+  **284 object**).
+- **Chưa làm:** chưa chạy trên điện thoại (không có thiết bị trong lượt này),
+  `bt` vẫn trả `transport blocked`; `BTFM.bin` vẫn không có trong dump cục bộ.
+  Bluetooth **không** phải READY.
+
+## Bluetooth WCN3990: port driver theo thiết bị tree thật (2026-11-24)
+
+- Yêu cầu: dùng REA và port lại mã nguồn/driver cho thiết bị để phát triển OS.
+- **Bằng chứng mới quyết định hướng port:** parse trực tiếp
+  `platform/violet/device-tree/build/violet-reference.dtb` cho thấy Bluetooth
+  của violet **không đi UART/SMD** như ghi chú cũ trong `docs/DRIVERS_VIOLET.md`:
+  - `/soc/bt_wcn3990`, `compatible = "qca,wcn3990"`, ba supply
+    `qca,bt-vdd-core/pa/ldo-supply` kèm cặp voltage/current level;
+  - `/soc/slim@62e40000/wcn3990`, `compatible = "qcom,btfmslim_slave"`,
+    `elemental-addr = 00 01 20 02 17 02`,
+    `qcom,btfm-slim-ifd-elemental-addr = 00 02 00 02 17 02`.
+  Nhánh DT này **không có** trong `build/violet/violet-sm6150-abl.dtb` (live
+  ABL tree chỉ có node Wi-Fi), nên SLIMbus mới là suy ra từ reference tree,
+  chưa đo trên máy.
+- **REA:** `npx rea-agents@6.5.0 doctor --client opencode` → `healthy: true`;
+  Ghidra 12.1.4 tại `D:\MRE\tools\ghidra\ghidra_12.1.4_PUBLIC` được nhận khi
+  đặt `GHIDRA_INSTALL_DIR` (native decompiler + JDK 21 OK). REA là công cụ
+  đọc/định danh artifact; nó không tạo ra transport SLIMbus.
+- **Đã port (tầng driver, chạy được ở host):**
+  - `kernel/include/vqeaf/wcn3990_bt.h` — hợp đồng `vqeaf_bt_ops_t`
+    (power rail, slim open/close, HCI read/write, firmware_read) + hằng số
+    điện áp và elemental address **lấy từ chính DTB của violet**.
+  - `kernel/drivers/bluetooth/wcn3990_bt.c` — chuỗi bring-up fail-closed:
+    đọc BTFM.bin → kiểm container (ELF32 Hexagon, segment nằm trong file;
+    ảnh raw thì ghi rõ "container not identified") → bật lần lượt
+    core/pa/ldo → mở btfmslim_slave → HCI Reset `01 03 0C 00` → chỉ bật
+    `hci_ready` khi nhận Command Complete `04 0E` opcode `0x0C03` status 0.
+    Mọi nhánh hỏng đều hạ rail/mở transport đã bật và trả errno thật.
+  - `tests/wcn3990_bt_smoke.c` — 11 nhánh lifecycle (contract thiếu, rail 2
+    hỏng, slim vắng, write lỗi, timeout, frame méo, vendor event trước
+    completion, status != 0, stop idempotent).
+- **Đã port (tầng platform, đọc thật trên máy):** `platform/violet/bt_bringup.c`
+  đọc `/proc/device-tree/soc/bt_wcn3990/compatible`,
+  `/proc/device-tree/soc/slim@62e40000/wcn3990/compatible`,
+  `/vendor/bt_firmware/BTFM.bin` (p38 do `wifi_bringup` mount) và
+  `/sys/class/bluetooth`. Verb mới: `bt` / `bt state`, `bt diag`, `bt fw`.
+  Không verb nào bật rail hay mở HCI: stock kernel đang giữ SLIMbus.
+- **Kiểm:** `python scripts/build_violet.py` exit 0 (`vqeaf-init` 11.658.728 B,
+  **284 object**); `clang -Wall -Wextra -Werror` cho driver + test sạch;
+  `build/host-bt/wcn3990_bt_smoke.exe` → *11 lifecycle checks passed*;
+  `python -m unittest tests.test_violet_wifi_bringup` → **15/15 OK**.
+- **Chưa làm / chưa được phép nói:** chưa chạy trên máy (không có thiết bị
+  trong fastboot lẫn QEAFRESCUE lúc làm); QEAFIVELS Kernel chưa có driver
+  SLIMbus/regulator nên `bt` trên máy sẽ trả `transport blocked`; `BTFM.bin`
+  không có trong dump cục bộ (chỉ có mục manifest), nên container chưa được
+  kiểm bằng file thật. `bt` vẫn **không** phải READY.
+
+## Wi-Fi: lấy fault record thật cho lần reset SoC (2026-11-24)
+
+- Yêu cầu: thôi suy đoán ai reset SoC sau khi modem ONLINE; lấy bằng chứng thật
+  (ramoops/pstore/last_kmsg, log subsys, hoặc theo dõi SERVREG/wlan_pd).
+- **Vì sao mọi nguồn cũ đều rỗng (đã kiểm, không phải giả định):** ổ cứu hộ là
+  RAM nên `CRASH.TXT`/`HOMOLOG.TXT` mất cùng lúc với PID 1; kernel vendor này
+  không có pstore (`pstore_files=0`, `/proc/last_kmsg` absent);
+  `/sys/class/watchdog` rỗng và `/proc/misc` không có watchdog; reset SoC không
+  chạy signal handler nào. Vì vậy "ended without a caught signal" là tất cả
+  những gì còn lại — không phải bằng chứng về nguyên nhân.
+- **Bản ghi sống trong p77** (`platform/violet/boot_journal.c`): thêm live trace
+  dùng đúng slot 16 KiB ở đuôi p77 (sống qua reset). Khi được arm, mỗi giây ghi
+  lại 16 KiB ring mới nhất; header có thêm `live=1` và `uptime_ms=` của nhịp
+  tim cuối, nên lần boot sau đọc `LASTBOOT.TXT` là biết bản ghi bị cắt giữa
+  chừng (reset) hay kết thúc sạch (disarm). Trace chỉ arm quanh `wifi up`
+  (`vio_wifi_modem_start`) và disarm ở `wifi off` (`vio_wifi_modem_stop`) để
+  máy idle không ghi flash. Mọi dòng `vio_log` (mọi thread) tự vào ring qua
+  `devnodes.c`, nên bản ghi là log thật của OS, không phải log tự chế.
+- **Log subsys:** mỗi nhịp tim còn kèm 4 KiB cuối của `/dev/kmsg`, tức đúng chỗ
+  kernel vendor in `subsys-restart`/`subsys-pil-tz` — dòng nêu protection
+  domain nào chết sẽ nằm trong bản ghi bền thay vì mất theo RAM.
+- **SERVREG/wlan_pd:** `pd-listen` vốn in `NEW_SERVER`/`DEL_SERVER` ra
+  `/tmp/hostsvc-pd-listen.log` nhưng không lên ổ; nay `servreg_worker` trong
+  `host_services.c` chuyển từng dòng mới vào trace, nên `DEL_SERVER` ngay trước
+  reset là bằng chứng PD nào xuống, có mốc thời gian.
+- **Ai reset SoC:** `vio_reset_reason()` đọc ba nguồn thật —
+  `androidboot.bootreason` từ `/proc/cmdline`, `chosen/pureason`, và từ
+  `IMEM restart_reason` tại `0x146aa65c` qua `/dev/mem`. Word IMEM in **raw
+  hex**; chỉ hai giá trị chắc chắn (`0x77665501` boot thường, `0x77665502`
+  recovery) được chú thích, còn lại để nguyên; `/dev/mem` bị chặn thì ghi
+  `unreadable`, không điền giá trị đoán. Chuỗi này được ghi ở đầu
+  `LASTBOOT.TXT` của lần boot kế tiếp và một bản vào slot p77.
+- **Kiểm:** `python scripts/build_violet.py` exit 0, `vqeaf-init` 11.640.112 B,
+  283 object. **Chưa nạp ảnh này, chưa có dữ liệu từ máy thật**, nên chưa có
+  kết luận nào về thủ phạm reset.
+- **Ranh giới cần biết:** slot journal 16 KiB nằm ở `64 MiB - 16 KiB`, trong
+  dải `appstore` (32–64 MiB). Va chạm này có từ trước (`boot_journal` + appstore
+  v4); trace chỉ ghi đúng 16 KiB cuối, nhưng nếu sau này có gói QEAPP lớn chạm
+  tới đuôi dải thì hai bên sẽ tranh nhau vùng đó.
+
+## QEAPP SDK và API trình cài đặt `.qeapp` (2026-11-24)
+
+- Theo yêu cầu “tích hợp qeapp sdk, api qeapp trình cài đặt ứng dụng
+  `.qeapp`”: API C công khai v1 tại
+  `system/core/include/vqeaf/qeapp_package.h` không phụ thuộc LVGL, gồm
+  preview, install, install_verified, find/count/get và uninstall. Installer và
+  Settings dùng API này thay vì registry nội bộ; cập nhật theo `manifest.id`.
+- Preview trả SHA-256 của đúng byte gói đã xác thực. Installer gọi
+  `vqeaf_qeapp_package_install_verified()` khi xác nhận; gói bị thay sau bước
+  xem trước bị từ chối trước khi registry thay đổi. `OK` chỉ được trả sau khi
+  ghi và đọc lại kho p77 thành công; `OK_SESSION_ONLY` là thao tác RAM thành
+  công nhưng chưa bền. UI có thẻ kết quả riêng và không nói đã lưu p77.
+- Kho p77 mới dùng `manifest.id` làm khóa, giữ đúng byte gói đã xác thực
+  trong registry để mọi lần lưu dữ liệu/quyền sau không đọc lại đường dẫn FAT
+  có thể bị thay. Lưu bằng byte đã giữ không cần volume FAT. Bản ghi cũ theo
+  tên tệp chỉ được đọc dự phòng khi chữ ký/manifest chứng minh đúng ID; dữ liệu
+  và quyền chỉ được kế thừa sau xác thực, rồi khóa được migration ở lần ghi
+  tiếp theo. Hai gói cùng tên tệp nhưng khác ID không đụng nhau.
+- Settings có hàng **Cài đặt .qeapp** hiển thị phiên bản API và số gói thật;
+  trang installer hiển thị cùng dữ liệu, danh sách cài gần đây và gỡ qua API
+  công khai. Host renderer trả `UNSUPPORTED` cho preview/install/uninstall và
+  không đổi registry; đây không phải trình cài đặt desktop.
+- SDK Python chỉ đọc `sdk.qeapp.preview_package()` và lệnh
+  `qeaf preview <package>` trả JSON xác định, gồm `package_sha256`,
+  `signature_verified: true`, `signature_scheme: "development-hmac-sha256"`
+  và `publisher_authenticated: false`. Lỗi có mã ổn định, CLI exit nonzero.
+  Không có lệnh cài desktop giả.
+- Hệ C kiểm tra JSON/UTF-8, ZIP/CRC, giới hạn, entry an toàn, icon canonical
+  `assets/icon.rgba` đúng 64×64×4 byte, kiến trúc, quyền đã khai báo và HMAC.
+  Native v2 yêu cầu đúng một architecture; manifest ABI, module ABI, `min_api`
+  và import table phải khớp. Native chỉ được validate cấu trúc, không map/chạy
+  trong bước xác thực.
+- `PYTHONIOENCODING=utf-8 python -m unittest tests.test_qeapp_sdk
+  tests.test_qeapp_native -v` PASS: 51 tests.
+  `PYTHONIOENCODING=utf-8 python scripts/test_qeapp_runtime.py` PASS: 14 chế
+  độ runtime/API và 2 chế độ kho bền, kết quả cuối `ALL OK`. Harness Linux
+  chạy qua WSL với `appstore.c` thật trên tệp host 64 MiB; kiểm tra chống thay
+  gói, khóa ID, giữ byte chính xác, duplicate key, phục hồi tiến trình mới,
+  kế thừa dữ liệu/quyền legacy và migration. Đây không phải reboot thiết bị.
+- `python scripts/test_violet_shell.py` PASS, `ALL OK`, chuyển 61 snapshot
+  PNG. `python scripts/render_phone_ui.py` PASS: 44 khung × 2 profile cho mỗi
+  hướng 720×1560/1560×720, tổng 176 PNG. Đã xem trực tiếp installer API, lỗi
+  host và session-only; nội dung không bị cắt.
+- `python scripts/package_violet.py` PASS: `vqeaf-init` 11.618.800 byte,
+  283 object; initramfs 322 mục, 93.649.423 byte payload / 33.853.055 byte
+  gzip; ảnh `dist/boot-vqeaf-violet.img` 51.363.840 byte. Cả
+  `validate_bootimg` và `audit_rescue_channel` PASS. SHA-256
+  `d682d619605f2fdabcfa6565deb42109ea82356d915ebdc3b7755f3c878833b6`.
+- Ngày 2026-11-24, sau khi hai gate PASS, ảnh trên đã được nạp vào recovery
+  `p77` trên Violet `ca1af25d` bằng `scripts/device_check.py --flash`. Thiết bị
+  trả `flash: written and verified byte for byte`, tự boot lại và trả
+  `stage=loop; ui=1; drm=1`. `HOMOLOG.TXT` xác nhận `boot: QEAFIVELS OS 0.3.0
+  init on violet (PID 1)`, `usb: mass storage bound to a600000.dwc3`,
+  `drm: verified`, `ui: splash 720x1560` và `ui: LVGL phone shell active`.
+  Bằng chứng lưu tại `build/screens/device/qeapp-flash-20261124/` gồm Home,
+  Settings sạch, hàng `Cài đặt .qeapp — API QEAPP v1 · 0 đã cài` và
+  `BOOT_EVIDENCE.TXT`.
+- Trong lúc kiểm tra, QEAFRESCUE có rời/mount lại và thiết bị boot lại; bằng
+  chứng cuối ghi `boots=24`, vẫn ở `stage=loop`, `pstore_files=0`,
+  `last_kmsg=absent` và `LASTBOOT.TXT` không ghi fault trước đó. **Chưa cài,
+  cập nhật hoặc gỡ QEAPP trên thiết bị vật lý**, chưa kiểm tra khôi phục kho
+  QEAPP sau reboot thiết bị; không ghi `p76/boot`, `userdata`, `misc` và
+  không commit.
+
+## Wi-Fi: đo trên máy — SoC reset 14–16 s sau khi modem ONLINE (2026-11-24)
+
+- Người dùng báo "tính năng wifi vẫn chưa hoạt động". Đo lại trên đúng máy
+  `ca1af25d` qua QEAFRESCUE (chỉ đọc + `wifi up` opt-in, **không ghi partition**):
+  `wifi state` → `stage=2 ... modem_started=1`, `binder: present
+  (binderfs /dev/binderfs)`, `cnss-daemon: running pid=…`, và lần đầu
+  `rmtfs: running` với `RMTFS UIO ready: client=1 addr=0xf0901000 size=0x200000`.
+  Tức ba chặn cũ (binder, cnss-daemon, rmtfs shared memory) đã qua.
+- Lấy mẫu `wifi dmesg` liên tiếp trong lúc bật modem: các dòng kernel cuối là
+  `subsys-pil-tz 4080000.qcom,mss: modem: Brought out of reset`,
+  `Subsystem error monitoring/handling services are up`,
+  `qrtr: Modem QMI Readiness RX cmd:0x2 node[0x0]`,
+  `sysmon-qmi: ssctl_new_server ... modem's SSCTL service`. **14–16 s sau đó SoC
+  reset**, không có dòng `subsys-restart`/panic nào; `pstore` trả
+  `pstore_files=0`, `LASTBOOT.TXT` ghi "ended without a caught signal".
+- Watchdog không phải nguyên nhân: `/proc/misc` **không có** mục watchdog và
+  `/sys/class/watchdog` rỗng, nên `/dev/watchdog` (misc 10:130 do
+  `devnodes.c` tạo) là node rỗng; dòng boot `watchdog: no watchdog device`
+  là đúng, kernel này không có driver WDT.
+- `cnss-daemon` sống nhưng log chỉ có 2 dòng cảnh báo linker, không query
+  QRTR; `qrtr-lookup 0x45` vẫn `recvfrom` timeout, bảng server không có
+  `0x45`, `wlan0` absent.
+- Sửa một bước thiếu so với luồng stock: `vio_host_services_start_wlan()`
+  trước đây dừng ở nhánh CNSS mà **không bao giờ ghi `ON` vào `/dev/wlan`**,
+  nên qcacld/icnss không hề yêu cầu firmware. Nay nhánh CNSS tạo worker gọi
+  `vio_host_wlan_on()` (ghi `ON` đúng 2/3 byte như handler `copy_from_user`
+  yêu cầu); vẫn fail-closed, không tạo trạng thái giả.
+- Kiểm chứng: `python scripts/build_violet.py` exit 0, `vqeaf-init` 11.577.744 B,
+  282 object; `python -m unittest tests.test_violet_wifi_bringup` 15/15 OK;
+  `python scripts/package_violet.py --skip-build` PASS, ảnh
+  `dist/boot-vqeaf-violet.img` 51.347.456 B, SHA-256
+  `7595b6200c135899d5c4e274fdfc48afab328cf1173650879854425a82d7eeb6`.
+- **Đã nạp ảnh này vào p77/recovery (2026-11-24).** Bằng chứng: `python
+  scripts/device_check.py --volume F: --image dist/boot-vqeaf-violet.img
+  --flash` in `flash: written and verified byte for byte` rồi `flash: rebooted
+  into the new image, rescue answering`; chỉ p77 được ghi, không fastboot,
+  không đụng p76/userdata/misc. `RESPONSE.TXT`/`QEAFBOOT.LOG` được ghi lại khi
+  ảnh mới boot nên proof nằm ở câu trả lời trực tiếp của verb flash, không ở
+  file trên volume.
+- Trên ảnh mới, `wifi up` chạy đúng nhánh mới: `binder: present (binderfs
+  /dev/binderfs)`, `cnss-daemon: running pid=545`, và
+  `wlan: CNSS daemon spawned by QEAF service manager (-n -l); requesting
+  /dev/wlan ON (on=0 errno=0)`; `wifi modem: fd=11 rc=1 thread_done=1`.
+- Reset vẫn xảy ra: mẫu 12:06:54 và 12:07:16 thấy cnss/wlan ở trên, mẫu
+  12:07:52 đã là boot mới (`cnss-daemon: not started`, `modem not started`,
+  uptime nhỏ). `LASTBOOT.TXT` ghi `boots=19 ... ended without a caught
+  signal`; `CRASH.TXT` rỗng. Vậy reset 14–16 s sau modem ONLINE không phải do
+  thiếu `ON` và vẫn không để lại fault record.
+- `ON` **chưa được chấp nhận** trước reset: `on=0 errno=0`, tức write đang bị
+  chờ trong driver chứ không trả lỗi; `wlan0` vẫn absent. Wi-Fi vẫn chưa hoạt
+  động và chưa có bằng chứng nào để tuyên bố khác. Thay đổi chưa commit.
+
+## Wi-Fi: DDR RRI cho CE poll-mode (2026-11-24)
+
+- Tiếp tục "phát triển tính năng wifi": lấp đúng blocker đã ghi ở mục CE
+  native — `CE_ATTR_DIS_INTR` (poll) chưa có DDR RRI nên `ce_indices` trả
+  `-EOPNOTSUPP`. Nay `wcn3990_ce.c` lập trình và đọc RRI thật theo đúng
+  upstream ath10k (commit `913a89f009d98c85a902d718cd54bb32ab11d167`):
+  `CE_RRI_LOW=0x0024c004`, `CE_RRI_HIGH=0x0024c008`, CTRL1 bit 19 (UPD), mỗi CE
+  một word: src read index bits 15:0, dst read index bits 31:16.
+- `vqeaf_wcn3990_ce_rri_enable()` kiểm tra CPU view + DMA 4-byte align + giới hạn
+  37 bit, ghi RRI low/high (high chỉ 5 bit), bật UPD cho đủ 12 CE rồi mới zero
+  mảng; lỗi giữa đường thì clear các UPD đã bật + zero hai thanh ghi và **không**
+  đánh dấu ready. `rri_disable()` từ chối khi còn CE active/quiesce; nếu clear
+  lỗi thì **giữ** `_rri_ready` để caller không giải phóng DMA mà thiết bị còn trỏ
+  tới. `ce_init` trả `-EBUSY` khi RRI còn thuộc sở hữu.
+- `ce_indices()` cho poll CE đọc src/dst read index từ mảng DDR (mask theo
+  entries), write index vẫn đọc thanh ghi; không có RRI thì vẫn
+  `-EOPNOTSUPP`, không bịa index. `interrupt_enable` cho poll vẫn từ chối.
+- `wcn3990_phase2.c` lên ABI 4: op optional `ce_rri`/`ce_rri_disable`. Có op thì
+  cấp 48 byte DMA sau bước IRQ, kiểm tra aperture 37 bit, zero rồi gọi; teardown
+  disable RRI trước khi free và trước khi free IRQ, lỗi disable giữ nguyên block.
+  Không có op thì hành vi cũ y nguyên.
+- Kiểm chứng host: `ctest --test-dir build-native` **18/18 PASS** (CE smoke thêm
+  RRI enable/disable/rollback/retention, phase2 thêm cấp phát, teardown, lỗi
+  enable và op không có cặp); `python scripts/wifi/run_violet_platform_tests.py`
+  → `vqeaf_violet_platform: ALL OK`; `python scripts/build_kernel_aarch64.py`
+  link OK, ELF **671.072 B**.
+- Chỉ là bằng chứng host/build. **Chưa nạp ảnh**, chưa chạy ring/IRQ trên máy;
+  Violet platform backend vẫn chưa cấp `ce_rri` (vì chưa có ioremap/DMA/IRQ
+  primitive), nên `wlan0`/WLFW `0x45` vẫn BLOCKED như cũ.
+
+## Home launcher theo ảnh tham chiếu (2026-11-24)
+
+- Theo yêu cầu “màn hình chính như hình ảnh ví dụ”: Home Midnight chuyển thành
+  launcher toàn màn hình với wallpaper Trái Đất, status bar phủ lên wallpaper,
+  lưới ứng dụng, chấm phân trang và ba điều khiển Back/Home/Ứng dụng ở đáy.
+  Không còn đồng hồ, widget, ô tìm kiếm, dock nổi hay thanh công cụ trong Home
+  Midnight; Home Fluent vẫn giữ bố cục Start/taskbar riêng.
+- Lưới dùng 4 cột × 6 hàng khi dọc, 8 cột × 3 hàng khi ngang. Registry có đúng
+  30 ứng dụng nên trang 1 chứa 24 ứng dụng đầu và trang 2 chứa 6 ứng dụng còn
+  lại; không thêm icon giả hoặc nhân bản ứng dụng để tạo thêm trang.
+- Vuốt ngang đổi trang Home và chặn ở biên; trang Ứng dụng vẫn là pager bốn
+  trang riêng. Back ở trang Home thứ hai quay lại trang trước, Back ở trang đầu
+  mở Ứng dụng, pill Home về trang 1. Fluent giữ hành vi vuốt phải mở Ứng dụng.
+- Nhấn giữ vùng trống mở overlay Sửa với wallpaper toàn màn hình và khung xem
+  trước bo tròn chứa đúng pager Home thật. Hình nền mở bộ chọn hiện có, Xong
+  đóng overlay; Tiện ích giải thích chưa có picker thay vì tạo widget giả.
+  Nhấn giữ icon mở thông tin ứng dụng và dừng lan truyền để không mở đồng thời
+  overlay Sửa.
+- Tệp chính: `platform/violet/ui/vqeaf_pages.c/.h`, `vqeaf_ui.c`,
+  `vqeaf_tools_ui.c`; cập nhật `tests/vqeaf_shell_interaction.c`,
+  `tests/vqeaf_ui_host.c`, `scripts/test_violet_shell.py` và
+  `scripts/render_phone_ui.py`. Helper tìm nhãn của test bỏ qua cây LVGL bị ẩn,
+  không nhầm nhãn còn trong dock Fluent với nội dung Home đang hiển thị.
+- `python scripts/test_violet_shell.py` PASS, `ALL OK`, chuyển 58 snapshot PNG.
+  Test bao phủ 24+6 ứng dụng, chấm/chuyển trang, chặn biên, mở Home/Ứng dụng,
+  long-press, overlay Sửa, xem trước phân trang và thông báo giới hạn Tiện ích.
+- `python scripts/render_phone_ui.py` PASS: 43 trạng thái × 2 profile × 2 hướng,
+  tổng 172 PNG trong `build/screens/phone-ui/`. Đã xem Home, Home trang 2, Sửa và
+  Sửa trang 2 ở cả 720×1560 và 1560×720; lưới và các hàng cuối không bị cắt.
+- `python scripts/package_violet.py` PASS: `vqeaf-init` 11.553.160 byte, 282
+  object; initramfs 322 mục, 93.583.783 byte payload / 33.827.911 byte gzip;
+  `dist/boot-vqeaf-violet.img` 51.339.264 byte. `validate_bootimg` PASS và
+  `audit_rescue_channel` PASS. SHA-256
+  `63529fa79266c62655a5dd72139b585b7f7e855cc682500e2eb31950460d5992`.
+- Sau khi tái chạy `validate_bootimg` và `audit_rescue_channel` PASS, đã nạp đúng
+  ảnh trên vào `p77` (recovery) bằng `python scripts/device_check.py --volume F:
+  --image dist/boot-vqeaf-violet.img --flash`. Thiết bị trả lời `written and
+  verified byte for byte`, tự khởi động lại vào ảnh mới và QEAFRESCUE tiếp tục
+  trả lời với `seq=0`.
+- Bằng chứng vật lý nằm trong `build/screens/device/home-launcher-20261124/`:
+  `logs/HOMOLOG.TXT` xác nhận `QEAFIVELS OS 0.3.0 init on violet (PID 1)`, USB
+  mass storage gắn vào `a600000.dwc3`, DRM quét framebuffer tại `1080x2340`,
+  splash/LVGL `720x1560` và `phone UI ready`. Ảnh `home-launcher.png` chụp trực
+  tiếp từ thiết bị đã được xem: wallpaper toàn màn hình, lưới 4×6, hai dấu
+  trang và ba điều khiển đáy đều hiện đúng, không còn dock nổi. Đây là kiểm
+  pixel vật lý; chưa chạy chuỗi kiểm thử touch trên thiết bị.
+- Giới hạn bằng chứng: `QEAFBOOT.LOG` đọc raw sau reboot không còn dòng
+  `lun: verified - recovery and BOOTIMG.BIN agree byte for byte` riêng, nên
+  không tuyên bố đủ bộ bằng chứng đối chiếu hai tệp trước reboot. Không ghi
+  `p76/boot`, `userdata`, `misc` và không commit.
+
+## Thẻ media có điều kiện + QEAFRESCUE tối giản (2026-11-24)
+
+- Theo yêu cầu “thông báo phương tiện ở trung tâm điều khiển chỉ hiện khi phát
+  audio/video và các dạng media, QEAFRESCUE loại bỏ các tệp không liên quan ra
+  khỏi hệ điều hành”: thêm hợp đồng phiên media có kiểu/tiêu đề/chi tiết trong
+  `vqeaf_ui.h/.c`; Control chỉ dựng thẻ khi phiên hợp lệ đang hoạt động. Backend
+  thật phải bắt đầu sau khi có đầu ra và kết thúc khi pause/end/error/teardown.
+- Chưa có backend phát audio/video trong shell nên trạng thái mặc định là không
+  có thẻ media. Test chứng minh mở Music, bấm nút phát không có backend, đổi bài,
+  sửa hàng đợi và xem khung QVF tĩnh đều không tạo phiên. Khi có phiên host
+  inject, thẻ hiện đúng loại/tiêu đề/chi tiết + “Đang phát”; stop xoá thẻ mà
+  không đóng Control. Không thêm transport controls giả.
+- QEAFRESCUE chỉ công bố đúng ba gốc `VQEAF`, `UserData`, `Install`. Bỏ toàn bộ
+  thư mục nhà sản xuất/rác và bản trùng ở gốc; media người dùng vẫn nằm trong
+  `UserData/Pictures`, `Music`, `Videos`, cùng `Documents`, `Downloads`,
+  `Downloads/Apps`, `Backups`, `AppData`. Runtime `/media`, `/Videos`,
+  `/Pictures` vẫn trỏ đúng vào hai thư mục con tương ứng.
+- `python scripts/test_violet_storage_layout.py` PASS: `storage_publish created=3`,
+  đúng ba gốc, mọi thư mục con bắt buộc tồn tại và 24 tên gốc không liên quan
+  đều ABSENT. `python -m unittest tests.test_qeaf_rescue_fat tests.test_qeaf_usb_identity tests.test_rescue_channel` PASS, 7 tests.
+- `python scripts/test_violet_shell.py` PASS, `ALL OK`, chuyển 55 snapshot PNG.
+  `python scripts/render_phone_ui.py` PASS: 41 khung × 2 profile cho từng kích
+  thước 720×1560/1560×720, tổng 164 PNG; ảnh không có session, có audio và
+  interaction stopped đã được xem trực quan.
+- `python scripts/package_violet.py` PASS: `vqeaf-init` 11.548.736 byte, 282
+  object; initramfs 322 mục, 93.579.359 byte payload / 33.825.189 byte gzip;
+  `dist/boot-vqeaf-violet.img` 51.339.264 byte. `validate_bootimg` PASS và
+  `audit_rescue_channel` PASS. SHA-256
+  `b4f1e3995c71a99b56534a2080183721e2128265b745efcededc11b358184697`.
+- Chỉ có bằng chứng host/build/package. **Chưa nạp ảnh mới lên thiết bị** và
+  chưa kiểm tra pixel vật lý cho thay đổi này. Ảnh Control vật lý cũ thuộc bản
+  p77 đã nạp trước đó, không chứng minh trạng thái media mới. Không ghi
+  `p76/boot`, `userdata`, `misc` và không commit.
+
+## Control Center Midnight V2 theo video tham chiếu (2026-11-24)
+
+- Theo yêu cầu “tạo trinh tâm điều khiển như video”: Control trở thành overlay
+  phủ lên trang đang mở, có animation mở/đóng, lưới tròn 5×2, bảng mở rộng 15 ô,
+  hai pill chụp/quay màn hình, phương tiện và hai slider độ sáng/âm lượng.
+  Overlay ẩn chrome của trang nền và khôi phục đúng trang trước khi đóng.
+- Sửa bảng hỗ trợ bỏ ô, Đặt lại và Xong trong phiên; chưa có kéo-thả đổi thứ
+  tự. Rebuild được hoãn một tick để tránh xoá event target và tap lọt xuống
+  trang nền. Vuốt lên đóng bằng `LV_EVENT_SCROLL_BEGIN` + vector đầu vào;
+  animation mở bị huỷ khi yêu cầu đóng đến sớm.
+- Không tạo trạng thái phần cứng giả: Wi-Fi/Bluetooth đọc provider; chức năng
+  thiếu backend hiện “Không hỗ trợ” hoặc giải thích khi chạm. Phương tiện ghi
+  rõ không có nhạc/codec, nút transport tắt; âm lượng chỉ là HUD. Chụp/quay vẫn
+  gọi API thật. Tùy chỉnh và nhật ký thông báo hiện có được giữ ở phần cuộn.
+- Tệp sản phẩm/test đổi: `platform/violet/ui/vqeaf_ui.h`,
+  `platform/violet/ui/vqeaf_ui.c`, `platform/violet/ui/vqeaf_pages.c`,
+  `tests/vqeaf_shell_interaction.c`, `tests/vqeaf_ui_host.c`,
+  `scripts/test_violet_shell.py`; tài liệu: `docs/PHONE_UI.md`,
+  `docs/STATUS.md`. Assertion Apps/IME cũ được cập nhật theo hành vi hiện tại
+  (ô “Tìm trên thiết bị”, ENTER/SHIFT/DEL dùng glyph, ?123/ABC/SPACE dùng chữ).
+- `python scripts/test_violet_shell.py` PASS, `ALL OK`, 53 snapshot chuyển PNG.
+  Test bao phủ overlay, compact/expanded/edit/reset, giải thích chức năng thiếu,
+  vuốt đóng, khôi phục Home và yêu cầu đóng giữa animation mở.
+- `python scripts/render_phone_ui.py` PASS: `720x1560 ok (40 frames x 2
+  profiles)`, `1560x720 ok (40 frames x 2 profiles)`, ghi 160 PNG vào
+  `build/screens/phone-ui/`; ảnh control/open/expanded/edit/close và ngang đã
+  được xem trực quan.
+- `python scripts/build_violet.py` PASS: `build/violet/vqeaf-init`,
+  11.546.880 byte, 282 object. `python scripts/package_violet.py --skip-build`
+  PASS cả `validate_bootimg` và `audit_rescue_channel`; ảnh 51.335.168 byte,
+  SHA-256 `50b048158372f3d26dcab069f8896ec0288ce49e4cf583ccca9c9f4dbc0beee7`.
+- Đã nạp **chỉ p77/recovery** lên thiết bị `ca1af25d`, product `violet`, bằng
+  `restore_p77.ps1 -Execute -ConfirmPartitionWrite`; flash và reboot recovery
+  đều trả OKAY. Log: `D:/QeafivelsOfficial/QeafdropOs/out/logs/restore-p77-20261124-085211.log`.
+  Không ghi `p76/boot`, `userdata`, `misc` và không commit.
+- Bằng chứng boot vật lý đọc raw từ `F:` (`QEAFRESCUE`): PID 1 Violet, USB mass
+  storage `a600000.dwc3`, DRM `crtc 107 scans our fb 188 at 1080x2340`, splash
+  720×1560, LVGL phone shell active và `phone UI ready`. Ảnh scanout
+  `build/violet-control-device-20261124/screen/boot-screen.png` xác nhận trực
+  quan Control Center mới: header, hai pill, lưới 5×2, phương tiện và hai slider.
+- Lệnh `shot` bổ sung ghi `SHOT0001.BMP` 1080×2340 (7.581.654 byte) sau khi PNG
+  encoder trả lỗi 83. Ảnh đã được khôi phục từ vùng cluster liên tục và chuyển
+  sang `screen/SHOT0001.png`; nội dung là trang Ứng dụng, không dùng làm bằng
+  chứng Control. Công cụ host gặp lỗi cp1252 khi in tên tiếng Việt; đọc lại
+  UTF-8 cho thấy `RESPONSE.TXT` chỉ còn `unknown verb` và `QEAF.CMD` bị metadata
+  host đè. Đây là lỗi kênh QEAFRESCUE phía host/volume RAM, không phải lỗi flash
+  hay boot; cần sửa riêng trước khi dùng lại luồng ghi lệnh qua mounted drive.
+- Các blocker Wi-Fi/GNSS/Bluetooth/modem/âm thanh còn nguyên; không tuyên bố
+  chúng hoạt động từ việc bảng điều khiển đã hoàn thiện.
+
+## Wi-Fi: bỏ chặn CNSS sai chỗ + CE quiesce fail-closed (2026-11-24)
+
+- Tiếp tục xử lý "tính năng wifi vẫn không hoạt động": đường vendor Violet trước đây
+  đọc MAC p74 và return trước khi thử `cnss-daemon` thật. Giờ chạy Binder → CNSS thật;
+  MAC/calibration chỉ là điều kiện của fallback `wlfwd`. CNSS không nhận MAC argv và có thể
+  tự truy vấn DMS, nên thiếu MAC không được dùng để bỏ qua CNSS.
+- Tách `regdbpath` khỏi `macpath`, sửa log in nhầm nguồn MAC. Không tạo MAC/calibration,
+  không chạy QRTR server giả, không ghi persist; thiếu MAC chỉ chặn fallback và ghi rõ lý do.
+- Reviewer phát hiện lỗi an toàn native: cleanup CE lỗi nhưng Phase 2 vẫn giải phóng DMA.
+  Đã nâng Phase 2 lên ABI 3 và CE backend lên ABI 2; `ce_disable` trả `int`, giữ
+  `_quiesce_mask` khi cleanup lỗi. Phase 2 dừng teardown tại CE lỗi, không free ring/IRQ/MSA,
+  không tắt nguồn/unmap và chặn bind mới bằng `-EBUSY` tới khi reboot/reset.
+- Fixture CE bao phủ lỗi ghi/đọc kéo dài, retry cleanup thành công, giữ active/quiesce và
+  đúng bản đồ ring-base 32-bit: chấp nhận `2^32 - 16`, từ chối `2^32`/ring vượt biên, không
+  truy cập offset `0x10`/`0x12`. Aperture descriptor DMA 35 bit/mask `0x7` vẫn được kiểm tra
+  riêng. Fixture Phase 2 chứng minh CE11 được disable/free ring trước khi CE10 lỗi, rồi giữ
+  toàn bộ IRQ/MSA/power/mapping và chặn bind mới. Duplicate-bind lặp đủ `VQEAF_DRIVER_MAX`
+  lần vẫn giữ nguyên output ID và không tạo framework instance.
+- Parser DTB giới hạn đệ quy ở 32 cấp và từ chối DTB sâu trước khi hết stack; legacy
+  WCN3990 bind yêu cầu dải IRQ thực sự liên tục, không suy ra `first + count` từ IRQ rải rác.
+- Kiểm chứng: strict Zig `-Wall -Wextra -Werror -UNDEBUG` + UBSan PASS; CTest 18/18 PASS;
+  state-machine, Violet DTB (gồm DTB sâu/IRQ rải rác) và HAL/firmware gates ALL OK;
+  Python Wi-Fi 24/24 PASS; hợp đồng Violet bring-up 15/15 PASS; AArch64 build + QEMU regression ALL OK.
+- Kernel AArch64 ELF 651.984 B, SHA-256
+  `6cee6b7a56684978c7d5f014fe5e9111516173150f3cc47606bdff3c15006431`; host CE test SHA-256
+  `acdc26aa5acb6f24318d54501ae60d8cc59991a28fb9bfc3ef1dc3880da6481e`.
+- Package PID1 Violet và ảnh p77 qua validate/audit, SHA-256
+  `574c606aeb8dfa7f72810bdcc9aa00a5c87f3f90caa1d65d4a5246770c141337`. **Chưa nạp ảnh**.
+- Chỉ có bằng chứng host/build/emulated. Wi-Fi vật lý vẫn PRESENT, chưa có `wlan0`/QMI `0x45`;
+  p74 vẫn thiếu MAC/calibration thật, WLAN-PD `error=45` và reset modem/SoC chưa được giải quyết.
+  Không rebind modem, flash hoặc ghi partition trong vòng này.
+
+## Wi-Fi native: backend lập trình Copy Engine WCN3990 có MMIO tiêm (2026-11-24)
+
+- Tiếp tục theo yêu cầu "tiếp tục phát triển drive wifi": thêm backend CE native dùng
+  bản đồ register WCN3990 đã đối chiếu với upstream ở commit
+  `913a89f009d98c85a902d718cd54bb32ab11d167`. Backend lập trình ring source/destination,
+  CTRL1, watermark, interrupt mask/ack và đọc index có mask; không dereference địa chỉ
+  vật lý trực tiếp.
+- Provider phải khai báo `dma_bits` và `address_high_mask`. Không hard-code mask chưa
+  xác minh; mâu thuẫn aperture 37 bit của repo với SNOC 35 bit upstream vẫn là blocker
+  trước khi gắn DMA/IOMMU thật.
+- Khi `ce_configure` lỗi, backend cố dọn register đã lập trình một phần rồi trả nguyên
+  lỗi MMIO; nếu MMIO vẫn lỗi thì không bảo đảm dọn sạch. CE poll `CE_ATTR_DIS_INTR` chưa
+  có DDR RRI nên trả `-EOPNOTSUPP` khi query index hoặc bật interrupt, không giả lập
+  thành công.
+- Violet vẫn fail-closed: context CE không được attach, DTB thật vẫn dừng ở `map_snoc`
+  với `-ENOSYS`; `radio.wifi` không đổi READY.
+- Kiểm chứng host: strict Zig `-Wall -Wextra -Werror` + CE smoke PASS, UBSan PASS;
+  toàn bộ CTest 18/18 PASS (WCN3990 3/3); `run_violet_platform_tests.py` ALL OK;
+  `run_wcn3990_state_tests.py` ALL OK; `run_hal_tests.py` cả 4 nhóm ALL OK (gồm firmware
+  thật); QEMU AArch64 kernel regression ALL OK.
+- Artifact cuối cùng sau toàn bộ hardening: kernel AArch64 651.984 B, SHA-256
+  `6cee6b7a56684978c7d5f014fe5e9111516173150f3cc47606bdff3c15006431`;
+  host CE test SHA-256 `acdc26aa5acb6f24318d54501ae60d8cc59991a28fb9bfc3ef1dc3880da6481e`.
+- Chỉ có bằng chứng host/build; không chạy Wi-Fi trên máy, không rebind modem, không
+  flash hay ghi partition. Bước tiếp theo là provider MMIO/IRQ/DMA thật và DDR RRI, sau
+  đó mới được phép thử ring/interrupt trên thiết bị có uỷ quyền rõ ràng.
+
 ## Wi-Fi: nạp p77 lấy đủ 2 proof + `wifi state` in đúng lý do binder (2026-11-23)
 
 - Nạp **chỉ p77** qua QEAFRESCUE (`temp/flash_capture.py`, không fastboot). Lần đầu nạp
@@ -2395,6 +3746,20 @@ The Violet hardware notes identify `mmcblk0`/eMMC, not UFS; SM6150 vs SDM660 and
   Chưa chụp được trang QEAPP sau khi chạm tile (tap tổng hợp bị nhiễu bởi thao
   tác tay trên máy); trang này đã được render và test C trên host.
 
+## Terminal UI mới theo ảnh tham chiếu (2026-11-26)
+
+- Trang `VQEAF_PAGE_TERMINAL` được vẽ lại: console đen toàn màn hình, header
+  drawer + `~`, lời chào kiểu fish, nhắc lệnh recolor teal/hổ phách
+  (`vqeaf@violet ~> cmd`), keybar 10 phím pill (TAB/ENTER/⌃/`-`/`/`/`.`/
+  mũi tên) trượt lên cùng IME, dòng nhập inline `~>`.
+- Phím mũi tên dùng Material Icons có sẵn trong subset font (E5C4/E5C8/
+  E5D8/E313); ký tự Unicode hình học không có trong Ubuntu subset bị bỏ.
+- Trang `terminal` được thêm vào render host (`tests/vqeaf_ui_host.c`,
+  `scripts/render_phone_ui.py`): 50 frame × 2 profile × 2 hướng = 200 PNG.
+- Kiểm host: `render_phone_ui.py` PASS; `test_violet_shell.py` ALL OK (73
+  snapshot); `test_ime.py` ALL OK; `build_violet.py` PASS, `/init`
+  12.278.552 byte, 288 object. Chưa nạp thiết bị cho thay đổi này.
+
 ## Violet port — PID 1 boot trên Redmi Note 7 Pro (2026-11-10)
 
 - `platform/violet/` là cổng aarch64-musl của cây này lên violet, chạy trên
@@ -3617,3 +4982,18 @@ Raw: `reports/wifi-violet-cnss-live/*.txt`.
 - Test `tests.test_qeaf_usb_identity` 2 tests OK; build OK (11.484.448 B);
   package OK, ảnh sha `0aec4c7c6fbf6f2eaa7bcd90d600df66f94212ccf0fbd68d4d0456e376b58b55`.
 - Chưa flash; chờ xác nhận p77 riêng.
+
+
+## Bỏ thư mục Android khỏi QEAFRESCUE (2026-11-24)
+- `storage_publish()` không còn tạo thư mục root `Android`; các thư mục media,
+  người dùng và `VQEAF/UserData/Install` còn nguyên. Đây là thay đổi danh sách
+  thư mục RAM-only, không đổi nhãn ổ, giao thức rescue hay đường dẫn runtime.
+- Gate `python scripts/test_violet_storage_layout.py`: **26/26 thư mục mong đợi OK,
+  Android ABSENT, ALL OK**. Test dò tên không phân biệt hoa/thường để tên 8.3
+  `ANDROID` cũng bị chặn.
+- Regression `tests.test_qeaf_rescue_fat` 5/5 OK, `tests.test_qeaf_usb_identity`
+  2/2 OK, `tests.test_rescue_channel` toàn bộ PASS.
+- Build PID1 OK (11.523.376 B); package OK (51.318.784 B); `validate_bootimg`
+  và `audit_rescue_channel` PASS. Ảnh SHA-256
+  `38e5d978da49f1c41a8d35d2a4ee1ab7b1d8a1d4f666f10b713f893def654147`.
+- Chưa nạp thiết bị; không ghi `p76/boot`, `p77/recovery`, `userdata` hoặc `misc`.

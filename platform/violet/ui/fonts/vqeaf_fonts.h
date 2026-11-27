@@ -12,9 +12,10 @@ LV_FONT_DECLARE(vqeaf_font_bold_28);
 LV_FONT_DECLARE(vqeaf_font_bold_34);
 LV_FONT_DECLARE(vqeaf_font_bold_56);
 LV_FONT_DECLARE(vqeaf_font_bold_96);
+LV_FONT_DECLARE(vqeaf_font_bold_160);
 LV_FONT_DECLARE(vqeaf_icon_28);
 LV_FONT_DECLARE(vqeaf_icon_40);
-LV_FONT_DECLARE(vqeaf_emoji_28);   /* real emoji glyphs from Segoe UI Emoji */
+LV_FONT_DECLARE(vqeaf_emoji_28);
 
 /* Typography weights. VQEAF_FONT_* resolve through vqeaf_type_font() so the
  * whole shell honours the bold-text accessibility mode; *_BOLD pins a face. */
@@ -46,6 +47,7 @@ int vqeaf_type_get_bold(void);
 #define VQEAF_FONT_HEADLINE_BOLD (vqeaf_type_font_weight(VQEAF_ROLE_HEADLINE, VQEAF_WEIGHT_BOLD))
 #define VQEAF_FONT_HOME_CLOCK (&vqeaf_font_bold_56)
 #define VQEAF_FONT_CLOCK     (&vqeaf_font_bold_96)
+#define VQEAF_FONT_LOCK_CLOCK (&vqeaf_font_bold_160)
 #define VQEAF_ICON_SM        (&vqeaf_icon_28)
 #define VQEAF_ICON           (&vqeaf_icon_40)
 
@@ -143,6 +145,7 @@ int vqeaf_type_get_bold(void);
 #define VQEAF_SYM_HEADPHONES           "\xEF\x80\x9F"
 #define VQEAF_SYM_QUEUE_MUSIC          "\xEE\x80\xBD"
 #define VQEAF_SYM_CONTENT_COPY         "\xEE\x85\x8D"
+#define VQEAF_SYM_CONTENT_PASTE        "\xEE\x85\x8F"
 #define VQEAF_SYM_LINK                 "\xEE\x85\x97"
 #define VQEAF_SYM_ATTACH_FILE          "\xEE\x88\xA6"
 #define VQEAF_SYM_SAVE                 "\xEE\x85\xA1"

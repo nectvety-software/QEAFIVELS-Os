@@ -6,8 +6,10 @@
  * drops QEAF.CMD onto it; this loop notices the new bytes, runs the verbs and
  * writes RESPONSE.TXT back. Everything is a real FAT16 file - no separate
  * socket, no hidden side channel.
- *
-/* The flash verb is the one privileged action. It refuses anything that is
+ */
+
+/* Two verbs are privileged, each pinned to one partition. `flash recovery`
+ * refuses anything that is
  * not exactly "flash recovery BOOTIMG.BIN confirm", checks the boot-image magic and
  * the p77 size, then walks BOOTIMG.BIN's cluster chain - a file the host
  * scattered over the volume streams through in several runs instead of
@@ -32,13 +34,35 @@
 #include "../../ui/vqeaf_qeapp.h"
 #include "../../ui/vqeaf_pages.h"
 #include "wifi_bringup.h"
+#include "../../bt_bringup.h"
 #include "../../host_services.h"
 #include "../../violet.h"
 #include "../../qrtr_ns.h"
 #include "../../qrtr_probe.h"
 #include "../../vio_caps.h"
+#include "violet_drivers.h"
 #include "../../vqeaf_camera.h"
 #include "../../wifi_fw_check.h"
+#ifdef __linux__
+#include <unistd.h>
+#include <sys/time.h>
+
+/* Linux evdev userspace ABI (aarch64): timeval + type/code/value. The Zig
+ * musl sysroot used by the production cross-build omits linux/input.h's
+ * struct input_event and event-code macros, so keep this small UAPI contract
+ * local instead of depending on host-specific header availability. */
+struct qeaf_evdev_event {
+    struct timeval time;
+    uint16_t type;
+    uint16_t code;
+    int32_t value;
+};
+_Static_assert(sizeof(struct qeaf_evdev_event) == 24, "aarch64 evdev ABI size");
+#define QEAF_EV_SYN 0x00
+#define QEAF_EV_ABS 0x03
+#define QEAF_ABS_MT_POSITION_X 0x35
+#define QEAF_ABS_MT_POSITION_Y 0x36
+#endif
 
 #include <stdint.h>
 #include <stdio.h>
@@ -52,6 +76,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/reboot.h>
+#include <sys/mount.h>
 #include <sys/syscall.h>
 #include <linux/reboot.h>
 #endif
@@ -60,6 +85,33 @@
 #define RESP_CAP  8192
 #define LOG_CAP   8192
 #define P77_SIZE  (64u * 1024u * 1024u)
+#define P76_SIZE  (64u * 1024u * 1024u)
+/* p74 persist: the bootloader marks it a Controlled Partition, so fastboot
+ * refuses `flash persist`. Only the running OS can write it. The partition is
+ * 64 MiB; its ext4 superblock magic sits at byte 0x438. */
+#define P74_PATH  "/dev/mmcblk0p74"
+#define P74_SIZE  (64u * 1024u * 1024u)
+#define P74_EXT4_MAGIC_OFF 0x438u
+#define P76_CHUNK_SIZE (16u * 1024u * 1024u)
+#define P76_CHUNK_COUNT 4u
+#define P76_SECTOR_COUNT (P76_SIZE / 512u)
+
+static const char *const g_p76_dump_names[P76_CHUNK_COUNT] = {
+    "P7600001.BIN", "P7600002.BIN", "P7600003.BIN", "P7600004.BIN"
+};
+/* One bounded 16 MiB staging buffer is reused for all four read-only
+ * chunks. The four FAT16 files are reserved before USB enumeration so
+ * Windows cannot allocate clusters that the phone later overwrites. */
+static uint8_t g_p76_chunk[P76_CHUNK_SIZE];
+
+/* Read-only p74/persist dump (provisioning evidence for Wi-Fi restore):
+ * four 16 MiB chunks share the p76 staging buffer; files are reserved at
+ * init the same way so the host cannot allocate their clusters. */
+static const char *const g_persist_dump_names[P76_CHUNK_COUNT] = {
+    "PERS0001.BIN", "PERS0002.BIN", "PERS0003.BIN", "PERS0004.BIN"
+};
+static int g_persist_dump_ready;
+static int g_p76_dump_ready;
 
 static const char *g_partition = "/dev/mmcblk0p77";
 static rescue_snapshot_fn g_snapshot;
@@ -70,6 +122,7 @@ static rescue_tap_fn g_tap;
 static rescue_hold_fn g_hold;
 static rescue_swipe_fn g_swipe;
 static rescue_page_fn g_page;
+static rescue_term_fn g_term_hook;
 static rescue_power_fn g_power;
 static rescue_fault_fn g_fault;
 static rescue_unlock_fn g_unlock;
@@ -131,6 +184,7 @@ static const char HELP[] =
     "check.\n\n"
     "  help                 show this text\n"
     "  status               OS, USB mode, cable, LUN sectors, boot stage\n"
+    "  drivers              Linux userspace driver registry and real blockers\n"
     "  wifi [net|dmesg|sdio|mod|fw|up|off|state|modem|host|log|find NAME|ls DIR|link PATH|cat FILE|on|pd NODE PORT PD|listen NODE PORT PATH|discover [SERVICE]]\n"
     "                       real WCN3990 state: netdevs, mounts, firmware,\n"
     "                       remoteproc; `wifi up` starts the modem (it\n"
@@ -165,6 +219,9 @@ static const char HELP[] =
     "  tap X Y              inject a touch at canvas pixel (X,Y)\n"
     "  hold X Y [ms]        keep the touch down at (X,Y) for ms (default\n"
     "                       1200, 100..10000) so a long-press fires\n"
+    "  touch [seconds]      count REAL evdev touch events (finger on the\n"
+    "                       glass, real touch IRQ) for 1..10 s; reports SYN\n"
+    "                       frames, contact count and last panel coordinate\n"
     "  power                short power-key press: lock the screen, run it\n"
     "                       again to wake to the lock page\n"
     "  unlock               wake the panel and go to Home, without the\n"
@@ -174,20 +231,32 @@ static const char HELP[] =
     "                       lines in CRASH.TXT\n"
     "  reboot system|recovery|bootloader\n"
     "                       restart the phone; recovery boots p77\n"
+    "  dump boot            read p76/boot as four 16 MiB files\n"
+    "  dump persist         read p74/persist -> PERS0001..0004.BIN\n"
+    "                       (read-only evidence for Wi-Fi provisioning)\n"
+
     "  flash recovery BOOTIMG.BIN confirm\n"
     "                       walk BOOTIMG.BIN's cluster chain, write it to\n"
     "                       p77, read it back and compare byte for byte\n"
-    "                       before answering (fragmented files are fine)\n\n"
-    "Only 'recovery' (p77) is writable. p76/boot, userdata and misc are\n"
-    "never touched. The word 'confirm' is mandatory. HELP.TXT, SUMMARY.TXT,\n"
-    "RESPONSE.TXT, QEAFBOOT.LOG and DEVINFO.TXT are the channel's own files.\n";
+    "                       before answering (fragmented files are fine)\n"
+    "  persist status       read p74 size, ext4 magic, mount state and\n"
+    "                       whether wlan_mac.bin is present (read-only)\n"
+    "  persist restore PERSIST.IMG confirm\n"
+    "                       require an exact 64 MiB ext4 p74 image, detach\n"
+    "                       the read-only mount, write p74, read it back\n"
+    "                       and compare byte for byte\n\n"
+    "dump boot reads p76/boot only and never writes a partition. The separate\n"
+    "flash recovery command writes p77; persist restore writes p74. No other\n"
+    "partition is writable. userdata and misc are never touched. The word\n"
+    "'confirm' is mandatory. HELP.TXT, RESPONSE.TXT, QEAFBOOT.LOG and\n"
+    "DEVINFO.TXT are the channel's own files.\n";
 
 static const char SUMMARY[] =
     QEAF_OS_STRING " - rescue volume\n\n"
     "Built in RAM by fat16.c; no partition has to survive for these bytes\n"
     "to exist. Read with raw sectors, not the Windows mounted view.\n\n"
     "--- commands (QEAF.CMD, one per line)\n"
-    "  help  status  wifi  sync  usb MODE  echo TEXT  ls  df  del NAME\n"
+    "  help  status  drivers  wifi  sync  usb MODE  echo TEXT  ls  df  del NAME\n"
 "  media list         list UserData/Pictures and UserData/Videos on QEAFRESCUE\n"
 "  wifi ramtest       RAM-only tmpfs persist + TEST MAC (session only)\n"
 "  wifi cnss-trace    relaunch real cnss-daemon with LD_DEBUG=all\n"
@@ -199,7 +268,10 @@ static const char SUMMARY[] =
     "  rec start|stop|status  QVF screen recording -> UserData/Videos\n"
     "  diag                 watchdog/charger/thermal census\n"
     "  pstore               write PSTORE.TXT (prior-boot reset reason)\n"
-    "  flash recovery BOOTIMG.BIN confirm\n\n"
+    "  dump boot            read p76/boot -> P7600001..P7600004.BIN\n"
+    "  persist status       p74 size / ext4 / mount / wlan_mac.bin (read-only)\n"
+    "  flash recovery BOOTIMG.BIN confirm\n"
+    "  persist restore PERSIST.IMG confirm\n\n"
     "--- sync\n"
     "  DEVINFO.TXT carries VQEAF-SYNC/1 machine state for VQEAF Tool.\n";
 
@@ -253,6 +325,10 @@ void rescue_set_page_hook(rescue_page_fn fn) {
     g_page = fn;
 }
 
+void rescue_set_term_hook(rescue_term_fn fn) {
+    g_term_hook = fn;
+}
+
 void rescue_set_fault_hook(rescue_fault_fn fn) {
     g_fault = fn;
 }
@@ -272,6 +348,48 @@ void rescue_flush_log(struct fat16_volume *vol) {
 
 int rescue_last_result(void) { return g_result; }
 
+/* Reserve all backup chains before the mass-storage LUN is exposed to Windows.
+ * fat16_write_file() allocates from its own monotonic next_cluster cursor; doing
+ * this after host enumeration could overlap clusters the host has allocated. */
+static void reserve_p76_dump_files(struct fat16_volume *vol)
+{
+    static const uint8_t info[] = "state=RESERVED\npartition=boot (p76)\n";
+    unsigned i;
+
+    memset(g_p76_chunk, 0, sizeof(g_p76_chunk));
+    g_p76_dump_ready = 0;
+    for (i = 0; i < P76_CHUNK_COUNT; ++i) {
+        if (fat16_write_file(vol, g_p76_dump_names[i], g_p76_chunk,
+                             P76_CHUNK_SIZE) < 0) {
+            note("[    -    ] E qeaf: p76 dump reserve failed");
+            return;
+        }
+    }
+    if (fat16_write_file(vol, "P76INFO.TXT", info, sizeof(info) - 1) < 0) {
+        note("[    -    ] E qeaf: p76 info reserve failed");
+        return;
+    }
+    g_p76_dump_ready = 1;
+    note("[    -    ] N qeaf: p76 dump files reserved before USB bind");
+#if defined(VQEAF_RESERVE_PERSIST_DISABLE)
+    /* Diagnostic build (2026-11-26): the persist reserve adds four more
+     * 16 MiB zero-filled chain writes to every boot. Boot-wedge bisect
+     * builds compile with -DVQEAF_RESERVE_PERSIST_DISABLE to skip them;
+     * `dump persist` then refuses honestly with "not reserved". */
+    note("[    -    ] N qeaf: persist dump reserve skipped (diagnostic)");
+#else
+    for (i = 0; i < P76_CHUNK_COUNT; ++i) {
+        if (fat16_write_file(vol, g_persist_dump_names[i], g_p76_chunk,
+                             P76_CHUNK_SIZE) < 0) {
+            note("[    -    ] E qeaf: persist dump reserve failed");
+            return;
+        }
+    }
+    g_persist_dump_ready = 1;
+    note("[    -    ] N qeaf: persist dump files reserved before USB bind");
+#endif
+}
+
 void rescue_init(struct fat16_volume *vol) {
     g_last_len = -1;
     g_result = 0;
@@ -280,11 +398,236 @@ void rescue_init(struct fat16_volume *vol) {
     if (!vol) return;
     put(vol, "HELP.TXT", HELP);
     put(vol, "SUMMARY.TXT", SUMMARY);
+    reserve_p76_dump_files(vol);
     note("[    0.000] N qeaf: " QEAF_OS_STRING " starting (pid 1)");
     note("[    0.010] N qeaf: rescue channel bound to the RAM LUN");
     put(vol, "QEAFBOOT.LOG", g_log);
     put(vol, "RESPONSE.TXT", "seq=0\nno command has run yet\n");
     umos_logf("rescue: channel files published (QEAF.CMD reader ready)\n");
+}
+
+/* ---- read-only p76 backup --------------------------------------------------
+ * p76 is the Android boot slot. This command has no write-capable descriptor:
+ * sysio_block_read_at() opens O_RDONLY and only reads the requested byte range.
+ * The destination is the RAM-backed QEAFRESCUE FAT16 LUN, never a block device.
+ */
+static int p76_verify_lun_file(struct fat16_volume *vol, const char *name,
+                               const uint8_t *expected, size_t expected_size)
+{
+    struct fat16_file file;
+    const uint8_t *part = NULL;
+    size_t compared = 0;
+    int n;
+
+    if (fat16_file_open(vol, name, &file) < 0 || file.size != expected_size)
+        return -1;
+    while ((n = fat16_file_next(vol, &file, &part)) > 0) {
+        if ((size_t)n > expected_size - compared ||
+            memcmp(part, expected + compared, (size_t)n) != 0)
+            return -2;
+        compared += (size_t)n;
+    }
+    return (n == 0 && compared == expected_size) ? 0 : -3;
+}
+
+static void p76_publish_info(struct fat16_volume *vol, const char *state,
+                             unsigned completed, const char *detail)
+{
+    char info[512];
+    int n = snprintf(info, sizeof(info),
+                     "state=%s\n"
+                     "device=violet\n"
+                     "partition=boot (p76)\n"
+                     "source=/dev/mmcblk0p76\n"
+                     "size=%u\n"
+                     "chunk_size=%u\n"
+                     "chunk_count=%u\n"
+                     "completed_chunks=%u\n"
+                     "read_mode=O_RDONLY\n"
+                     "detail=%s\n",
+                     state, (unsigned)P76_SIZE, (unsigned)P76_CHUNK_SIZE,
+                     (unsigned)P76_CHUNK_COUNT, completed,
+                     detail ? detail : "none");
+    if (n > 0 && (size_t)n < sizeof(info))
+        (void)fat16_write_file(vol, "P76INFO.TXT",
+                               (const uint8_t *)info, (size_t)n);
+}
+
+/* `dump persist`: read-only p74 evidence collection. Same gates as dump
+ * boot: sysfs identity, exact size, chunked read into the shared staging
+ * buffer, FAT16 store and byte-for-byte readback per chunk. Never writes
+ * the partition; restoring is the separate persist-restore verb. */
+/* `dump persist`: read-only p74 evidence collection. Same gates as dump
+ * boot: sysfs identity, exact size, chunked read into the shared staging
+ * buffer, FAT16 store and byte-for-byte readback per chunk. Never writes
+ * the partition; restoring is the separate persist-restore verb. */
+/* `dump persist`: read-only p74 evidence collection. Same gates as dump
+ * boot: sysfs identity, exact size, chunked read into the shared staging
+ * buffer, FAT16 store and byte-for-byte readback per chunk. Never writes
+ * the partition; restoring is the separate persist-restore verb. */
+static void do_dump_persist(struct fat16_volume *vol, char *resp, int cap)
+{
+#ifdef __linux__
+    static const char sysfs_uevent[] = "/sys/class/block/mmcblk0p74/uevent";
+    static const char sysfs_size[] = "/sys/class/block/mmcblk0p74/size";
+    char uevent[512];
+    int sectors = 0;
+    unsigned i;
+
+    if (!g_persist_dump_ready) {
+        cat(resp, cap, "dump: REFUSED - persist files were not reserved\n");
+        g_result = -1;
+        return;
+    }
+    if (sysio_read_file(sysfs_uevent, uevent, (int)sizeof(uevent)) <= 0 ||
+        strstr(uevent, "DEVNAME=mmcblk0p74") == NULL ||
+        strstr(uevent, "PARTN=74") == NULL) {
+        cat(resp, cap, "dump: REFUSED - p74 sysfs identity check failed\n");
+        note("[    -    ] E qeaf: p74 sysfs identity check failed");
+        g_result = -2;
+        return;
+    }
+    if (sysio_read_int(sysfs_size, &sectors) != 0 ||
+        sectors != (int)(P74_SIZE / 512u)) {
+        cat(resp, cap, "dump: REFUSED - p74 is not exactly 131072 sectors\n");
+        note("[    -    ] E qeaf: p74 size gate failed");
+        g_result = -2;
+        return;
+    }
+    note("[    -    ] N qeaf: dump persist p74 read-only started");
+    for (i = 0; i < P76_CHUNK_COUNT; ++i) {
+        size_t offset = (size_t)i * P76_CHUNK_SIZE;
+        char line[96];
+
+        if (sysio_block_read_at(P74_PATH, offset, g_p76_chunk,
+                                P76_CHUNK_SIZE) != 0) {
+            cat(resp, cap, "dump: FAILED - short/error read from p74 chunk ");
+            cat_u(resp, cap, i + 1);
+            cat(resp, cap, "\n");
+            note("[    -    ] E qeaf: p74 read failed; no partition written");
+            g_result = -3;
+            return;
+        }
+        if (fat16_write_file(vol, g_persist_dump_names[i], g_p76_chunk,
+                             P76_CHUNK_SIZE) < 0) {
+            cat(resp, cap, "dump: FAILED - could not store p74 chunk ");
+            cat_u(resp, cap, i + 1);
+            cat(resp, cap, "\n");
+            g_result = -4;
+            return;
+        }
+        if (p76_verify_lun_file(vol, g_persist_dump_names[i], g_p76_chunk,
+                                P76_CHUNK_SIZE) != 0) {
+            cat(resp, cap, "dump: FAILED - LUN readback mismatch p74 chunk ");
+            cat_u(resp, cap, i + 1);
+            cat(resp, cap, "\n");
+            g_result = -5;
+            return;
+        }
+        cat(resp, cap, "dump: p74 chunk ");
+        cat_u(resp, cap, i + 1);
+        cat(resp, cap, "/4 stored and verified (16777216 bytes)\n");
+        snprintf(line, sizeof(line),
+                 "[    -    ] N qeaf: p74 read chunk %u/4 stored and verified",
+                 i + 1);
+        note(line);
+    }
+    cat(resp, cap, "dump: COMPLETE - 67108864 bytes from p74 in four files\n");
+    cat(resp, cap, "dump: source p74 opened read-only; no partition write issued\n");
+    note("[    -    ] N qeaf: p74 dump complete (64 MiB, read-only)");
+    g_result = 1;
+#else
+    (void)vol;
+    cat(resp, cap, "dump: unavailable on host build\n");
+    g_result = -38;
+#endif
+}
+
+static void do_dump_boot(struct fat16_volume *vol, char *resp, int cap)
+{
+#ifdef __linux__
+    static const char sysfs_uevent[] = "/sys/class/block/mmcblk0p76/uevent";
+    static const char sysfs_size[] = "/sys/class/block/mmcblk0p76/size";
+    static const char block_path[] = "/dev/mmcblk0p76";
+    char uevent[512];
+    int sectors = 0;
+    unsigned i;
+
+    if (!g_p76_dump_ready) {
+        cat(resp, cap, "dump: REFUSED - four 16 MiB FAT16 files were not reserved\n");
+        g_result = -1;
+        return;
+    }
+    if (sysio_read_file(sysfs_uevent, uevent, (int)sizeof(uevent)) <= 0 ||
+        strstr(uevent, "DEVNAME=mmcblk0p76") == NULL ||
+        strstr(uevent, "PARTN=76") == NULL) {
+        cat(resp, cap, "dump: REFUSED - p76 sysfs identity check failed\n");
+        note("[    -    ] E qeaf: p76 sysfs identity check failed");
+        g_result = -2;
+        return;
+    }
+    if (sysio_read_int(sysfs_size, &sectors) != 0 ||
+        sectors != (int)P76_SECTOR_COUNT) {
+        cat(resp, cap, "dump: REFUSED - p76 is not exactly 131072 sectors\n");
+        note("[    -    ] E qeaf: p76 size gate failed");
+        g_result = -2;
+        return;
+    }
+
+    p76_publish_info(vol, "IN_PROGRESS", 0, "read-only backup running");
+    note("[    -    ] N qeaf: dump boot p76 read-only started");
+    for (i = 0; i < P76_CHUNK_COUNT; ++i) {
+        size_t offset = (size_t)i * P76_CHUNK_SIZE;
+        char line[96];
+
+        /* This is the only block-device operation in the dump path. */
+        if (sysio_block_read_at(block_path, offset, g_p76_chunk,
+                                P76_CHUNK_SIZE) != 0) {
+            cat(resp, cap, "dump: FAILED - short/error read from p76 at chunk ");
+            cat_u(resp, cap, i + 1);
+            cat(resp, cap, "\n");
+            p76_publish_info(vol, "FAILED", i, "block read failed");
+            note("[    -    ] E qeaf: p76 read failed; no partition was written");
+            g_result = -3;
+            return;
+        }
+        if (fat16_write_file(vol, g_p76_dump_names[i], g_p76_chunk,
+                             P76_CHUNK_SIZE) < 0) {
+            cat(resp, cap, "dump: FAILED - could not store chunk ");
+            cat_u(resp, cap, i + 1);
+            cat(resp, cap, " on QEAFRESCUE LUN\n");
+            p76_publish_info(vol, "FAILED", i, "FAT16 destination write failed");
+            g_result = -4;
+            return;
+        }
+        if (p76_verify_lun_file(vol, g_p76_dump_names[i], g_p76_chunk,
+                                P76_CHUNK_SIZE) != 0) {
+            cat(resp, cap, "dump: FAILED - LUN readback mismatch at chunk ");
+            cat_u(resp, cap, i + 1);
+            cat(resp, cap, "\n");
+            p76_publish_info(vol, "FAILED", i, "FAT16 readback mismatch");
+            g_result = -5;
+            return;
+        }
+        cat(resp, cap, "dump: chunk ");
+        cat_u(resp, cap, i + 1);
+        cat(resp, cap, "/4 stored and verified (16777216 bytes)\n");
+        snprintf(line, sizeof(line),
+                 "[    -    ] N qeaf: p76 read chunk %u/4 stored and verified",
+                 i + 1);
+        note(line);
+    }
+    p76_publish_info(vol, "COMPLETE", P76_CHUNK_COUNT,
+                     "all four chunks stored and read back from RAM LUN");
+    cat(resp, cap, "dump: COMPLETE - 67108864 bytes in four 16 MiB files\n");
+    cat(resp, cap, "dump: source p76 opened read-only; no partition write issued\n");
+    note("[    -    ] N qeaf: p76 dump complete (64 MiB, read-only)");
+    g_result = 1;
+#else
+    (void)vol;
+    cat(resp, cap, "dump: unavailable on host build\n");
+    g_result = -38;
+#endif
 }
 
 /* ---- one flash ------------------------------------------------------------ */
@@ -418,6 +761,197 @@ static void do_flash(struct fat16_volume *vol, char *resp, int cap) {
         note(line);
     }
     g_result = 1;
+}
+
+/* ---- persist (p74) ---------------------------------------------------------
+ * The bootloader marks persist a Controlled Partition, so `fastboot flash
+ * persist` is refused. This verb is the only write path: it takes a full
+ * 64 MiB p74 image from the RAM LUN, refuses anything whose size is not the
+ * partition size or whose bytes at 0x438 are not an ext4 superblock, detaches
+ * the live read-only mount, writes every cluster run at its own offset, then
+ * reads the partition back and compares byte for byte. No NV, no modem, no
+ * other partition is touched.
+ */
+#ifdef __linux__
+static int persist_verify_run(size_t offset, const uint8_t *expected,
+                              size_t len) {
+    while (len > 0) {
+        size_t chunk = len < sizeof(g_flash_probe) ? len : sizeof(g_flash_probe);
+
+        if (sysio_block_read_at(P74_PATH, offset, g_flash_probe, chunk) != 0)
+            return -1;
+        if (memcmp(g_flash_probe, expected, chunk) != 0) return -2;
+        offset += chunk;
+        expected += chunk;
+        len -= chunk;
+    }
+    return 0;
+}
+#endif
+
+static void do_persist_status(char *resp, int cap) {
+#ifdef __linux__
+    int fd, mounted = 0, mac = 0, magic;
+    long long size = -1;
+    char mounts[4096] = "";
+
+    fd = open(P74_PATH, O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) {
+        off_t end = lseek(fd, 0, SEEK_END);
+        if (end >= 0) size = (long long)end;
+        close(fd);
+    }
+    {
+        uint8_t m[2];
+        fd = open(P74_PATH, O_RDONLY | O_CLOEXEC);
+        magic = -1;
+        if (fd >= 0) {
+            if (pread(fd, m, sizeof(m), (off_t)P74_EXT4_MAGIC_OFF) == 2)
+                magic = (m[0] == 0x53 && m[1] == 0xEF) ? 1 : 0;
+            close(fd);
+        }
+    }
+    fd = open("/proc/mounts", O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) {
+        ssize_t n = read(fd, mounts, sizeof(mounts) - 1);
+        if (n > 0) {
+            mounts[n] = '\0';
+            if (strstr(mounts, "/mnt/vendor/persist ")) mounted = 1;
+        }
+        close(fd);
+    }
+    mac = access("/mnt/vendor/persist/wlan_mac.bin", F_OK) == 0;
+
+    cat(resp, cap, "persist: device=" P74_PATH " size=");
+    cat_u(resp, cap, (unsigned)(size < 0 ? 0 : size));
+    cat(resp, cap, " bytes ext4=");
+    cat(resp, cap, magic == 1 ? "yes" : (magic == 0 ? "no" : "unreadable"));
+    cat(resp, cap, " mounted=");
+    cat(resp, cap, mounted ? "yes" : "no");
+    cat(resp, cap, " wlan_mac.bin=");
+    cat(resp, cap, mac ? "present" : "absent");
+    cat(resp, cap, "\n");
+    note("[    -    ] N qeaf: persist status read (no partition write)");
+    g_result = 1;
+#else
+    (void)resp;
+    (void)cap;
+    cat(resp, cap, "persist: unavailable on host build\n");
+    g_result = -38;
+#endif
+}
+
+static void do_persist_restore(struct fat16_volume *vol, char *resp, int cap) {
+#ifdef __linux__
+    struct fat16_file file;
+    const uint8_t *chunk = NULL;
+    size_t written = 0;
+    unsigned runs = 0;
+    int n, rc, remount;
+
+    if (fat16_file_open(vol, "PERSIST.IMG", &file) < 0) {
+        cat(resp, cap, "persist: REFUSED - no PERSIST.IMG on the drive\n");
+        note("[    -    ] E qeaf: persist refused, PERSIST.IMG is missing");
+        g_result = -1;
+        return;
+    }
+    if (file.size != P74_SIZE) {
+        cat(resp, cap, "persist: REFUSED - PERSIST.IMG is ");
+        cat_u(resp, cap, (unsigned)file.size);
+        cat(resp, cap, " bytes, p74 is ");
+        cat_u(resp, cap, (unsigned)P74_SIZE);
+        cat(resp, cap, " (exact size required)\n");
+        note("[    -    ] E qeaf: persist refused, image size != p74");
+        g_result = -2;
+        return;
+    }
+    n = fat16_file_next(vol, &file, &chunk);
+    if (n < (int)P74_EXT4_MAGIC_OFF + 2 ||
+        chunk[P74_EXT4_MAGIC_OFF] != 0x53 ||
+        chunk[P74_EXT4_MAGIC_OFF + 1] != 0xEF) {
+        cat(resp, cap, "persist: REFUSED - no ext4 superblock magic at 0x438\n");
+        note("[    -    ] E qeaf: persist refused, not an ext4 image");
+        g_result = -2;
+        return;
+    }
+    note("[    -    ] N qeaf: lun: running persist restore PERSIST.IMG confirm");
+    /* The live mount is read-only, but detaching it means no reader can see a
+     * half-written filesystem and no cached page can shadow the new bytes. */
+    (void)umount2("/mnt/vendor/persist", MNT_DETACH);
+    if (fat16_file_open(vol, "PERSIST.IMG", &file) < 0) {
+        cat(resp, cap, "persist: FAILED - PERSIST.IMG vanished before write\n");
+        note("[    -    ] E qeaf: persist: PERSIST.IMG vanished before write");
+        g_result = -3;
+        return;
+    }
+    while ((n = fat16_file_next(vol, &file, &chunk)) > 0) {
+        rc = sysio_block_write_at(P74_PATH, written, chunk, (size_t)n);
+        if (rc != 0) {
+            cat(resp, cap, "persist: FAILED - p74 write returned an error (errno ");
+            cat_u(resp, cap, (unsigned)(sysio_last_errno() < 0
+                                        ? -sysio_last_errno()
+                                        : sysio_last_errno()));
+            cat(resp, cap, ")\n");
+            note("[    -    ] E qeaf: persist: p74 write failed");
+            g_result = -3;
+            return;
+        }
+        written += (size_t)n;
+        runs++;
+    }
+    if (n < 0 || written != file.size) {
+        cat(resp, cap, "persist: FAILED - PERSIST.IMG chain broke mid-write\n");
+        note("[    -    ] E qeaf: persist: cluster chain ended early");
+        g_result = -3;
+        return;
+    }
+    /* Second walk over the same chain: read p74 back and compare. */
+    if (fat16_file_open(vol, "PERSIST.IMG", &file) < 0) {
+        cat(resp, cap, "persist: FAILED - PERSIST.IMG vanished before verify\n");
+        note("[    -    ] E qeaf: persist: PERSIST.IMG vanished before verify");
+        g_result = -4;
+        return;
+    }
+    written = 0;
+    while ((n = fat16_file_next(vol, &file, &chunk)) > 0) {
+        if (persist_verify_run(written, chunk, (size_t)n) != 0) {
+            cat(resp, cap, "persist: FAILED - p74 readback did not match\n");
+            note("[    -    ] E qeaf: persist: readback mismatch");
+            g_result = -4;
+            return;
+        }
+        written += (size_t)n;
+    }
+    if (n < 0 || written != file.size) {
+        cat(resp, cap, "persist: FAILED - p74 readback did not match\n");
+        note("[    -    ] E qeaf: persist: readback mismatch");
+        g_result = -4;
+        return;
+    }
+    remount = mount(P74_PATH, "/mnt/vendor/persist", "ext4", MS_RDONLY, "");
+    cat(resp, cap, "persist: written and verified byte for byte\n");
+    if (remount != 0)
+        cat(resp, cap, "persist: remount failed - reboot to use p74 again\n");
+    {
+        char line[180];
+        line[0] = '\0';
+        cat(line, sizeof(line),
+            "[    -    ] N qeaf: lun: verified - p74 and PERSIST.IMG agree "
+            "byte for byte over ");
+        cat_u(line, sizeof(line), (unsigned)file.size);
+        cat(line, sizeof(line), " bytes in ");
+        cat_u(line, sizeof(line), runs);
+        cat(line, sizeof(line), " cluster runs");
+        note(line);
+    }
+    g_result = 1;
+#else
+    (void)vol;
+    (void)resp;
+    (void)cap;
+    cat(resp, cap, "persist: unavailable on host build\n");
+    g_result = -38;
+#endif
 }
 
 /* ---- reset evidence (read-only) -------------------------------------------
@@ -742,6 +1276,20 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
             else cat(resp, cap, "caps: registry empty\n");
             note("[    -    ] N qeaf: caps census reported");
             g_result = 1;
+        } else if (eq(line, "drivers")) {
+            char dbuf[4096];
+            int n = vio_drivers_refresh();
+            if(n < 0) {
+                cat(resp, cap, "drivers: Linux provider probe unavailable\n");
+                g_result = -5;
+            }
+            else {
+                int written = vio_drivers_report(dbuf, (int)sizeof(dbuf));
+                if(written > 0) cat(resp, cap, dbuf);
+                else cat(resp, cap, "drivers: registry empty\n");
+                g_result = 1;
+            }
+            note("[    -    ] N qeaf: drivers registry reported");
         } else if (eq(line, "diag")) {
             dump_device_diag(resp, cap);
         } else if (eq(line, "cam") || starts(line, "cam ")) {
@@ -798,6 +1346,7 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 if (rc == 0) {
                     vqeaf_cap_set("camera", VQEAF_CAP_READY, 1u,
                                   (int32_t)frame.bytes_used);
+                    vio_drivers_mark_camera_ready(1);
                     cat(resp, cap, "frame ");
                     cat_u(resp, cap, frame.width);
                     cat(resp, cap, "x");
@@ -836,6 +1385,38 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
             cat(resp, cap, "; control_lun=QEAFRESCUE");
             if (g_status != NULL) g_status(resp, cap);
             cat(resp, cap, "\n");
+        } else if (starts(line, "bt ") || eq(line, "bt")) {
+            /* Read-only truth about the WCN3990 Bluetooth path. Nothing here
+             * switches a rail or opens a HCI channel: the stock kernel owns
+             * the SLIMbus controller, and a fake open would be a fake driver. */
+            if (eq(line, "bt diag")) {
+                char bbuf[1024];
+                vio_bt_diag(bbuf, (int)sizeof(bbuf));
+                cat(resp, cap, bbuf);
+            } else if (eq(line, "bt fw") || eq(line, "bt firmware")) {
+                char bbuf[512];
+                vio_bt_firmware_report(bbuf, (int)sizeof(bbuf));
+                cat(resp, cap, bbuf);
+            } else if (eq(line, "bt up")) {
+                cat(resp, cap,
+                    "bt up: disabled on the Linux-core PID 1; Bluetooth belongs "
+                    "to the kernel and QEAF service\n");
+                cat(resp, cap, "bt up: ready=0; no rail or HCI transaction attempted\n");
+            } else if (eq(line, "bt") || eq(line, "bt state")) {
+                char bbuf[768];
+                vio_bt_report(bbuf, (int)sizeof(bbuf));
+                cat(resp, cap, bbuf);
+            } else {
+                cat(resp, cap, "bt: unknown sub (state|diag|fw|up)\n");
+            }
+            note("[    -    ] N qeaf: bluetooth report answered");
+            g_result = 1;
+        } else if (eq(line, "slim") || starts(line, "slim ")) {
+            char sbuf[512];
+            vio_bt_slim_report(sbuf, (int)sizeof(sbuf));
+            cat(resp, cap, sbuf);
+            note("[    -    ] N qeaf: Linux slimbus evidence answered");
+            g_result = 1;
         } else if (starts(line, "wifi ") || eq(line, "wifi")) {
             int sub = 0; /* 0 = summary, 1 = net, 2 = dmesg, 3 = sdio, 4 = mod, 5 = fw */
             if (eq(line, "wifi off")) {
@@ -1500,6 +2081,22 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
             } else {
                 cat(resp, cap, "rescue: delete refused (file missing?)\n");
             }
+        } else if (eq(line, "dump boot")) {
+            do_dump_boot(vol, resp, cap);
+        } else if (eq(line, "dump persist")) {
+            do_dump_persist(vol, resp, cap);
+        } else if (starts(line, "dump")) {
+            cat(resp, cap, "dump: REFUSED - only 'dump boot' is accepted\n");
+            note("[    -    ] E qeaf: refused unsafe dump verb");
+        } else if (eq(line, "persist status")) {
+            do_persist_status(resp, cap);
+        } else if (eq(line, "persist restore PERSIST.IMG confirm")) {
+            do_persist_restore(vol, resp, cap);
+        } else if (starts(line, "persist")) {
+            cat(resp, cap,
+                "persist: REFUSED - only 'persist status' and "
+                "'persist restore PERSIST.IMG confirm' are accepted\n");
+            note("[    -    ] E qeaf: persist refused, unsafe verb");
         } else if (eq(line, "flash recovery BOOTIMG.BIN confirm")) {
             do_flash(vol, resp, cap);
         } else if (starts(line, "flash")) {
@@ -1613,8 +2210,20 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                 }
             }
         } else if (starts(line, "term ")) {
-            vqeaf_terminal_run(line + 5);
-            cat(resp, cap, "term: executed against live framework state\n");
+            if (g_term_hook == NULL) {
+                /* Single-threaded host render: the framework state and the
+                 * LVGL objects share this thread. */
+                vqeaf_terminal_run(line + 5);
+                cat(resp, cap, "term: executed against live framework state\n");
+            } else {
+                int rc = g_term_hook(line + 5);
+                if (rc == 1)
+                    cat(resp, cap, "term: queued for the UI thread\n");
+                else if (rc == 0)
+                    cat(resp, cap, "term: executed against live framework state\n");
+                else
+                    cat(resp, cap, "term: UI down, command dropped\n");
+            }
             g_result = 1;
         } else if (starts(line, "defaults ")) {
             int role = -1;
@@ -1678,6 +2287,78 @@ static void run_verbs(struct fat16_volume *vol, const char *cmd, int len,
                     g_result = -8;
                 }
             }
+        } else if (starts(line, "touch") || eq(line, "touch")) {
+            /* `touch [seconds]`: count REAL evdev events (finger on the glass
+             * raises the touch IRQ) for up to 10 s on the worker thread. Only
+             * reads /dev/input/event*; never injects, never touches LVGL. */
+#ifdef __linux__
+            {
+                int seconds = 3;
+                sscanf(line + 5, "%d", &seconds);
+                if (seconds < 1) seconds = 1;
+                if (seconds > 10) seconds = 10;
+                int total = 0, syn = 0, fingers = 0;
+                int x = -1, y = -1, last_x = -1, last_y = -1;
+                int fd = open("/dev/input/event1", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+                if (fd < 0) {
+                    cat(resp, cap, "touch: cannot open /dev/input/event1\n");
+                    cat_u(resp, cap, (unsigned)(-fd == 0 ? 9 : -fd));
+                    cat(resp, cap, "\n");
+                    g_result = -3;
+                } else {
+                    struct qeaf_evdev_event ev;
+                    long deadline = seconds * 1000;
+                    long waited = 0;
+                    while (waited < deadline) {
+                        /* 50 ms slices: keep the worker responsive, and an
+                         * absolute-touch panel like the NVTC emits EV_ABS
+                         * before SYN every contact. */
+                        ssize_t r = read(fd, &ev, sizeof(ev));
+                        if (r == (ssize_t)sizeof(ev)) {
+                            total++;
+                            if (ev.type == QEAF_EV_SYN) {
+                                syn++;
+                                if (x >= 0 && y >= 0) {
+                                    last_x = x; last_y = y; fingers++;
+                                    x = y = -1;
+                                }
+                            } else if (ev.type == QEAF_EV_ABS && ev.code == QEAF_ABS_MT_POSITION_X) {
+                                x = ev.value;
+                            } else if (ev.type == QEAF_EV_ABS && ev.code == QEAF_ABS_MT_POSITION_Y) {
+                                y = ev.value;
+                            }
+                            waited = 0;   /* activity extends the window */
+                            continue;
+                        }
+                        /* idle slice */
+                        usleep(50000);
+                        waited += 50;
+                    }
+                    close(fd);
+                    cat(resp, cap, "touch: ");
+                    cat_u(resp, cap, (unsigned)total);
+                    cat(resp, cap, " evdev events, ");
+                    cat_u(resp, cap, (unsigned)syn);
+                    cat(resp, cap, " SYN frames, ");
+                    cat_u(resp, cap, (unsigned)fingers);
+                    cat(resp, cap, " contacts in ");
+                    cat_u(resp, cap, (unsigned)seconds);
+                    cat(resp, cap, " s\n");
+                    if (fingers > 0) {
+                        cat(resp, cap, "touch: last panel coord ");
+                        cat_u(resp, cap, (unsigned)last_x);
+                        cat(resp, cap, ",");
+                        cat_u(resp, cap, (unsigned)last_y);
+                        cat(resp, cap, " (panel 1080x2340)\n");
+                    }
+                    note("[    -    ] N qeaf: touch IRQ probe answered");
+                    g_result = 1;
+                }
+            }
+#else
+            (void)line;
+            cat(resp, cap, "touch: available on the device only\n");
+#endif
         } else if (eq(line, "power")) {
             if (g_power == NULL) {
                 cat(resp, cap, "power: unavailable (no key hook)\n");

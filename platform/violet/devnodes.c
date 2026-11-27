@@ -11,6 +11,7 @@
 #define _GNU_SOURCE
 
 #include "violet.h"
+#include "boot_journal.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -71,6 +72,9 @@ void vio_log(const char *fmt, ...)
     if((size_t)length >= sizeof(text)) length = (int)sizeof(text) - 1;
 
     vio_append(text);
+    /* The p77 live trace is the only copy of this line that survives a SoC
+     * reset; it does nothing unless `wifi up` armed it. */
+    vio_journal_trace_raw(text);
 
     fputs(text, stderr);
     fputc('\n', stderr);
@@ -387,6 +391,27 @@ int vio_wait_for_path(const char *path, unsigned timeout_ms)
     }
 }
 
+static int reopen_console_stdio(void)
+{
+    int fd = open("/dev/console", O_RDWR | O_NOCTTY);
+    if(fd < 0) return -1;
+
+    for(int target = STDIN_FILENO; target <= STDERR_FILENO; target++) {
+        if(dup2(fd, target) < 0) {
+            int saved = errno;
+            if(fd > STDERR_FILENO) close(fd);
+            errno = saved;
+            return -1;
+        }
+    }
+    if(fd > STDERR_FILENO) close(fd);
+
+    clearerr(stdin);
+    clearerr(stdout);
+    clearerr(stderr);
+    return 0;
+}
+
 int vio_setup_environment(void)
 {
     vio_mkdir_p("/proc", 0755);
@@ -409,7 +434,16 @@ int vio_setup_environment(void)
      * mkdir inside sysfs, so mounting under /config is the portable choice. */
     vio_mount_fs("configfs", "/config", "configfs", 0, "");
 
+    /* The initramfs intentionally has no /dev nodes. The kernel therefore
+     * starts PID 1 without a usable stdio console. Re-create nodes after the
+     * tmpfs mount, then explicitly attach all three standard descriptors;
+     * otherwise stderr logs silently disappear even though PID 1 is alive. */
     vio_create_devnodes();
+    if(reopen_console_stdio() == 0)
+        vio_log("console: stdin/stdout/stderr attached to /dev/console");
+    else
+        vio_log("console: /dev/console open failed errno=%d; kmsg/rescue log fallback",
+                errno);
     return 0;
 }
 

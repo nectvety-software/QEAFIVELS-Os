@@ -1,13 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
-SRC=/mnt/d/QEAFIVELS-Os/platform/violet/device-tree/sources/guaiyihu-sm6150
-BUILD=/mnt/d/QEAFIVELS-Os/platform/violet/device-tree/build
-OUT=$BUILD/violet-reference.dtb
-mkdir -p "$BUILD"
-cpp -E -P -undef -D__DTS__ -nostdinc -x assembler-with-cpp \
-  -I "$SRC/include" \
-  -I "$SRC/arch/arm64/boot/dts" \
-  -I "$SRC/arch/arm64/boot/dts/qcom" \
-  "$SRC/arch/arm64/boot/dts/qcom/sm6150.dts" -o "$BUILD/sm6150.pre.dts"
-dtc -I dts -O dtb -@ -q -i "$SRC/include" -o "$OUT" "$BUILD/sm6150.pre.dts"
-ls -l "$OUT"
+echo "ERROR: generic sm6150.dts is not a Violet board DTB." >&2
+echo "This legacy target is disabled to prevent packaging a SoC reference tree." >&2
+echo "Use scripts/build_violet_board_dtb.sh; its output is reference-only until kernel ABI matches." >&2
+exit 78

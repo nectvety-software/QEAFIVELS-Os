@@ -133,15 +133,17 @@ def build_fixtures(fixdir):
     parts = split_module(hello)
     xmani = manifest("x86_64", ["ui.display"], "org.vqeaf.sim-variant", "Sim Variant",
                      abi=5)
-    stub = qen.build_stub("x86_64")
+    stub = qen.build_stub("x86_64", min_api=5, abi_version=5)
     badimport = qen.build_module(parts["code"], parts["rodata"], parts["data"],
                                  parts["bss"], parts["exports"],
-                                 imports=["unknown.import"], arch="x86_64",
-                                 min_api=2, entry_offset=parts["entry"])
+                                 imports=[qen.IMPORT_BY_ABI[5], "unknown.import"],
+                                 arch="x86_64",
+                                 min_api=5, abi_version=5,
+                                 entry_offset=parts["entry"])
     missingexport = qen.build_module(parts["code"], parts["rodata"], parts["data"],
                                      parts["bss"],
                                      [e for e in parts["exports"] if e[0] != "destroy"],
-                                     arch="x86_64", min_api=2,
+                                     arch="x86_64", min_api=5, abi_version=5,
                                      entry_offset=parts["entry"])
     assemble(fixdir / "stub.qeapp", xmani, stub)
     assemble(fixdir / "badimport.qeapp", xmani, badimport)

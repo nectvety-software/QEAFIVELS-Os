@@ -4,6 +4,45 @@ Trạng thái: **chưa có `wlan0`**. Modem boot thật, nhưng dịch vụ WLFW
 không đăng ký nên firmware WLAN chưa sẵn sàng. Không có dòng nào báo "đã kết
 nối" khi chưa có bằng chứng.
 
+## Native WLFW client và gate chống readiness giả (2026-11-24)
+
+- Tham khảo người dùng đã được audit: `btfm_slim_wcn3990.c` là driver Bluetooth
+  GPL-2.0-only, `LICENCE.agere` thuộc firmware Agere Bluetooth; không áp dụng cho
+  WCN3990 Wi-Fi. Không copy mã nguồn GPL/vendor. Client mới là implementation MIT
+  độc lập từ wire format/schema WLFW công khai.
+- `kernel/drivers/wifi/wcn3990/wlfw_client.c` có register, MSA info/ready,
+  CAP, BDF/CAL download, CAL report/update, MAC và wait FW-ready. Mọi response
+  phải khớp transaction/message ID và có result TLV hợp lệ; segment dữ liệu tối
+  đa 6144 B, CAL report tối đa 5 ID, TLV méo hoặc timeout đều fail-closed.
+- `qmi_service.c` nay chuyển indication thật cho handler và có
+  `vqeaf_qmi_wait_indication()`; không còn âm thầm bỏ indication khi chờ response.
+- `firmware_boot.c` thêm state `WLFW_READY`: service discovery không còn tự chuyển
+  thành `WLAN_READY`. Chỉ callback handshake thật trả 0 mới qua gate. `FW_READY`
+  chỉ là bằng chứng firmware-control, không phải BDF/CAL/HTC/WMI/netdev/RF.
+- Kiểm chứng host: `run_hal_tests.py` PASS đủ sáu dòng `ALL OK`; ba wrapper Python
+  PASS 8/8; `run_violet_platform_tests.py` PASS; AArch64 kernel ELF 711.320 B.
+- **Giới hạn:** client native chưa nối backend `AF_QIPCRTR` thật và chưa chạy trên
+  Violet. Không có bằng chứng phần cứng mới, không nạp/flash, không ghi partition.
+  Trạng thái máy gần nhất vẫn: WLFW `0x45` absent, `wlan0` absent, WLAN PD lỗi.
+
+## CNSS không còn bị chặn bởi MAC p74 (2026-11-24)
+
+- `vio_host_services_start_wlan()` giờ chạy đúng thứ tự Binder → `cnss-daemon` thật →
+  MAC/calibration chỉ cho fallback `wlfwd`. CNSS thật không nhận MAC qua argv và có thể
+  tự truy vấn DMS; vì vậy `wlan_mac.bin` vắng mặt không còn khiến QEAF bỏ qua CNSS.
+- Nếu CNSS exec thành công, nhánh đó return và không chạy WLFW giả. Nếu CNSS không
+  khởi động được, MAC p74 thiếu/hỏng chỉ chặn fallback `wlfwd`; không tạo MAC, calibration,
+  QRTR server hay trạng thái kết nối giả.
+- Tách `regdbpath` khỏi `macpath`, sửa log cũ in nhầm đường dẫn `regdb.bin` thành nguồn MAC.
+- Kiểm chứng host: `tests.test_violet_wifi_bringup` 15/15 PASS; bộ `tests/wifi` 24/24 PASS;
+  build PID1, package p77, validate boot image và audit rescue channel PASS. Ảnh chưa nạp.
+- Backend native bổ sung giới hạn depth FDT 32 cấp, chặn IRQ legacy không liên tục và
+  regression DTB sâu/IRQ rải rác; strict `-Werror` + UBSan PASS. Đây vẫn là bằng chứng host,
+  không phải bằng chứng Wi-Fi vật lý.
+- Trạng thái vật lý **không đổi**: chưa có `wlan0`, chưa có WLFW QMI `0x45`; p74 vẫn
+  không có MAC/calibration thật, WLAN-PD từng báo `error=45`, modem vẫn có thể reset SoC.
+  Chưa có bằng chứng máy thật cho bản sửa này và không ghi p74/userdata/misc.
+
 ## Binder: đã chứng minh dùng được (2026-11-23)
 
 Report `hostsvc binder:` trước đây in `absent` trơn vì `ensure_binder_node()` chỉ chạy

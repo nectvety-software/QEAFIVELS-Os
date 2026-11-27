@@ -13,6 +13,48 @@ int vqeaf_a64_sched_active(void) { return 0; }
 uint64_t vqeaf_a64_sched_switch(uint64_t frame) { return frame; }
 void vqeaf_a64_timer_external_tick(void) { }
 
+static void test_abl_display_discovery(const vqeaf_violet_boot_info_t *info)
+{
+    const vqeaf_violet_display_info_t *d = &info->display;
+    assert(info->display_discovery_status == 0);
+    assert(d->found && d->mdss_found && d->dpu_found && d->dsi_found &&
+           d->phy_found && d->dispcc_found && d->panel_found);
+    assert(d->mdss_base == 0x0ae00000ull && d->mdss_size == 0x1000u);
+    assert(d->dpu_base == 0x0ae01000ull && d->dpu_size == 0x8f000u);
+    assert(d->dpu_vbif_base == 0x0aeb0000ull && d->dpu_vbif_size == 0x2008u);
+    assert(d->dsi_base == 0x0ae94000ull && d->dsi_size == 0x400u);
+    assert(d->phy_base == 0x0ae94400ull && d->phy_size == 0x100u);
+    assert(d->phy_lane_base == 0x0ae94500ull && d->phy_lane_size == 0x300u);
+    assert(d->phy_pll_base == 0x0ae94800ull && d->phy_pll_size == 0x124u);
+    assert(d->dispcc_base == 0x0af00000ull && d->dispcc_size == 0x20000u);
+    assert(d->mdss_irq == 115u);
+    assert(d->dpu_irq_controller == 0xe9u && d->dpu_irq_index == 0u);
+    assert(d->dsi_irq_controller == 0xe9u && d->dsi_irq_index == 4u);
+    assert(d->dsi_clock_count == 6u);
+    assert(d->dsi_clocks[0].provider_phandle == 0xe7u && d->dsi_clocks[0].id == 2u);
+    assert(d->dsi_clocks[2].id == 24u && d->dsi_clocks[3].id == 18u);
+    assert(d->dsi_clocks[4].id == 0u);
+    assert(d->dsi_clocks[5].provider_phandle == 0x37u && d->dsi_clocks[5].id == 30u);
+    assert(d->dsi_assigned_clock_count == 2u);
+    assert(d->dsi_assigned_clocks[0].id == 3u && d->dsi_assigned_clocks[1].id == 25u);
+    assert(d->dsi_assigned_parent_count == 2u);
+    assert(d->dsi_assigned_parents[0].provider_phandle == 0xefu &&
+           d->dsi_assigned_parents[0].id == 0u);
+    assert(d->dsi_assigned_parents[1].provider_phandle == 0xefu &&
+           d->dsi_assigned_parents[1].id == 1u);
+    assert(d->lane_count == 4u && d->lanes[0] == 1u && d->lanes[1] == 2u &&
+           d->lanes[2] == 3u && d->lanes[3] == 0u);
+    assert(d->reset_phandle == 0x41u && d->reset_gpio == 91u);
+    assert(d->backlight_phandle == 0xf4u);
+    assert(d->supply_count == 5u);
+    assert(d->supplies[0].phandle == 0xf1u);
+    assert(d->supplies[1].phandle == 0xf6u);
+    assert(d->supplies[2].phandle == 0x43u);
+    assert(d->supplies[3].phandle == 0x42u && d->supplies[4].phandle == 0x42u);
+    assert(d->panel_timing_present == 0u);
+    assert(d->panel_command_data_present == 0u);
+}
+
 static void test_memory_exclusions(void)
 {
     vqeaf_violet_boot_info_t info = {0};
@@ -115,6 +157,7 @@ int main(int argc, char **argv)
     assert(info.boot_handoff_verified == 0u);
     assert(info.memory_map_valid == 0u);
     assert(info.mmu_prerequisite_status != 0);
+    if (expected_board) test_abl_display_discovery(&info);
 
     /* A live read-only dump can identify the board, but cannot prove that
      * this DTB was handed to the running kernel by the active boot chain. */

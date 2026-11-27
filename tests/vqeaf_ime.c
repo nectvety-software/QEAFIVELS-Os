@@ -23,18 +23,30 @@
 #include "lvgl.h"
 #include "vqeaf_theme.h"
 #include "vqeaf_ime.h"
+#include "vqeaf_fonts.h"
+#include <vqeaf/clipboard.h>
 
 /* Test doubles for the page-level keyboard-theme registry seam. */
 int vqeaf_pages_kb_theme_count(void) { return 1; }
 int vqeaf_pages_kb_theme_applied(void) { return 0; }
 uint32_t vqeaf_pages_kb_theme_key_color(int index) { (void)index; return 0x2A2D34; }
+uint32_t vqeaf_pages_kb_theme_bg_color(int index) { (void)index; return 0x1A1D1F; }
+uint32_t vqeaf_pages_kb_theme_accent_color(int index) { (void)index; return 0x9AA0A6; }
 void vqeaf_pages_kb_theme_style(lv_obj_t *keyboard) { (void)keyboard; }
+void vqeaf_pages_terminal_ime_state(int visible) { (void)visible; }
 
 /* Test doubles for platform haptics: host gate has no vibrator device. */
 int vio_haptics_available(void) { return 0; }
 int vio_haptic_pulse(int ms) { (void)ms; return 0; }
 
 static int failures;
+static int ready_events;
+
+static void ready_event_cb(lv_event_t *event)
+{
+    (void)event;
+    ready_events++;
+}
 
 static void expect(const char *name, int got, int want)
 {
@@ -98,37 +110,45 @@ static void metrics_sweep(void)
     expect("phone portrait sw_dp", m.sw_dp, 360);
     expect("phone portrait not landscape", m.landscape, 0);
     expect("phone portrait no number row", m.number_row, 0);
-    expect("phone portrait H == raw 428 (27% floor)", m.height, 428);
-    expect("phone portrait key font 24", m.key_font, 24);
+    expect("phone portrait H == roomy raw 552", m.height, 552);
+    expect("phone portrait row height 104", m.row_h, 104);
+    expect("phone portrait key font 28", m.key_font, 28);
+    expect("phone portrait row gap 12", m.row_gap, 12);
+    expect("phone portrait column gap 12", m.column_gap, 12);
+    expect("phone portrait window padding 12", m.padding, 12);
     check_caps("phone-portrait", 720, 1560, 320);
 
     /* Phone landscape 1560x720 -> number row from orientation, 55% cap. */
     vqeaf_ime_metrics(1560, 720, 320, VQEAF_IME_MODE_NORMAL, &m);
     expect("phone landscape is landscape", m.landscape, 1);
     expect("phone landscape adds number row", m.number_row, 1);
-    expect("phone landscape H == 55% cap (396)", m.height, 396);
-    expect("phone landscape key font 20", m.key_font, 20);
+    expect("phone landscape H == 68% cap (489)", m.height, 489);
+    expect("phone landscape row height 68", m.row_h, 68);
+    expect("phone landscape key font 24", m.key_font, 24);
     check_caps("phone-landscape", 1560, 720, 320);
 
     /* 7" tablet sw600dp: number row from width, taller 56dp rows. */
     vqeaf_ime_metrics(1200, 1920, 320, VQEAF_IME_MODE_NORMAL, &m);
     expect("tablet7 sw_dp == 600", m.sw_dp, 600);
     expect("tablet7 adds number row", m.number_row, 1);
-    expect("tablet7 H == raw 552", m.height, 552);
+    expect("tablet7 H == roomy raw 708", m.height, 708);
+    expect("tablet7 key font 28", m.key_font, 28);
     check_caps("tablet7", 1200, 1920, 320);
 
     /* 10" tablet sw720dp+: 60dp rows. */
     vqeaf_ime_metrics(1600, 2560, 320, VQEAF_IME_MODE_NORMAL, &m);
     expect_true("tablet10 sw_dp >= 720", m.sw_dp >= 720);
     expect("tablet10 adds number row", m.number_row, 1);
-    expect("tablet10 H == 27% floor (691)", m.height, 691);
+    expect("tablet10 H == roomy raw 748", m.height, 748);
+    expect("tablet10 key font 34", m.key_font, 34);
     check_caps("tablet10", 1600, 2560, 320);
 
-    /* Narrow 21:9 fold 480x1080 -> sw240dp, raw height fits inside the caps. */
+    /* Narrow 21:9 fold 480x1080 -> sw240dp, capped without shrinking the face. */
     vqeaf_ime_metrics(480, 1080, 320, VQEAF_IME_MODE_NORMAL, &m);
     expect("fold sw_dp", m.sw_dp, 240);
     expect("fold no number row", m.number_row, 0);
     expect("fold H == 39% cap (421)", m.height, 421);
+    expect("fold key font 24", m.key_font, 24);
     check_caps("fold", 480, 1080, 320);
 
     /* Adaptive modes on the phone portrait geometry. */
@@ -158,7 +178,63 @@ static void metrics_sweep(void)
 
 /* ---- live window / insets / key engine ----------------------------------- */
 
-static lv_obj_t *grid_of(lv_obj_t *win) { return lv_obj_get_child(win, 0); }
+static lv_obj_t *grid_of(lv_obj_t *win) { (void)win; return vqeaf_ime_grid(); }
+
+static lv_obj_t *find_label(lv_obj_t *obj, const char *text)
+{
+    if(lv_obj_get_class(obj) == &lv_label_class &&
+       strcmp(lv_label_get_text(obj), text) == 0) return obj;
+    uint32_t count = lv_obj_get_child_count(obj);
+    for(uint32_t i = 0; i < count; i++) {
+        lv_obj_t *found = find_label(lv_obj_get_child(obj, i), text);
+        if(found != NULL) return found;
+    }
+    return NULL;
+}
+
+static uint32_t next_utf8(const char **cursor)
+{
+    const unsigned char *s = (const unsigned char *)*cursor;
+    uint32_t cp = *s++;
+    if(cp < 0x80) {
+        *cursor = (const char *)s;
+        return cp;
+    }
+    if((cp & 0xE0) == 0xC0) {
+        cp &= 0x1F;
+        for(int i = 0; i < 1; i++) cp = (cp << 6) | (*s++ & 0x3F);
+    } else if((cp & 0xF0) == 0xE0) {
+        cp &= 0x0F;
+        for(int i = 0; i < 2; i++) cp = (cp << 6) | (*s++ & 0x3F);
+    } else if((cp & 0xF8) == 0xF0) {
+        cp &= 0x07;
+        for(int i = 0; i < 3; i++) cp = (cp << 6) | (*s++ & 0x3F);
+    } else {
+        return 0;
+    }
+    *cursor = (const char *)s;
+    return cp;
+}
+
+static int emoji_label_ready(lv_obj_t *label, uint32_t *missing)
+{
+    if(label == NULL || lv_obj_get_class(label) != &lv_label_class ||
+       lv_obj_get_style_text_font(label, 0) != &vqeaf_emoji_28) {
+        *missing = 0;
+        return 0;
+    }
+    const char *text = lv_label_get_text(label);
+    while(*text != '\0') {
+        uint32_t cp = next_utf8(&text);
+        lv_font_glyph_dsc_t dsc;
+        if(cp == 0 || !lv_font_get_glyph_dsc(&vqeaf_emoji_28, &dsc, cp, 0) ||
+           dsc.box_w == 0 || dsc.box_h == 0 || dsc.gid.index == 0) {
+            *missing = cp;
+            return 0;
+        }
+    }
+    return 1;
+}
 
 static void window_gate(void)
 {
@@ -168,6 +244,7 @@ static void window_gate(void)
     lv_obj_t *ta = lv_textarea_create(content);
     lv_obj_set_size(ta, 400, 80);
     lv_textarea_set_one_line(ta, true);
+    lv_obj_add_event_cb(ta, ready_event_cb, LV_EVENT_READY, NULL);
     lv_obj_update_layout(screen);
     int base = lv_obj_get_height(content);
 
@@ -177,15 +254,38 @@ static void window_gate(void)
     lv_obj_update_layout(screen);
 
     expect_true("IME is visible after show", vqeaf_ime_visible());
+    const lv_font_t *editor_font = lv_obj_get_style_text_font(ta, 0);
+    lv_font_glyph_dsc_t editor_ascii;
+    lv_font_glyph_dsc_t editor_emoji;
+    expect_true("IME editor font keeps ordinary Latin glyphs",
+                lv_font_get_glyph_dsc(editor_font, &editor_ascii, 'q', 0) &&
+                editor_ascii.resolved_font != &vqeaf_emoji_28);
+    expect_true("IME editor font resolves inserted emoji through fallback",
+                lv_font_get_glyph_dsc(editor_font, &editor_emoji, 0x1F600, 0) &&
+                editor_emoji.resolved_font == &vqeaf_emoji_28);
     lv_obj_t *win = vqeaf_ime_window();
     expect_true("IME window exists on its own layer", win != NULL);
     expect_true("IME window lives on the top layer, not the app",
                lv_obj_get_parent(win) == lv_layer_top());
-    expect("IME height H == 428", vqeaf_ime_height(), 428);
-    expect("window height == H", lv_obj_get_height(win), 428);
-    expect("window slid up to y == h-H (1132)", lv_obj_get_y(win), 1132);
+    expect("IME height H == 552", vqeaf_ime_height(), 552);
+    expect("window height == H", lv_obj_get_height(win), 552);
+    expect("window slid up to y == h-H (1008)", lv_obj_get_y(win), 1008);
     expect("app content resized by H (adjustResize)", lv_obj_get_height(content),
-           base - 428);
+           base - 552);
+    /* A duplicate focus/click notification must not recapture the shrunken
+     * height as the new base or compound the keyboard inset. */
+    vqeaf_ime_show(ta, content);
+    step(50);
+    expect("duplicate show keeps the original resize inset",
+           lv_obj_get_height(content), base - 552);
+    expect("window uses the measured horizontal padding",
+           lv_obj_get_style_pad_left(win, 0), 12);
+    expect("window uses the measured vertical padding",
+           lv_obj_get_style_pad_top(win, 0), 12);
+    expect("suggestion strip uses the measured row gap",
+           lv_obj_get_style_pad_row(win, 0), 12);
+    expect("suggestion strip keeps the taller NuKey-style rail",
+           lv_obj_get_height(vqeaf_ime_suggestions()), 64);
 
     /* Weighted keys: row3 shift (weight 3) is wider than z (weight 2). */
     lv_obj_t *grid = grid_of(win);
@@ -196,13 +296,72 @@ static void window_gate(void)
     lv_obj_update_layout(win);
     expect_true("layout_weight: 1.5-weight key wider than 1-weight key",
                 lv_obj_get_width(shift) > lv_obj_get_width(zkey));
+    expect("normal keys use the roomy horizontal gap",
+           lv_obj_get_style_pad_column(lv_obj_get_child(grid, 0), 0), 12);
+    expect("normal rows use the roomy vertical gap",
+           lv_obj_get_style_pad_row(grid, 0), 12);
 
-    /* Key engine writes to the bound textarea (real input, not fake state). */
+    /* Text edits refresh suggestions without replacing the key grid. */
     lv_obj_t *qkey = lv_obj_get_child(lv_obj_get_child(grid, 0), 0);
+    lv_obj_t *wkey = lv_obj_get_child(lv_obj_get_child(grid, 0), 1);
+    expect("letter keys use the large rounded cap",
+           lv_obj_get_style_radius(qkey, 0), 20);
+    expect("letter keys carry a soft lower shadow",
+           lv_obj_get_style_shadow_width(qkey, 0), 6);
+    expect("Q key exposes its secondary number hint",
+           lv_obj_get_child_count(qkey), 2);
+    expect_true("Q key number hint is real text",
+                find_label(qkey, "1") != NULL);
+    lv_obj_t *del = lv_obj_get_child(row3, lv_obj_get_child_count(row3) - 1);
+    expect_true("normal letter labels use the larger bold 28 px face",
+                lv_obj_get_style_text_font(lv_obj_get_child(qkey, 0), 0) ==
+                &vqeaf_font_bold_28);
     lv_obj_send_event(qkey, LV_EVENT_CLICKED, NULL);
+    step(50);
+    lv_obj_update_layout(win);
     expect_true("clicking 'q' inserts into the bound textarea",
                 strcmp(lv_textarea_get_text(ta), "q") == 0);
-    lv_obj_t *del = lv_obj_get_child(row3, lv_obj_get_child_count(row3) - 1);
+    expect_true("character input keeps key objects stable",
+                qkey == lv_obj_get_child(lv_obj_get_child(grid, 0), 0) &&
+                wkey == lv_obj_get_child(lv_obj_get_child(grid, 0), 1));
+    lv_obj_send_event(wkey, LV_EVENT_CLICKED, NULL);
+    expect_true("consecutive character keys accumulate",
+                strcmp(lv_textarea_get_text(ta), "qw") == 0);
+    expect_true("unmatched prefix has no fabricated candidate",
+                find_label(vqeaf_ime_suggestions(), "—") != NULL);
+
+    lv_textarea_set_text(ta, "");
+    lv_textarea_set_cursor_pos(ta, 0);
+    {
+        const char *const letters[] = { "s", "h", "i", "p" };
+        for(size_t i = 0; i < sizeof(letters) / sizeof(letters[0]); i++) {
+            lv_obj_t *letter = find_label(grid, letters[i]);
+            if(letter != NULL)
+                lv_obj_send_event(lv_obj_get_parent(letter), LV_EVENT_CLICKED, NULL);
+        }
+    }
+    step(50);
+    expect_true("suggestions offer the current word prefix",
+                find_label(vqeaf_ime_suggestions(), "shipping") != NULL &&
+                find_label(vqeaf_ime_suggestions(), "ship") != NULL);
+    lv_textarea_set_text(ta, "ship today");
+    lv_textarea_set_cursor_pos(ta, 4);
+    lv_obj_send_event(qkey, LV_EVENT_CLICKED, NULL);
+    lv_obj_send_event(del, LV_EVENT_CLICKED, NULL);
+    step(50);
+    lv_obj_t *suggestion = find_label(vqeaf_ime_suggestions(), "shipping");
+    lv_obj_send_event(lv_obj_get_parent(suggestion), LV_EVENT_CLICKED, NULL);
+    step(50);
+    expect_true("candidate replaces only the current word",
+                strcmp(lv_textarea_get_text(ta), "shipping today") == 0);
+    expect("candidate places the cursor after the replacement",
+           lv_textarea_get_cursor_pos(ta), 8);
+    expect_true("candidate click keeps the IME visible", vqeaf_ime_visible());
+
+    lv_textarea_set_text(ta, "");
+    lv_textarea_set_cursor_pos(ta, 0);
+    lv_obj_send_event(qkey, LV_EVENT_CLICKED, NULL);
+    step(50);
     lv_obj_send_event(del, LV_EVENT_CLICKED, NULL);
     expect_true("backspace deletes the character",
                 strcmp(lv_textarea_get_text(ta), "") == 0);
@@ -212,10 +371,30 @@ static void window_gate(void)
     {
         lv_obj_t *bottom = lv_obj_get_child(grid, 3);
         lv_obj_t *emoji_toggle = lv_obj_get_child(bottom, 1);
+        lv_obj_t *toggle_label = lv_obj_get_child(emoji_toggle, 0);
+        uint32_t missing = 0;
+        expect_true("emoji toggle shows the real U+1F600 glyph",
+                    strcmp(lv_label_get_text(toggle_label), "\xF0\x9F\x98\x80") == 0);
+        expect_true("emoji toggle uses a resolvable emoji font glyph",
+                    emoji_label_ready(toggle_label, &missing));
         lv_obj_send_event(emoji_toggle, LV_EVENT_CLICKED, NULL);
         step(50); /* ime_rebuild_async runs deferred */
         grid = grid_of(win);
         expect("emoji panel has 4 rows", lv_obj_get_child_count(grid), 4);
+        int panel_ready = 1;
+        for(int row = 0; row < 3; row++) {
+            lv_obj_t *keys = lv_obj_get_child(grid, row);
+            for(int col = 0; col < 10; col++) {
+                lv_obj_t *label = lv_obj_get_child(lv_obj_get_child(keys, col), 0);
+                if(!emoji_label_ready(label, &missing)) {
+                    printf("FAIL emoji panel row %d key %d missing U+%04X\n",
+                           row, col, (unsigned)missing);
+                    failures++;
+                    panel_ready = 0;
+                }
+            }
+        }
+        if(panel_ready) printf("ok   all 30 visible emoji keys resolve real glyphs\n");
         lv_obj_t *emoji_key = lv_obj_get_child(lv_obj_get_child(grid, 0), 0);
         lv_obj_send_event(emoji_key, LV_EVENT_CLICKED, NULL);
         expect_true("clicking emoji inserts real UTF-8 (U+1F600)",
@@ -233,6 +412,34 @@ static void window_gate(void)
                lv_obj_get_child_count(grid), 4);
     }
 
+    /* Clipboard controls copy and paste UTF-8 text into the focused editor. */
+    {
+        lv_obj_t *copy = lv_obj_get_child(vqeaf_ime_suggestions(), 3);
+        lv_obj_t *paste = lv_obj_get_child(vqeaf_ime_suggestions(), 4);
+        lv_textarea_set_text(ta, "termux style clipboard");
+        lv_obj_send_event(copy, LV_EVENT_CLICKED, NULL);
+        lv_textarea_set_text(ta, "");
+        lv_obj_send_event(paste, LV_EVENT_CLICKED, NULL);
+        expect_true("IME COPY/PASTE round-trips clipboard text",
+                    strcmp(lv_textarea_get_text(ta),
+                           "termux style clipboard") == 0);
+        expect_true("clipboard actions keep the IME visible",
+                    vqeaf_ime_visible());
+    }
+
+    /* ENTER on a one-line command field must dispatch READY, not append an
+     * ignored newline; the terminal subscribes to this event to run a command. */
+    {
+        lv_obj_t *bottom = lv_obj_get_child(grid, 3);
+        lv_obj_t *enter = lv_obj_get_child(bottom,
+                                           lv_obj_get_child_count(bottom) - 1);
+        lv_textarea_set_text(ta, "help");
+        ready_events = 0;
+        lv_obj_send_event(enter, LV_EVENT_CLICKED, NULL);
+        expect("IME ENTER dispatches READY for one-line input", ready_events, 1);
+        expect_true("ENTER does not dismiss the keyboard", vqeaf_ime_visible());
+    }
+
     /* Split mode renders two independent half-grids. */
     vqeaf_ime_set_mode(VQEAF_IME_MODE_SPLIT);
     step(50);
@@ -242,6 +449,11 @@ static void window_gate(void)
     expect("left half keeps the 4 key rows",
            lv_obj_get_child_count(lv_obj_get_child(grid, 0)), 4);
     expect("split window still match_parent width", lv_obj_get_width(win), 720);
+    lv_obj_t *split_q = lv_obj_get_child(lv_obj_get_child(
+        lv_obj_get_child(grid, 0), 0), 0);
+    expect_true("split letter labels stay readable at bold 24 px",
+                lv_obj_get_style_text_font(lv_obj_get_child(split_q, 0), 0) ==
+                &vqeaf_font_bold_24);
 
     /* One-handed shrinks and anchors the window. */
     vqeaf_ime_set_mode(VQEAF_IME_MODE_ONE_HAND_RIGHT);
@@ -256,10 +468,38 @@ static void window_gate(void)
     lv_obj_update_layout(win);
     expect("floating window width 446", lv_obj_get_width(win), 446);
     expect("floating window centred (x137)", lv_obj_get_x(win), 137);
+    grid = grid_of(win);
+    lv_obj_t *floating_q = lv_obj_get_child(lv_obj_get_child(grid, 0), 0);
+    expect_true("floating letter labels stay readable at bold 24 px",
+                lv_obj_get_style_text_font(lv_obj_get_child(floating_q, 0), 0) ==
+                &vqeaf_font_bold_24);
 
-    /* Hide reverses the inset and tears the window down. */
+    /* Extract keeps its expanded editor and every key row on screen. */
+    vqeaf_ime_set_mode(VQEAF_IME_MODE_EXTRACT);
+    step(50);
+    lv_obj_update_layout(win);
+    expect("extract window covers the display", lv_obj_get_height(win), height);
+    expect("extract window has editor, suggestions and keys",
+           lv_obj_get_child_count(win), 3);
+    grid = grid_of(win);
+    lv_obj_t *extract_last = lv_obj_get_child(grid, lv_obj_get_child_count(grid) - 1);
+    expect_true("extract bottom key row stays inside the window",
+                lv_obj_get_y(grid) + lv_obj_get_y(extract_last) +
+                lv_obj_get_height(extract_last) <= height - 12);
+
+    /* Hide followed by an immediate refocus must cancel the old teardown
+     * animation and re-open without losing the original content height. */
     vqeaf_ime_set_mode(VQEAF_IME_MODE_NORMAL);
     step(50);
+    vqeaf_ime_hide();
+    step(80);
+    vqeaf_ime_show(ta, content);
+    step(400);
+    lv_obj_update_layout(screen);
+    expect_true("IME can reopen while hide animation is in flight",
+                vqeaf_ime_visible());
+    expect("rapid re-open restores the exact single inset",
+           lv_obj_get_height(content), base - 552);
     vqeaf_ime_hide();
     step(400);
     lv_obj_update_layout(screen);
@@ -267,6 +507,39 @@ static void window_gate(void)
     expect_true("IME window torn down", vqeaf_ime_window() == NULL);
     expect("app content restored to full height", lv_obj_get_height(content), base);
     expect("height reports 0 when hidden", vqeaf_ime_height(), 0);
+}
+
+static void extract_landscape_gate(void)
+{
+    width = 1560;
+    height = 720;
+    lv_display_set_resolution(display, width, height);
+    lv_obj_t *screen = lv_screen_active();
+    lv_obj_clean(screen);
+    lv_obj_set_size(screen, width, height);
+    lv_obj_t *content = vqeaf_obj(screen);
+    lv_obj_set_size(content, width, height);
+    lv_obj_t *ta = lv_textarea_create(content);
+    lv_obj_set_size(ta, 400, 80);
+
+    vqeaf_ime_set_mode(VQEAF_IME_MODE_EXTRACT);
+    vqeaf_ime_show(ta, content);
+    step(400);
+    lv_obj_t *win = vqeaf_ime_window();
+    lv_obj_update_layout(win);
+    expect("landscape extract window covers the display",
+           lv_obj_get_height(win), height);
+    expect("landscape extract keeps the number row and four letter rows",
+           lv_obj_get_child_count(grid_of(win)), 5);
+    lv_obj_t *grid = grid_of(win);
+    lv_obj_t *last = lv_obj_get_child(grid, lv_obj_get_child_count(grid) - 1);
+    expect_true("landscape extract bottom key row stays inside the window",
+                lv_obj_get_y(grid) + lv_obj_get_y(last) +
+                lv_obj_get_height(last) <= height - 12);
+
+    vqeaf_ime_set_mode(VQEAF_IME_MODE_NORMAL);
+    vqeaf_ime_hide();
+    step(400);
 }
 
 int main(void)
@@ -286,6 +559,7 @@ int main(void)
 
     metrics_sweep();
     window_gate();
+    extract_landscape_gate();
 
     free(framebuffer);
     if(failures) { printf("vqeaf_ime: %d FAILURES\n", failures); return 1; }

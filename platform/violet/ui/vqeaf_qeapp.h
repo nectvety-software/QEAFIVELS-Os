@@ -22,18 +22,20 @@ typedef struct {
     char name[64];
     char version[24];
     char message[512];
-    char package_file[128];   /* QEAFRESCUE path kept for native launch */
+    char package_file[128];   /* original QEAFRESCUE path, for diagnostics */
+    uint8_t *package_data;    /* exact verified bytes retained for catalog saves */
+    size_t package_size;
     int native;               /* 1 = format v2 native module (arm64) */
     int abi_version;          /* native module ABI from the manifest; 0 = script */
     uint32_t permissions;     /* immutable requested mask from manifest */
     uint32_t granted_permissions; /* persisted user grants, subset of requested */
-    uint8_t icon[64 * 64 * 4];   /* BGRA, from assets/icon.rgba */
+    uint8_t icon[64 * 64 * 4];   /* exact BGRA bytes from assets/icon.rgba */
+    uint8_t icon_render[64 * 64 * 4]; /* alpha-bled display copy */
     /* Per-app data blob, like /data/data/<id>: kept across an update, dropped
      * on uninstall and persisted in the p77 catalog. */
     uint8_t *data;
     size_t data_size;
     int has_icon;
-    lv_image_dsc_t icon_dsc;
 } vqeaf_qeapp_t;
 
 /* Package metadata read for the install confirmation screen. It carries the
@@ -50,16 +52,20 @@ typedef struct {
     uint32_t permissions;     /* qeaf_permission_t bits from the manifest */
     int has_icon;
     uint8_t icon[64 * 64 * 4];   /* BGRA, from assets/icon.rgba */
+    uint8_t package_hash[32];
 } vqeaf_qeapp_preview_t;
 
 /* Reads a .qeapp from the QEAFRESCUE volume, verifies its signature and
  * parses the declarative entry script. Returns 0 or -1 with a reason. */
 int vqeaf_qeapp_install(const char *file, char *error, size_t cap);
+int vqeaf_qeapp_install_verified(const char *file,
+                                 const uint8_t *expected_hash,
+                                 char *error, size_t cap);
 
 /* Verifies and parses a package without installing it, filling `out` with the
  * identity, declared permissions and launcher icon shown on the confirmation
  * screen. Returns 0 or -1 with a reason; the installed list is left untouched.
- * install() re-verifies the bytes, so a file swapped after preview is caught. */
+ * install_verified() accepts only the digest returned by this preview. */
 int vqeaf_qeapp_preview(const char *file, vqeaf_qeapp_preview_t *out,
                         char *error, size_t cap);
 
@@ -99,10 +105,19 @@ int vqeaf_qeapp_uninstall_pending(void);
 int vqeaf_qeapp_count(void);
 const vqeaf_qeapp_t *vqeaf_qeapp_at(int index);
 int vqeaf_qeapp_uninstall(int index);
+
+/* Backend adapter diagnostics. status uses vqeaf_qeapp_package_status_t;
+ * persisted is 1 only after a verified catalog save, 0 otherwise. */
+int vqeaf_qeapp_last_status(void);
+int vqeaf_qeapp_persisted(void);
+
 /* User grants are a subset of manifest-requested permissions and are persisted. */
 int vqeaf_qeapp_set_permission(int index, uint32_t bit, int granted);
 uint32_t vqeaf_qeapp_effective_permissions(int index);
 
+/* Builds a display-only 64x64 BGRA copy without changing the package icon. */
+int vqeaf_qeapp_icon_display_copy(uint8_t *out, size_t out_size,
+                                  const uint8_t *icon, size_t icon_size);
 /* The launcher page renders the app selected by this index. */
 const lv_image_dsc_t *vqeaf_qeapp_icon(int index);
 int vqeaf_qeapp_selected(void);

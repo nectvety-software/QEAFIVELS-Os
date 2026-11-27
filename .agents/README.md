@@ -19,13 +19,18 @@ This folder is the canonical development guidance for coding agents working in t
 - `sdk-testing`: CLI, reproducible builds and verification.
 - `violet-port`: build, package, flash and verify the aarch64 PID 1 on the Redmi Note 7 Pro (p77/recovery only, consent + two flash proofs).
 
-## Independent AArch64 kernel gate
-`kernel/arch/aarch64` is the freestanding ARM64 kernel (QEMU virt). Build with
-`python scripts/build_kernel_aarch64.py`, verify with
-`python scripts/test_kernel_aarch64.py` (boots QEMU, injects real keystrokes,
-asserts UART markers and a clean PSCI exit; includes the F4 credential/VFS
-checks). Emulator evidence only — it says nothing about Violet hardware, which
-is the separate `platform/violet` transport track.
+## Linux-core production path and reference gates
+The production Violet path is `platform/violet` on vendor Linux 4.14.215.
+Verify its existing package with `python scripts/package_violet.py --verify-only`;
+normal packaging writes a provenance manifest only after structural and rescue
+gates pass.
+
+`kernel/arch/aarch64` and the x86_64 `KERNEL.EFI` path are retained freestanding
+reference tracks. Build the AArch64 reference with
+`python scripts/build_kernel_aarch64.py` and verify it with
+`python scripts/test_kernel_aarch64.py` (QEMU virt, UART markers, clean PSCI
+exit, F4 credential/VFS checks). Those tests are emulator/reference evidence,
+not production Linux or Violet hardware evidence.
 
 ## Important
 These are implementation instructions, not claims that all listed OS features already exist. Follow `docs/STATUS.md` and mark hardware-dependent work as blocked until tested on supported hardware.

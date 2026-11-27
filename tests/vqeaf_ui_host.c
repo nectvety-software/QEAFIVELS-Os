@@ -22,6 +22,7 @@
 #include "vqeaf_theme.h"
 #include "vqeaf_ime.h"
 #include "vqeaf_pages.h"
+#include "vqeaf_components.h"
 #include "vqeaf_qeapp_device.h"
 #include "vqeaf_host_platform.h"
 
@@ -113,6 +114,31 @@ int vqeaf_camera_probe(char *buf, int cap)
  * native page renders its honest empty state instead of a fabricated frame.
  */
 #include "vqeaf_qeapp_device.h"
+
+int vqeaf_qeapp_device_session_start(const uint8_t *package, size_t size,
+                                     uint32_t effective_permissions,
+                                     char *error, size_t error_cap)
+{
+    (void)package; (void)size; (void)effective_permissions;
+    if(error != NULL && error_cap > 0) error[0] = '\0';
+    return 1;
+}
+
+int vqeaf_qeapp_device_session_send(const vqeaf_qeapp_device_input_t *event)
+{
+    (void)event;
+    return -1;
+}
+
+int vqeaf_qeapp_device_session_poll(char *error, size_t error_cap)
+{
+    if(error != NULL && error_cap > 0) error[0] = '\0';
+    return 0;
+}
+
+void vqeaf_qeapp_device_session_stop(void) {}
+int vqeaf_qeapp_device_session_active(void) { return 0; }
+uint32_t vqeaf_qeapp_device_session_frame_seq(void) { return 0u; }
 
 int vqeaf_qeapp_device_launch(const uint8_t *package, size_t size,
                               uint32_t effective_permissions,
@@ -222,6 +248,38 @@ static lv_obj_t *find_textarea(lv_obj_t *obj)
     return NULL;
 }
 
+static lv_obj_t *find_label(lv_obj_t *obj, const char *text)
+{
+    uint32_t i, n;
+    if(obj == NULL) return NULL;
+    if(lv_obj_check_type(obj, &lv_label_class) &&
+       strcmp(lv_label_get_text(obj), text) == 0)
+        return obj;
+    n = lv_obj_get_child_count(obj);
+    for(i = 0; i < n; i++) {
+        lv_obj_t *hit = find_label(lv_obj_get_child(obj, i), text);
+        if(hit != NULL) return hit;
+    }
+    return NULL;
+}
+
+static void scroll_to_top(lv_obj_t *obj)
+{
+    lv_obj_t *scroller = lv_obj_get_parent(obj);
+    lv_area_t area, viewport;
+
+    lv_obj_scroll_to_view_recursive(obj, LV_ANIM_OFF);
+    while(scroller != NULL && !lv_obj_has_flag(scroller, LV_OBJ_FLAG_SCROLLABLE))
+        scroller = lv_obj_get_parent(scroller);
+    if(scroller == NULL) return;
+    lv_obj_update_layout(lv_screen_active());
+    lv_obj_get_coords(obj, &area);
+    lv_obj_get_coords(scroller, &viewport);
+    lv_obj_scroll_by(scroller, 0,
+                     viewport.y1 + lv_obj_get_style_pad_top(scroller, 0) + 8 - area.y1,
+                     LV_ANIM_OFF);
+}
+
 /* Two profiles: a handset whose sysfs providers are absent, and one that
  * reports every value the shell can show. */
 static void configure_providers(int with_hardware)
@@ -307,8 +365,10 @@ int main(int argc, char **argv)
     } pages[] = {
         { VQEAF_PAGE_LOCK, "lock" },
         { VQEAF_PAGE_HOME, "home" },
+        { VQEAF_PAGE_HOME, "home-page-2" },
         { VQEAF_PAGE_APPS, "apps" },
         { VQEAF_PAGE_APPS_EDIT, "apps-edit" },
+        { VQEAF_PAGE_APPS_EDIT, "apps-edit-page-2" },
         { VQEAF_PAGE_CONTROL, "control" },
         { VQEAF_PAGE_SETTINGS, "settings" },
         { VQEAF_PAGE_STORAGE, "storage" },
@@ -328,6 +388,11 @@ int main(int argc, char **argv)
         { VQEAF_PAGE_NTFS_SEARCH, "ntfs-search" },
         { VQEAF_PAGE_TASK_MANAGER, "task-manager" },
         { VQEAF_PAGE_DISK_CLEANUP, "disk-cleanup" },
+        { VQEAF_PAGE_TERMINAL, "terminal" },
+        { VQEAF_PAGE_SECURITY, "security" },
+        { VQEAF_PAGE_WIFI_AUDIT, "wifi-audit" },
+        { VQEAF_PAGE_ADVISORIES, "advisories" },
+        { VQEAF_PAGE_M3, "m3" },
     };
     const char *out_dir = argc > 1 ? argv[1] : "build/screens/phone-ui";
     const char *profile = "unknown";
@@ -378,6 +443,11 @@ int main(int argc, char **argv)
             vqeaf_theme_set_liquid_glass(1);
     }
 
+    if(vqeaf_setup_complete() < 0) {
+        fprintf(stderr, "vqeaf-ui-host: cannot complete setup for normal pages\n");
+        free(framebuffer);
+        return 2;
+    }
     vqeaf_ui_create(display);
     vqeaf_ui_set_sync_list(host_sync_list);
     vqeaf_ui_set_sync_read(host_sync_read);
@@ -387,7 +457,9 @@ int main(int argc, char **argv)
         size_t bytes = (size_t)width * (size_t)height * sizeof(uint32_t);
 
         memset(framebuffer, 0, bytes);
+        vqeaf_pages_home_page_set(strstr(pages[i].name, "page-2") != NULL);
         vqeaf_ui_show(pages[i].page);
+        host_step(600);
         lv_obj_invalidate(lv_screen_active());
         lv_refr_now(display);
 
@@ -399,6 +471,150 @@ int main(int argc, char **argv)
             break;
         }
         printf("%s\n", path);
+    }
+
+    vqeaf_pages_home_page_set(0);
+
+    {
+        char path[512];
+        size_t bytes = (size_t)width * (size_t)height * sizeof(uint32_t);
+        lv_obj_t *label;
+        lv_obj_t *select;
+
+        memset(framebuffer, 0, bytes);
+        vqeaf_ui_show(VQEAF_PAGE_M3);
+        host_step(600);
+        label = find_label(lv_screen_active(),
+                           "Liquid Glass · nút, thẻ và chất liệu");
+        if(label == NULL) {
+            fprintf(stderr, "vqeaf-ui-host: Liquid Glass showcase not found\n");
+            return 1;
+        }
+        scroll_to_top(label);
+        host_step(200);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(display);
+        snprintf(path, sizeof(path), "%s/m3-liquid-%dx%d-%s.ppm",
+                 out_dir, width, height, profile);
+        if(write_ppm(path, width, height) != 0) rc = 1;
+        else printf("%s\n", path);
+
+        label = find_label(lv_screen_active(), "Select · một bề mặt lỏng");
+        if(label == NULL) {
+            fprintf(stderr, "vqeaf-ui-host: Liquid Glass select section not found\n");
+            return 1;
+        }
+        scroll_to_top(label);
+        host_step(200);
+        label = find_label(lv_screen_active(), "Tự động");
+        select = label != NULL ? lv_obj_get_parent(label) : NULL;
+        if(select == NULL) {
+            fprintf(stderr, "vqeaf-ui-host: Liquid Glass select not found\n");
+            return 1;
+        }
+        lv_obj_send_event(select, LV_EVENT_CLICKED, NULL);
+        host_step(300);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(display);
+        snprintf(path, sizeof(path), "%s/m3-liquid-overlay-%dx%d-%s.ppm",
+                 out_dir, width, height, profile);
+        if(write_ppm(path, width, height) != 0) rc = 1;
+        else printf("%s\n", path);
+        vqeaf_lg_overlay_close(select);
+        host_step(20);
+
+        label = find_label(lv_screen_active(),
+                           "Button Group · nhiều nút, một thân kính");
+        if(label == NULL) {
+            fprintf(stderr, "vqeaf-ui-host: Liquid Glass actions not found\n");
+            return 1;
+        }
+        scroll_to_top(label);
+        host_step(200);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(display);
+        snprintf(path, sizeof(path), "%s/m3-liquid-actions-%dx%d-%s.ppm",
+                 out_dir, width, height, profile);
+        if(write_ppm(path, width, height) != 0) rc = 1;
+        else printf("%s\n", path);
+    }
+
+    /* Search and open a real advisory through the card callback, rather than
+     * exposing a test-only selected-record setter. */
+    {
+        char path[512];
+        size_t bytes = (size_t)width * (size_t)height * sizeof(uint32_t);
+        lv_obj_t *label;
+        lv_obj_t *card;
+
+        memset(framebuffer, 0, bytes);
+        vqeaf_pages_advisory_query_set("eternalblue");
+        vqeaf_ui_show(VQEAF_PAGE_ADVISORIES);
+        host_step(600);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(display);
+        snprintf(path, sizeof(path), "%s/advisories-search-%dx%d-%s.ppm",
+                 out_dir, width, height, profile);
+        if(write_ppm(path, width, height) != 0) rc = 1;
+        else printf("%s\n", path);
+
+        label = find_label(lv_screen_active(), "CVE-2017-0144");
+        card = label != NULL ? lv_obj_get_parent(lv_obj_get_parent(label)) : NULL;
+        if(card == NULL) {
+            fprintf(stderr, "vqeaf-ui-host: EternalBlue advisory not found\n");
+            rc = 1;
+        }
+        else {
+            lv_obj_send_event(card, LV_EVENT_CLICKED, NULL);
+            host_step(600);
+            if(vqeaf_ui_page() != VQEAF_PAGE_ADVISORY_DETAIL) {
+                fprintf(stderr, "vqeaf-ui-host: advisory card did not open\n");
+                rc = 1;
+            }
+        }
+        memset(framebuffer, 0, bytes);
+        host_step(20);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(display);
+        snprintf(path, sizeof(path), "%s/advisory-detail-%dx%d-%s.ppm",
+                 out_dir, width, height, profile);
+        if(write_ppm(path, width, height) != 0) rc = 1;
+        else printf("%s\n", path);
+        vqeaf_pages_advisory_query_set("");
+    }
+
+    /* Control Center media visibility (host render only): inject the same
+     * session contract a real playback backend uses, then clear it on stop. */
+    {
+        char path[512];
+        size_t bytes = (size_t)width * (size_t)height * sizeof(uint32_t);
+        lv_obj_t *label;
+        lv_obj_t *card;
+
+        memset(framebuffer, 0, bytes);
+        vqeaf_ui_media_session_stop();
+        vqeaf_ui_show(VQEAF_PAGE_CONTROL);
+        host_step(600);
+        vqeaf_ui_media_session_start(VQEAF_UI_MEDIA_AUDIO,
+            "Bài hát kiểm thử", "WAV · 44,1 kHz");
+        host_step(600);
+        label = find_label(lv_screen_active(), "Bài hát kiểm thử");
+        card = label != NULL ? lv_obj_get_parent(lv_obj_get_parent(label)) : NULL;
+        if(card != NULL)
+            lv_obj_scroll_to_view_recursive(card, LV_ANIM_OFF);
+        host_step(600);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(display);
+
+        snprintf(path, sizeof(path), "%s/control-media-audio-%dx%d-%s.ppm",
+                 out_dir, width, height, profile);
+        if(write_ppm(path, width, height) != 0) {
+            fprintf(stderr, "vqeaf-ui-host: cannot write %s\n", path);
+            rc = 1;
+        }
+        else printf("%s\n", path);
+        vqeaf_ui_media_session_stop();
+        host_step(20);
     }
 
     /* Windows 11 (Fluent) skin: the pages the skin changes, rendered with the
@@ -438,14 +654,15 @@ int main(int argc, char **argv)
     }
 
     /* Installer overlay states (host render only). The FILES page sits behind
-     * the dimmed modal so the confirm/busy/done/error cards are seen in
-     * context, exactly as they appear over the file picker on the device. */
+     * the dimmed modal so confirm/busy/durable/session-only/error cards are
+     * seen in context, exactly as they appear over the file picker. */
     {
         static const struct { int state; const char *name; } install_states[] = {
             { 0, "install-confirm" },
             { 1, "install-busy" },
             { 2, "install-done" },
             { 3, "install-error" },
+            { 4, "install-session" },
         };
         for(i = 0; i < sizeof(install_states) / sizeof(install_states[0]); i++) {
             char path[512];
@@ -503,12 +720,17 @@ int main(int argc, char **argv)
      * behind while the IME shows in each adaptive mode. The slide-up anim is
      * stepped to completion so the window is captured at its final inset. */
     {
-        static const struct { vqeaf_ime_mode_t mode; const char *name; } ime_states[] = {
-            { VQEAF_IME_MODE_NORMAL,         "ime-normal" },
-            { VQEAF_IME_MODE_SPLIT,          "ime-split" },
-            { VQEAF_IME_MODE_ONE_HAND_RIGHT, "ime-one-hand" },
-            { VQEAF_IME_MODE_FLOATING,       "ime-floating" },
-            { VQEAF_IME_MODE_EXTRACT,        "ime-extract" },
+        static const struct {
+            vqeaf_ime_mode_t mode;
+            const char *name;
+            int emoji;
+        } ime_states[] = {
+            { VQEAF_IME_MODE_NORMAL,         "ime-normal",     0 },
+            { VQEAF_IME_MODE_SPLIT,          "ime-split",      0 },
+            { VQEAF_IME_MODE_ONE_HAND_RIGHT, "ime-one-hand",   0 },
+            { VQEAF_IME_MODE_FLOATING,       "ime-floating",   0 },
+            { VQEAF_IME_MODE_EXTRACT,        "ime-extract",    0 },
+            { VQEAF_IME_MODE_NORMAL,         "ime-emoji",      1 },
         };
         for(i = 0; i < sizeof(ime_states) / sizeof(ime_states[0]); i++) {
             char path[512];
@@ -521,6 +743,16 @@ int main(int argc, char **argv)
             vqeaf_ime_set_mode(ime_states[i].mode);
             vqeaf_ime_show(ta, NULL);
             host_step(400);
+            if(ime_states[i].emoji) {
+                lv_obj_t *grid = vqeaf_ime_grid();
+                lv_obj_t *toggle = lv_obj_get_child(lv_obj_get_child(grid, 3), 1);
+                lv_obj_send_event(toggle, LV_EVENT_CLICKED, NULL);
+                host_step(50);
+                grid = vqeaf_ime_grid();
+                lv_obj_t *emoji = lv_obj_get_child(lv_obj_get_child(grid, 0), 0);
+                lv_obj_send_event(emoji, LV_EVENT_CLICKED, NULL);
+                host_step(50);
+            }
             lv_obj_invalidate(lv_screen_active());
             lv_refr_now(display);
 
@@ -564,6 +796,33 @@ int main(int argc, char **argv)
             printf("%s\n", path);
             vqeaf_pages_music_view_set(0);
         }
+    }
+
+    {
+        static const char *const setup_states[] = {
+            "setup-welcome", "setup-security", "setup-network",
+            "setup-appearance", "setup-ready"
+        };
+        vqeaf_setup_reset();
+        for(i = 0; i < sizeof(setup_states) / sizeof(setup_states[0]); i++) {
+            char path[512];
+            size_t bytes = (size_t)width * (size_t)height * sizeof(uint32_t);
+
+            memset(framebuffer, 0, bytes);
+            vqeaf_setup_show_step((int)i);
+            host_step(600);
+            lv_obj_invalidate(lv_screen_active());
+            lv_refr_now(display);
+            snprintf(path, sizeof(path), "%s/%s-%dx%d-%s.ppm", out_dir,
+                     setup_states[i], width, height, profile);
+            if(write_ppm(path, width, height) != 0) {
+                fprintf(stderr, "vqeaf-ui-host: cannot write %s\n", path);
+                rc = 1;
+                break;
+            }
+            printf("%s\n", path);
+        }
+        vqeaf_setup_complete();
     }
 
     free(framebuffer);

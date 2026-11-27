@@ -1,0 +1,19 @@
+{
+  "format": "qeapp",
+  "format_version": 2,
+  "abi_version": 5,
+  "runtime": "native",
+  "id": "org.vqeaf.hello-rust",
+  "name": "Hello Rust QEAPP",
+  "version": "1.0.0",
+  "description": "Freestanding Rust QEAPP v5 template",
+  "publisher": "Qeafivels Software",
+  "author": "VQEAF SDK",
+  "entry": "native/arm64/app.qen",
+  "icon": "assets/icon.rgba",
+  "min_os": "0.3.0",
+  "architecture": ["arm64"],
+  "permissions": ["ui.display"],
+  "dependencies": [],
+  "signature": null
+}

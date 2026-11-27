@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "device": "xiaomi/violet",
+  "soc": "sm6150",
+  "production_kernel": {
+    "release": "4.14.215-azure-Pixel+",
+    "artifact_sha256": "6d298f543cfee08f7b72687cf975b6ed232e4ed565d337156db39ceb0fc18513",
+    "source_revision": null,
+    "source_tree": null,
+    "reproducible_from_source": false
+  },
+  "source_match": {
+    "status": "UNVERIFIED",
+    "reason": "Neither the Axion 4.14.357 tree nor the MiCode 4.14.117 tree is proven to match the running 4.14.215-azure-Pixel+ binary, effective config, or board DTBO."
+  },
+  "axion_reference": {
+    "repository": "https://github.com/AxionAOSP-devices/android_kernel_xiaomi_violet",
+    "branch": "lineage-23.2",
+    "commit": "057098841e8bc82f87c3ae5fb11eb7c956416f15",
+    "kernel_release": "4.14.357-openela",
+    "license": "GPL-2.0"
+  },
+  "candidate_base": {
+    "repository": "https://github.com/MiCode/Xiaomi_Kernel_OpenSource",
+    "branch": "violet-q-oss",
+    "commit": "1488fa3d05e2f9be5fc62e0bb16ad85d96db2076",
+    "kernel_release": "4.14.117",
+    "license": "GPL-2.0",
+    "production_approved": false
+  },
+  "verification": {
+    "apply_check": "PASS",
+    "apply_check_date": "2026-11-26",
+    "apply_check_method": "git apply --check followed by git apply against the three pinned MiCode source files",
+    "kernel_build": "NOT_RUN",
+    "kernel_build_reason": "No exact production source/config/DTB base or verified AArch64 kernel toolchain is available.",
+    "physical_hardware_test": "NOT_RUN",
+    "applied_to_production": false
+  },
+  "patches": [
+    {
+      "file": "0001-msm-bus-skip-qos-clocks-when-none.patch",
+      "sha256": "bad76896537acf77631187bc60e2d7e40b173e2639634e303eafd801999eb2fd",
+      "axion_commit": "f0861798d3f8ad3fd5a168d4caf6cfe037795dbc",
+      "path": "drivers/soc/qcom/msm_bus/msm_bus_fabric_rpmh.c",
+      "micode_base_sha256": "f9e42c3fff79e21a945a01730d0b8edbd98c9d31c02ad5572a13eaf040453b36",
+      "axion_reference_sha256": "5bad7df5849e13d305f0b02fff9ffe2753fe602469d96db80a032b8b17496f0b",
+      "backport": "context-only",
+      "postcondition": "if (node_dev->ap_owned && node_dev->num_node_qos_clks) {"
+    },
+    {
+      "file": "0002-drm-msm-clear-drvdata-on-bind-failure.patch",
+      "sha256": "270bea29427875bcd397b2a29504bf4245dc891aa6e959ac8864018cf860bf55",
+      "axion_commit": "88a317d56295586d849bf2816f5e7b4b7c4b7257",
+      "path": "drivers/gpu/drm/msm/msm_drv.c",
+      "micode_base_sha256": "ce3f4f0ca3a764292452f1f27684234a5527b4678c3ca21fa20cc9b7d8fd8f73",
+      "axion_reference_sha256": "55d2a74f9010903f2f06cabc5179d87a6442ad314ce0deccbda004500ff9c5e5",
+      "backport": "logic-only; Axion copyright-only hunk omitted",
+      "postcondition": "platform_set_drvdata(pdev, NULL);"
+    },
+    {
+      "file": "0003-drm-msm-dsi-clear-esd-only-on-active-change.patch",
+      "sha256": "c518b555f425fe834ada96746f66f37298f78f060b2aa79b0e63a1607d971d5d",
+      "axion_commit": "111a6a5c490ff21a28bec4aab99527c48e29d20c",
+      "path": "drivers/gpu/drm/msm/dsi-staging/dsi_drm.c",
+      "micode_base_sha256": "f5390d6ad788f14cceba7bd06e188f2fd04b0607bf2cb24cc393da76bf91e74d",
+      "axion_reference_sha256": "635e8614ed215e0541de07355cfbc80a0310e0a8ba5dc8758484f6016b7962bc",
+      "backport": "logic-only; context adapted to MiCode",
+      "postcondition": "if (bridge->encoder->crtc->state->active_changed)"
+    }
+  ],
+  "excluded": [
+    {
+      "change": "DSI PPS delay configurability",
+      "reason": "The reviewed Axion hunk assigns the parsed value again after the read-error fallback, so it is not safe to backport as-is."
+    },
+    {
+      "change": "DRM worker CPU affinity changes",
+      "reason": "Performance tuning is unrelated to the missing hardware capabilities and changes scheduler behavior."
+    },
+    {
+      "change": "Axion fingerprint TEE driver rewrite",
+      "reason": "Large downstream rewrite depends on TEE/DRM integration and does not prove a native secure biometric path."
+    },
+    {
+      "change": "Axion Violet DTS/config and Android vendor/HAL tree",
+      "reason": "Board DTBO, effective config, firmware variant, and userspace compatibility are not verified; Android HALs are not QEAF drivers."
+    }
+  ]
+}

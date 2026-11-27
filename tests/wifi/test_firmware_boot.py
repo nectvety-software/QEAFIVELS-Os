@@ -19,7 +19,8 @@ class FirmwareBootTests(unittest.TestCase):
     def test_no_fake_success(self):
         src = (ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" /
                "firmware_boot.c").read_text(encoding="utf-8")
-        for token in ("wait_boot", "fw_boot_status", "-ETIMEDOUT",
+        for token in ("wait_boot", "fw_boot_status", "wait_wlfw",
+                      "wlfw_ready", "-ETIMEDOUT", "VQEAF_FW_WLFW_READY",
                       "VQEAF_FW_WLAN_READY", "max_restarts"):
             self.assertIn(token, src)
         # No fixed sleep used as proof: sleep only between real status polls.

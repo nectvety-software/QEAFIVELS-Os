@@ -7,6 +7,20 @@
 - Connection method: **QEAFRESCUE raw FAT volume `F:`** (no ADB, no fastboot; `adb devices -l` empty, `fastboot devices` empty). All data below came from live rescue verbs, not source inspection.
 - Raw artifacts: `reports/wifi-violet/*.txt` (device-info, wifi-host, wifi-log, wifi-modem, wifi-service, qrtr-servers, rmtfs-uio, servreg-registration, wlfw-cnss, wlan-interface, modem-stability, modem-stability-2).
 
+## Code follow-up (2026-11-24, not a device retest)
+
+- No new physical Wi-Fi run was performed. The packaged p77 image was not flashed and no
+  persist/NV partition was written.
+- The early MAC gate in `vio_host_services_start_wlan()` was a QEAF source defect: it suppressed
+  the real CNSS attempt. Current order is Binder → real CNSS → MAC/calibration only for the
+  custom `wlfwd` fallback. A missing p74 MAC no longer proves that CNSS was attempted.
+- Manual CNSS evidence in Phase E still showed no WLFW QMI `0x45`; WLAN-PD failure and the
+  independent modem/SoC reset remain unresolved. `wlan0` therefore remains absent.
+- Host regression: Violet bring-up contracts 15/15, Wi-Fi Python tests 24/24, native CTest
+  18/18, strict/UBSan CE fixtures, depth-bounded/noncontiguous-IRQ DTB regressions,
+  AArch64 build/QEMU and package validation/audit all PASS. These results do not change
+  the physical FAIL verdicts below.
+
 ## Phase A — Device identity
 Live: `QEAFIVELS OS 0.3.0; device violet; ... stage=loop; ui=1; drm=1; uptime=180s`.
 Kernel from `/proc/version`: see `device-info.txt`. Device reachable only through rescue channel; no UART console used.
@@ -75,7 +89,7 @@ No guessed address: the mmap line matches sysfs addr/size exactly. EFS/NV was no
 | wlan0 | Present | absent | FAIL |
 | Wi-Fi scan | Success | impossible (no wlan0) | FAIL |
 
-**Earliest failing dependency:** factory persist calibration / WLAN MAC (`p74` has no `wlan_mac.bin` or `wlfw_cal_*`). This causes `find_factory_mac()` to fail, `vio_host_services_start_wlan()` returns early, CNSS/WLFW never start, `0x45` is never published, and `wlan0` is never created. The modem reset is a second independent failure.
+**Earliest failing dependency at test time:** factory persist calibration / WLAN MAC (`p74` has no `wlan_mac.bin` or `wlfw_cal_*`) triggered QEAF's early return before CNSS. That source-order defect is fixed in the 2026-11-24 follow-up, but no device retest exists. The physical blockers still observed or previously measured are missing per-unit persist data, WLAN-PD failure, no WLFW `0x45`, no `wlan0`, and an independent modem/SoC reset.
 
 ## Phase I — Fixes
 No source change attempted in this test. Fabricating a MAC, generating calibration data, writing EFS/NV, or creating a fake QRTR/WLFW service is forbidden and was not done.
@@ -83,7 +97,7 @@ No source change attempted in this test. Fabricating a MAC, generating calibrati
 Recommended next action (requires user authorization / real data):
 1. Obtain a **real stock persist backup** from this exact device (p74 `wlan_mac.bin` / `wlan/wlan_mac.bin` and `wlfw_cal_*.bin`) or a verified service dump; restore to persist before bring-up.
 2. Separately debug the modem reset (watchdog / IPA/EFS) — it is independent of the MAC gate.
-3. Add a regression test that asserts the exact `find_factory_mac()` failure message and that CNSS is not launched with an empty MAC.
+3. Add a regression test that asserts real CNSS is attempted before the factory-MAC gate and that missing MAC blocks only the custom WLFW fallback (implemented in `tests/test_violet_wifi_bringup.py`).
 
 ## Final acceptance criteria
 Not met. Only RMTFS UIO/mmap passed. SERVREG registration, WLFW publication, firmware load, `wlan0` and passive scan all failed with the evidence above.

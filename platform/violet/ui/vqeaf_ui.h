@@ -10,6 +10,7 @@
 
 #include "lvgl.h"
 #include "vqeaf_theme.h"
+#include "vqeaf_sound.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -61,14 +62,44 @@ typedef enum {
     VQEAF_PAGE_DISK_CLEANUP,
     /* Native V4L2 camera page (no vendor camera HAL). */
     VQEAF_PAGE_CAMERA,
+    VQEAF_PAGE_WIFI_AUDIT,
+    VQEAF_PAGE_ADVISORIES,
+    VQEAF_PAGE_ADVISORY_DETAIL,
+    /* First-boot setup. Appended so page IDs used by apps and rescue stay stable. */
+    VQEAF_PAGE_SETUP,
     VQEAF_PAGE_COUNT
 } vqeaf_page_t;
 
 /* Builds the shell on the already configured LVGL display. */
 void vqeaf_ui_create(lv_display_t *display);
 
-/* Switches pages and rebuilds the page content. */
+/* Switches pages and rebuilds the page content. VQEAF_PAGE_CONTROL opens the
+ * quick panel over the current page instead of replacing it. */
 void vqeaf_ui_show(vqeaf_page_t page);
+void vqeaf_ui_control_close(void);
+int vqeaf_ui_control_visible(void);
+
+/* A playback backend publishes this only after real media output starts, and
+ * clears it on pause, end or error. Inspection and static previews are not
+ * playback sessions. */
+typedef enum {
+    VQEAF_UI_MEDIA_NONE = 0,
+    VQEAF_UI_MEDIA_AUDIO,
+    VQEAF_UI_MEDIA_VIDEO,
+    VQEAF_UI_MEDIA_OTHER
+} vqeaf_ui_media_kind_t;
+
+typedef struct {
+    vqeaf_ui_media_kind_t kind;
+    char title[128];
+    char detail[160];
+} vqeaf_ui_media_session_t;
+
+int vqeaf_ui_media_session_start(vqeaf_ui_media_kind_t kind,
+                                 const char *title,
+                                 const char *detail);
+void vqeaf_ui_media_session_stop(void);
+const vqeaf_ui_media_session_t *vqeaf_ui_media_session(void);
 
 /* Runs an installed native app by slot; used by the queued rescue launch. */
 void vqeaf_ui_run_app(int index);
@@ -142,6 +173,9 @@ void vqeaf_ui_show_capture_thumb(const char *name);
 
 void vqeaf_ui_notify(const char *title, const char *body, const char *symbol,
                      uint32_t color);
+void vqeaf_ui_notify_event(const char *title, const char *body,
+                           const char *symbol, uint32_t color,
+                           vqeaf_sound_event_t event);
 int vqeaf_ui_notification_count(void);
 const vqeaf_notification_t *vqeaf_ui_notification_at(int index);
 void vqeaf_ui_notification_clear(void);

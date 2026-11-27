@@ -17,6 +17,9 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +35,21 @@ static char journal_stage[32] = "start";
 static unsigned journal_boots;
 static int journal_read_done;
 static int journal_disabled;
+
+/* Live trace state. The ring holds the same bytes the crash path would keep,
+ * but it is rebuilt from the OS log every second, so a reset that skips the
+ * fault handler still leaves the last second of evidence in p77. */
+static char trace_text[VIO_JOURNAL_TEXT];
+static size_t trace_len;
+static pthread_mutex_t trace_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* One flush at a time: the flusher thread, the arming path and note() can all
+ * reach it, and the snapshot buffer is static. */
+static pthread_mutex_t flush_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_once_t trace_once = PTHREAD_ONCE_INIT;
+static volatile sig_atomic_t trace_armed;
+static volatile sig_atomic_t trace_dirty;
+static volatile sig_atomic_t trace_crashed;
+static int journal_live;   /* header field: this record is a live trace */
 
 static int journal_open(int writable)
 {
@@ -79,9 +97,9 @@ static void journal_header_build(void)
 
     memset(journal_header, ' ', sizeof(journal_header));
     used = snprintf(text, sizeof(text),
-                    "%s" "boots=%u\nstage=%s\nuptime_ms=%u\n",
+                    "%s" "boots=%u\nstage=%s\nuptime_ms=%u\nlive=%d\n",
                     journal_magic, journal_boots, journal_stage,
-                    (unsigned)vio_monotonic_ms());
+                    (unsigned)vio_monotonic_ms(), journal_live ? 1 : 0);
     if(used > 0) {
         if(used > (int)sizeof(journal_header)) used = (int)sizeof(journal_header);
         memcpy(journal_header, text, (size_t)used);
@@ -178,6 +196,10 @@ void vio_journal_crash(const char *text)
     int fd;
 
     if(text == NULL) return;
+    /* Claim the slot before opening it: the trace flusher must never write a
+     * live snapshot over the record this handler is about to store. */
+    trace_crashed = 1;
+    journal_live = 0;
     fd = journal_open(1);
     if(fd < 0) return;
 
@@ -192,4 +214,306 @@ void vio_journal_crash(const char *text)
     (void)journal_write(fd, VIO_JOURNAL_OFFSET + VIO_JOURNAL_HEADER, scratch,
                         sizeof(scratch));
     close(fd);
+}
+
+/* ---- live trace ----------------------------------------------------------
+ * Measured behaviour this exists for: with the modem ONLINE the SoC resets
+ * 14-16 s later, no signal handler runs, the kernel keeps no pstore and the
+ * rescue volume is RAM, so every earlier attempt produced "no fault record".
+ * p77 survives the reset, so the last second of the OS log is written there
+ * before it happens. The header carries live=1 and the uptime of the last
+ * heartbeat, which is what proves the record was cut off by a reset rather
+ * than written at a clean shutdown.
+ */
+#define TRACE_FLUSH_MS 1000u
+/* The vendor kernel's own ring holds the one thing userspace cannot report:
+ * `subsys-restart` / `subsys-pil-tz` lines naming the protection domain that
+ * went down. It is RAM-only and dies with the reset, so its tail is appended
+ * to every heartbeat. 4 KiB is the newest few hundred kernel lines. */
+#define TRACE_KLOG_BYTES 4096u
+
+static void trace_append_locked(const char *line, size_t len)
+{
+    size_t room = sizeof(trace_text) - 1u - trace_len;
+
+    if(len > sizeof(trace_text) - 1u) {          /* keep the newest half */
+        line += len - (sizeof(trace_text) - 1u);
+        len = sizeof(trace_text) - 1u;
+        room = 0;
+    }
+    if(len > room) {
+        size_t keep = (sizeof(trace_text) - 1u) / 2u;
+        if(trace_len > keep)
+            memmove(trace_text, trace_text + trace_len - keep, keep);
+        else
+            keep = trace_len;
+        trace_len = keep;
+    }
+    memcpy(trace_text + trace_len, line, len);
+    trace_len += len;
+    trace_text[trace_len] = '\0';
+}
+
+/* Writes the current ring into the record slot: header first, then the full
+ * text area, so a shorter snapshot cannot leave older bytes behind. */
+static void trace_flush(void)
+{
+    static char snapshot[VIO_JOURNAL_TEXT];
+    char klog[TRACE_KLOG_BYTES + 1u];
+    size_t len, limit, used;
+    int fd;
+
+    if(trace_crashed) return;
+    pthread_mutex_lock(&flush_mutex);
+    pthread_mutex_lock(&trace_mutex);
+    len = trace_len;
+    limit = sizeof(snapshot) - TRACE_KLOG_BYTES - 64u;
+    if(len > limit) {                       /* keep the newest trace bytes */
+        memmove(snapshot, trace_text + (len - limit), limit);
+        len = limit;
+    } else if(len > 0) {
+        memcpy(snapshot, trace_text, len);
+    }
+    pthread_mutex_unlock(&trace_mutex);
+
+    used = len;
+    {
+        int n = vio_kernel_tail(klog, sizeof(klog));
+        if(n > 0) {
+            char head[96];
+            int h = snprintf(head, sizeof(head),
+                             "\n### kernel kmsg tail (%d bytes)\n", n);
+            if(h > 0 && used + (size_t)h + (size_t)n < sizeof(snapshot)) {
+                memcpy(snapshot + used, head, (size_t)h);
+                used += (size_t)h;
+                memcpy(snapshot + used, klog, (size_t)n);
+                used += (size_t)n;
+            }
+        }
+    }
+    memset(snapshot + used, 0, sizeof(snapshot) - used);
+    journal_live = 1;
+    journal_header_build();
+    fd = journal_open(1);
+    if(fd >= 0) {
+        (void)journal_write(fd, VIO_JOURNAL_OFFSET, journal_header,
+                            sizeof(journal_header));
+        (void)journal_write(fd, VIO_JOURNAL_OFFSET + VIO_JOURNAL_HEADER,
+                            snapshot, sizeof(snapshot));
+        close(fd);
+        trace_dirty = 0;
+    }
+    pthread_mutex_unlock(&flush_mutex);
+}
+
+static void *trace_flusher(void *arg)
+{
+    (void)arg;
+    for(;;) {
+        vio_sleep_ms(TRACE_FLUSH_MS);
+        if(trace_crashed) return NULL;
+        if(trace_armed && trace_dirty) trace_flush();
+    }
+}
+
+static void trace_start_thread(void)
+{
+    pthread_t thread;
+
+    if(pthread_create(&thread, NULL, trace_flusher, NULL) == 0)
+        pthread_detach(thread);
+    else
+        vio_log("journal: no trace thread: %s", strerror(errno));
+}
+
+void vio_journal_trace_arm(int on)
+{
+    if(on) {
+        pthread_once(&trace_once, trace_start_thread);
+        if(!trace_armed) {
+            trace_armed = 1;
+            journal_live = 1;
+            vio_journal_trace("journal: live trace armed; this slot is the "
+                              "record if the SoC resets");
+            trace_dirty = 1;
+            trace_flush();
+        }
+        return;
+    }
+    if(trace_armed) {
+        trace_armed = 0;
+        vio_journal_trace("journal: live trace disarmed (modem released)");
+        trace_flush();
+        /* A clean end: the next boot can tell this record was not a reset. */
+        journal_live = 0;
+        journal_commit();
+    }
+}
+
+void vio_journal_trace_raw(const char *line)
+{
+    char stamped[600];
+    int n;
+
+    if(line == NULL) return;
+    if(!trace_armed) return;
+    n = snprintf(stamped, sizeof(stamped), "t=%ums %s\n",
+                 (unsigned)vio_monotonic_ms(), line);
+    if(n <= 0) return;
+    if((size_t)n >= sizeof(stamped)) n = (int)sizeof(stamped) - 1;
+    pthread_mutex_lock(&trace_mutex);
+    trace_append_locked(stamped, (size_t)n);
+    pthread_mutex_unlock(&trace_mutex);
+    trace_dirty = 1;
+}
+
+void vio_journal_trace(const char *fmt, ...)
+{
+    char line[512];
+    va_list args;
+    int n;
+
+    if(fmt == NULL) return;
+    va_start(args, fmt);
+    n = vsnprintf(line, sizeof(line), fmt, args);
+    va_end(args);
+    if(n <= 0) return;
+    if((size_t)n >= sizeof(line)) n = (int)sizeof(line) - 1;
+    line[n] = '\0';
+    vio_journal_trace_raw(line);
+}
+
+void vio_journal_note(const char *text)
+{
+    char line[512];
+    int n;
+
+    if(text == NULL) return;
+    n = snprintf(line, sizeof(line), "note %s", text);
+    if(n <= 0) return;
+    if((size_t)n >= sizeof(line)) n = (int)sizeof(line) - 1;
+    pthread_mutex_lock(&trace_mutex);
+    trace_append_locked(line, (size_t)n);
+    trace_append_locked("\n", 1u);
+    pthread_mutex_unlock(&trace_mutex);
+    trace_dirty = 1;
+    trace_flush();
+}
+
+/* ---- why did the previous boot end? --------------------------------------
+ * Three real sources, none guessed:
+ *   /proc/cmdline androidboot.bootreason - written by the bootloader
+ *   chosen/pureason                      - PON reason the bootloader recorded
+ *   IMEM restart_reason word             - the value the reset path leaves
+ * The IMEM word is printed raw. Its numeric meanings differ between ABL
+ * versions, so it is annotated only where the layout is unambiguous.
+ */
+#define IMEM_RESTART_REASON_PA 0x146aa65cull
+
+static int read_first_line(const char *path, char *out, size_t cap)
+{
+    int fd, i = 0;
+    ssize_t n;
+    char buf[192];
+
+    out[0] = '\0';
+    fd = open(path, O_RDONLY | O_CLOEXEC);
+    if(fd < 0) return -1;
+    n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if(n <= 0) return -1;
+    while(i < (int)n && buf[i] != '\n' && buf[i] != '\r' &&
+          (size_t)i + 1 < cap) {
+        out[i] = buf[i];
+        i++;
+    }
+    out[i] = '\0';
+    return i > 0 ? 0 : -1;
+}
+
+static int cmdline_value(const char *key, char *out, size_t cap)
+{
+    char buf[2048];
+    size_t klen = strlen(key);
+    int fd;
+    ssize_t n;
+    size_t i;
+
+    out[0] = '\0';
+    fd = open("/proc/cmdline", O_RDONLY | O_CLOEXEC);
+    if(fd < 0) return -1;
+    n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if(n <= 0) return -1;
+    buf[n] = '\0';
+    for(i = 0; i + klen < (size_t)n; i++) {
+        size_t j = 0;
+        if((i > 0) && buf[i - 1] != ' ') continue;
+        if(memcmp(buf + i, key, klen) != 0) continue;
+        i += klen;
+        if(buf[i] == '=') i++;
+        while(i < (size_t)n && buf[i] != ' ' && buf[i] != '\n' &&
+              buf[i] != '\r' && j + 1 < cap)
+            out[j++] = buf[i++];
+        out[j] = '\0';
+        return j > 0 ? 0 : -1;
+    }
+    return -1;
+}
+
+void vio_reset_reason(char *out, size_t cap)
+{
+    char value[192];
+    uint32_t word = 0;
+    int have_word = 0;
+    int used;
+
+    if(out == NULL || cap == 0) return;
+    out[0] = '\0';
+    used = snprintf(out, cap, "reset-reason:");
+    if(used < 0 || (size_t)used >= cap) return;
+
+    if(cmdline_value("androidboot.bootreason", value, sizeof(value)) == 0)
+        used += snprintf(out + used, cap - (size_t)used,
+                         " bootreason=%s", value);
+    else
+        used += snprintf(out + used, cap - (size_t)used,
+                         " bootreason=absent");
+    if(used < 0 || (size_t)used >= cap) return;
+
+    if(read_first_line("/proc/device-tree/chosen/pureason", value,
+                       sizeof(value)) == 0)
+        used += snprintf(out + used, cap - (size_t)used,
+                         " pureason=%s", value);
+    else
+        used += snprintf(out + used, cap - (size_t)used,
+                         " pureason=absent");
+    if(used < 0 || (size_t)used >= cap) return;
+
+    /* IMEM is not in the kernel's RAM map; reading it needs /dev/mem, which a
+     * hardened kernel may refuse. Refused is reported, never filled in. */
+    {
+        int fd = open("/dev/mem", O_RDONLY | O_CLOEXEC);
+        if(fd >= 0) {
+            ssize_t n = pread(fd, &word, sizeof(word),
+                              (off_t)IMEM_RESTART_REASON_PA);
+            close(fd);
+            have_word = n == (ssize_t)sizeof(word);
+        }
+    }
+    if(have_word) {
+        used += snprintf(out + used, cap - (size_t)used,
+                         " imem_restart_reason=0x%08x", (unsigned)word);
+        if(word == 0x77665501u)
+            used += snprintf(out + used, cap - (size_t)used,
+                             " (bootloader: normal boot request)");
+        else if(word == 0x77665502u)
+            used += snprintf(out + used, cap - (size_t)used,
+                             " (bootloader: recovery boot request)");
+    } else {
+        used += snprintf(out + used, cap - (size_t)used,
+                         " imem_restart_reason=unreadable (/dev/mem absent or "
+                         "restricted)");
+    }
+    (void)used;
 }

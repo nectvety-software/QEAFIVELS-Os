@@ -27,14 +27,41 @@ LVGL = os.path.join(ROOT, "platform", "lvgl")
 FONTS = os.path.join(UI, "fonts")
 THEME = os.path.join(UI, "vqeaf_theme.c")
 SETTINGS = os.path.join(ROOT, "system", "core", "settings.c")
+CLIPBOARD = os.path.join(ROOT, "system", "core", "clipboard.c")
 IME = os.path.join(UI, "vqeaf_ime.c")
 
 WALLPAPER = os.path.join(UI, "wallpaper.c")
 SOURCES = [s for s in r.SOURCES
            if s.startswith(LVGL) or s.startswith(FONTS) or s == THEME
            or s == SETTINGS or s == WALLPAPER]
-SOURCES.append(IME)
-SOURCES.append(TEST)
+SOURCES = list(dict.fromkeys(SOURCES + [CLIPBOARD, IME, TEST]))
+EMOJI_FONT = os.path.join(FONTS, "vqeaf_emoji_28.c")
+
+
+def check_emoji_coverage():
+    with open(IME, "r", encoding="utf-8") as handle:
+        ime_source = handle.read()
+    table = ime_source.split("static const char *const emoji_table[] = {", 1)[1]
+    table = table.split("};", 1)[0]
+    used = set()
+    for item in table.split(","):
+        if '"' not in item:
+            continue
+        literal = item.split('"', 2)[1]
+        encoded = bytes(int(part, 16) for part in literal.split("\\x") if part)
+        used.add(ord(encoded.decode("utf-8")))
+    with open(EMOJI_FONT, "r", encoding="ascii") as handle:
+        font_source = handle.read()
+    built = set()
+    for line in font_source.splitlines():
+        marker = "/* U+"
+        if marker in line:
+            built.add(int(line.split(marker, 1)[1].split(" ", 1)[0], 16))
+    missing = sorted(used - built)
+    if(missing):
+        raise SystemExit("test_ime: emoji font missing " +
+                         ", ".join("U+%04X" % cp for cp in missing))
+    print("test_ime: all %d keyboard emoji have generated glyphs" % len(used))
 
 
 def compile_one(src):
@@ -53,6 +80,7 @@ def compile_one(src):
 
 
 def main():
+    check_emoji_coverage()
     objects = []
     failures = []
     with ThreadPoolExecutor(max_workers=8) as pool:

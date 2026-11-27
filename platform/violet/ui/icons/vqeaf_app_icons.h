@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* Compatibility enum; built-in app artwork is rendered with symbol glyphs. */
+/* Built-in app artwork IDs. */
 #ifndef VQEAF_APP_ICONS_H
 #define VQEAF_APP_ICONS_H
 
@@ -38,7 +38,7 @@ typedef enum {
     VQEAF_APP_ICON_COUNT
 } vqeaf_app_icon_t;
 
-/* Deprecated compatibility shim; currently always NULL. */
+/* Original 32x32 ARGB8888 VPEPixel artwork; invalid IDs return NULL. */
 const lv_image_dsc_t *vqeaf_app_icon(int icon);
 
 #endif /* VQEAF_APP_ICONS_H */

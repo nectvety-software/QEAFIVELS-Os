@@ -2,7 +2,7 @@
  *
  * The framework call table lives in qeaf_api.h (qeaf_app_api_v2). This header
  * defines the permission bits, the lifecycle event ids, the module export and
- * import names, and the optional input event delivered by the host simulator.
+ * import names, and the optional input event delivered by host and device sessions.
  * The .qen container layout is documented in docs/QEAPP_NATIVE_ABI_V2.md and
  * implemented in sdk/compiler/qen.py + platform/violet/ui/vqeaf_qeapp_native.c.
  */
@@ -35,7 +35,8 @@ typedef enum {
 } qeaf_lifecycle_event_t;
 
 /* Required module exports (name -> offset into the code section). pause and
- * resume are optional; on_input is optional and only used by the simulator. */
+ * resume are optional; on_input opts into interactive host/device sessions and
+ * is called only while input.receive is granted. */
 #define QEAPP_EXPORT_CREATE   "create"
 #define QEAPP_EXPORT_START    "start"
 #define QEAPP_EXPORT_PAUSE    "pause"

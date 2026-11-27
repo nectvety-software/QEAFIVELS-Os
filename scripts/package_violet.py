@@ -1,29 +1,34 @@
 #!/usr/bin/env python3
-"""Package VQEAF-OS for the Redmi Note 7 Pro (violet) as a flashable boot image.
+"""Package and verify the QEAFIVELS Linux-core Violet boot image.
 
 Pipeline, in order:
 
     build/violet/vqeaf-init           static aarch64-musl PID 1 (build_violet.py)
         -> build/violet/stage         the initramfs root filesystem (/init only)
         -> qeaf-initramfs.cpio(.gz)   newc archive + gzip, via QeafdropOs
-        -> dist/boot-vqeaf-violet.img stock violet kernel + our ramdisk
+        -> dist/boot-vqeaf-violet.img vendor Linux 4.14 kernel + our ramdisk
+        -> dist/boot-vqeaf-violet.manifest.json
 
-The kernel, DTB, page layout and command line come byte for byte from
-QeafdropOs's dump of the real violet boot partition, so the image boots the
-same way the phone already does; only the ramdisk (and therefore /init)
-changes. The image is then gated by QeafdropOs's validate_bootimg.py and
-audit_rescue_channel.py — a ramdisk without the rescue channel or the USB
-gadget markers is refused here, before anything can be flashed.
+The kernel payload must remain byte-for-byte identical to the stock Violet
+reference. The manifest records source limitations, kernel/ramdisk/init/image
+hashes and the host-only verification result. The image is gated by
+QeafdropOs's validate_bootimg.py and audit_rescue_channel.py before the
+manifest is written; a refused image never reaches a device.
 
     python scripts/package_violet.py
-    python scripts/package_violet.py --clean   (also rebuilds the ELF)
+    python scripts/package_violet.py --clean        (also rebuilds the ELF)
+    python scripts/package_violet.py --verify-only  (inspect existing artifacts)
 """
 import argparse
+import gzip
 import hashlib
+import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
+import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 QEAF = os.environ.get("QEAFDROPOS") or "D:\\QeafivelsOfficial\\QeafdropOs"
@@ -33,6 +38,7 @@ STAGE = os.path.join(BUILD, "stage")
 RAMDISK = os.path.join(BUILD, "qeaf-initramfs.cpio.gz")
 PREBRAND = os.path.join(BUILD, "boot-vqeaf-violet-pre.img")
 IMAGE = os.path.join(ROOT, "dist", "boot-vqeaf-violet.img")
+MANIFEST = os.path.join(ROOT, "dist", "boot-vqeaf-violet.manifest.json")
 REFERENCE = os.path.join(QEAF, "out", "reference", "stock-violet", "boot.img")
 MK_INITRAMFS = os.path.join(QEAF, "scripts", "mk_initramfs.py")
 MK_BOOTIMG = os.path.join(QEAF, "scripts", "mk_bootimg_violet.py")
@@ -47,6 +53,9 @@ P77_SIZE = 67108864
 MAX_RAMDISK = 40 << 20
 
 EM_AARCH64 = 0xB7
+PT_LOAD = 1
+PT_INTERP = 3
+VIOLET_KERNEL_RELEASE = b"4.14.215-azure-Pixel+"
 
 
 def fail(message):
@@ -54,17 +63,45 @@ def fail(message):
     raise SystemExit(1)
 
 
+def elf_identity(data, label):
+    if len(data) < 64 or data[:4] != b"\x7fELF" or data[4] != 2:
+        fail("%s is not a 64-bit ELF" % label)
+    if data[5] != 1:
+        fail("%s is not a little-endian ELF" % label)
+    etype = struct.unpack_from("<H", data, 16)[0]
+    if etype not in (2, 3):
+        fail("%s is not an executable ELF" % label)
+    machine = struct.unpack_from("<H", data, 18)[0]
+    if machine != EM_AARCH64:
+        fail("%s is built for machine 0x%04x, not aarch64" % (label, machine))
+    phoff = struct.unpack_from("<Q", data, 32)[0]
+    phentsize = struct.unpack_from("<H", data, 54)[0]
+    phnum = struct.unpack_from("<H", data, 56)[0]
+    if (phentsize < 56 or phoff < 64 or phoff > len(data) or phnum == 0 or
+            phnum > (len(data) - phoff) // phentsize):
+        fail("%s has an invalid ELF program-header table" % label)
+    has_load = False
+    for index in range(phnum):
+        header = phoff + index * phentsize
+        ptype = struct.unpack_from("<I", data, header)[0]
+        if ptype == PT_INTERP:
+            fail("%s is dynamically linked; the Violet PID 1 must be static" % label)
+        offset = struct.unpack_from("<Q", data, header + 8)[0]
+        filesz = struct.unpack_from("<Q", data, header + 32)[0]
+        if offset > len(data) or filesz > len(data) - offset:
+            fail("%s has an ELF segment outside the file" % label)
+        if ptype == PT_LOAD:
+            has_load = True
+    if not has_load:
+        fail("%s has no ELF load segment" % label)
+    return {"machine": "aarch64", "static": True}
+
+
 def check_init():
     if not os.path.isfile(INIT):
         fail("%s is missing; run `python scripts/build_violet.py` first" % INIT)
     with open(INIT, "rb") as handle:
-        head = handle.read(20)
-    if head[:4] != b"\x7fELF" or head[4] != 2:
-        fail("%s is not a 64-bit ELF" % INIT)
-    import struct
-    machine = struct.unpack_from("<H", head, 18)[0]
-    if machine != EM_AARCH64:
-        fail("%s is built for machine 0x%04x, not aarch64" % (INIT, machine))
+        return elf_identity(handle.read(), INIT)
 
 
 def neutralise_bionic_names():
@@ -366,13 +403,199 @@ def sha256(path):
     return digest.hexdigest()
 
 
+def sha256_bytes(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def align_up(value, page):
+    return ((value + page - 1) // page) * page
+
+
+def read_boot_image(path):
+    with open(path, "rb") as handle:
+        data = handle.read()
+    if len(data) < 4096 or data[:8] != b"ANDROID!":
+        fail("%s is not an ANDROID! boot image" % path)
+    u32 = lambda offset: struct.unpack_from("<I", data, offset)[0]
+    page = u32(0x24)
+    if page not in (2048, 4096, 16384):
+        fail("%s has invalid page size %d" % (path, page))
+    header = {
+        "kernel_size": u32(0x08),
+        "kernel_addr": u32(0x0C),
+        "ramdisk_size": u32(0x10),
+        "ramdisk_addr": u32(0x14),
+        "second_size": u32(0x18),
+        "second_addr": u32(0x1C),
+        "tags_addr": u32(0x20),
+        "page_size": page,
+        "header_version": u32(0x28),
+        "name": data[0x30:0x40].split(b"\0", 1)[0].decode("ascii", "replace"),
+        "cmdline": data[0x40:0x240].split(b"\0", 1)[0].decode("ascii", "replace"),
+    }
+    kernel_offset = page
+    ramdisk_offset = page + align_up(header["kernel_size"], page)
+    if kernel_offset + header["kernel_size"] > len(data):
+        fail("%s is truncated inside the kernel payload" % path)
+    if ramdisk_offset + header["ramdisk_size"] > len(data):
+        fail("%s is truncated inside the ramdisk payload" % path)
+    header["kernel_offset"] = kernel_offset
+    header["ramdisk_offset"] = ramdisk_offset
+    header["kernel"] = data[kernel_offset:kernel_offset + header["kernel_size"]]
+    header["ramdisk"] = data[ramdisk_offset:ramdisk_offset + header["ramdisk_size"]]
+    return data, header
+
+
+def kernel_identity(payload):
+    decoder = zlib.decompressobj(31)
+    try:
+        image = decoder.decompress(payload)
+    except zlib.error as exc:
+        fail("kernel payload is not gzip: %s" % exc)
+    if len(image) < 0x40 or image[0x38:0x3C] != b"ARM\x64":
+        fail("kernel payload is not an AArch64 Linux Image")
+    if VIOLET_KERNEL_RELEASE not in image:
+        fail("kernel payload does not embed the approved Violet 4.14.215 release")
+    release = VIOLET_KERNEL_RELEASE.decode("ascii")
+    appended = decoder.unused_data
+    return {
+        "release": release,
+        "image_size": len(image),
+        "appended_data_size": len(appended),
+        "appended_data_sha256": sha256_bytes(appended),
+    }
+
+
+def ramdisk_init(ramdisk):
+    try:
+        plain = gzip.decompress(ramdisk)
+    except OSError as exc:
+        fail("ramdisk payload is not gzip: %s" % exc)
+    offset = 0
+    init = None
+    trailer_seen = False
+    while offset + 110 <= len(plain) and plain[offset:offset + 6] in (b"070701", b"070702"):
+        def field(index):
+            value = plain[offset + 6 + index * 8:offset + 14 + index * 8]
+            try:
+                return int(value, 16)
+            except ValueError:
+                fail("ramdisk cpio has a non-hex entry field")
+
+        namesize = field(11)
+        filesize = field(6)
+        if namesize < 2 or namesize > 4096 or filesize > len(plain):
+            fail("ramdisk cpio has an invalid entry header")
+        name_start = offset + 110
+        body_start = offset + align_up(110 + namesize, 4)
+        body_end = body_start + filesize
+        if body_end > len(plain):
+            fail("ramdisk cpio entry overruns the archive")
+        name = plain[name_start:name_start + namesize - 1].decode("utf-8", "replace")
+        if name in ("init", "./init"):
+            if init is not None:
+                fail("ramdisk contains more than one /init entry")
+            init = plain[body_start:body_end]
+        if name == "TRAILER!!!":
+            trailer_seen = True
+            break
+        offset = body_start + align_up(filesize, 4)
+    if not trailer_seen:
+        fail("ramdisk cpio has no TRAILER!!! entry")
+    if not init:
+        fail("ramdisk has no /init entry")
+    return init
+
+
+def artifact_record(path, data=None):
+    if data is None:
+        with open(path, "rb") as handle:
+            data = handle.read()
+    return {"size": len(data), "sha256": sha256_bytes(data)}
+
+
+def build_manifest(image_path=IMAGE, reference_path=REFERENCE, init_path=None,
+                   structural_gate="NOT_RUN", rescue_gate="NOT_RUN"):
+    image_data, image = read_boot_image(image_path)
+    reference_data, reference = read_boot_image(reference_path)
+    kernel = image["kernel"]
+    reference_kernel = reference["kernel"]
+    if kernel != reference_kernel:
+        fail("packaged kernel differs from the stock Violet reference")
+    kernel_info = kernel_identity(kernel)
+    init = ramdisk_init(image["ramdisk"])
+    init_info = elf_identity(init, "ramdisk /init")
+    init_info.update(artifact_record(init_path, init))
+    if init_path is not None:
+        if not os.path.isfile(init_path):
+            fail("%s is missing" % init_path)
+        with open(init_path, "rb") as handle:
+            built_init = handle.read()
+        if built_init != init:
+            fail("ramdisk /init differs from %s" % init_path)
+    return {
+        "format": "vqeaf-linux-core-package/v1",
+        "target": "violet",
+        "architecture": "aarch64",
+        "kernel": {
+            "origin": "vendor-stock-binary",
+            "release": kernel_info["release"],
+            "source_revision": None,
+            "source_tree": None,
+            "reproducible_from_source": False,
+            "payload": artifact_record(image_path, kernel),
+            "image_size": kernel_info["image_size"],
+            "appended_data": {
+                "size": kernel_info["appended_data_size"],
+                "sha256": kernel_info["appended_data_sha256"],
+            },
+            "reference": artifact_record(reference_path, reference_kernel),
+            "matches_stock_reference": True,
+        },
+        "init": init_info,
+        "ramdisk": artifact_record(image_path, image["ramdisk"]),
+        "image": dict(artifact_record(image_path, image_data), **{
+            key: image[key] for key in (
+                "kernel_size", "kernel_addr", "ramdisk_size", "ramdisk_addr",
+                "second_size", "second_addr", "tags_addr", "page_size",
+                "header_version", "name", "cmdline", "kernel_offset",
+                "ramdisk_offset"
+            )
+        }),
+        "reference_image": artifact_record(reference_path, reference_data),
+        "verification": {
+            "kernel_matches_stock_reference": True,
+            "structural_gate": structural_gate,
+            "rescue_gate": rescue_gate,
+            "physical_boot_tested": False,
+            "note": "Host verification only; no device was flashed or booted.",
+        },
+    }
+
+
+def write_manifest(manifest):
+    os.makedirs(os.path.dirname(MANIFEST), exist_ok=True)
+    with open(MANIFEST, "w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-build", action="store_true",
                     help="use the existing vqeaf-init ELF as is")
     ap.add_argument("--clean", action="store_true",
                     help="rebuild the ELF from every object (header-safe)")
+    ap.add_argument("--verify-only", action="store_true",
+                    help="verify existing image/reference/init without building")
     args = ap.parse_args(argv)
+
+    if args.verify_only:
+        run([sys.executable, VALIDATE, IMAGE], "validate_bootimg")
+        run([sys.executable, AUDIT, IMAGE], "audit_rescue_channel")
+        manifest = build_manifest(structural_gate="PASS", rescue_gate="PASS")
+        print(json.dumps(manifest, indent=2, sort_keys=True))
+        return 0
 
     if not args.skip_build:
         cmd = [sys.executable, os.path.join(ROOT, "scripts", "build_violet.py")]
@@ -399,10 +622,16 @@ def main(argv=None):
         fail("ramdisk is %d bytes, over the %d-byte boot budget"
              % (ramdisk, MAX_RAMDISK))
 
+    # Make the native PID 1 selection explicit. The stock boot command line
+    # does not name an initramfs executable; force both init selectors to avoid
+    # falling through to the Android system init path.
     run([sys.executable, MK_BOOTIMG,
          "--reference", REFERENCE,
          "--ramdisk", RAMDISK,
-         "--output", PREBRAND], "mk_bootimg_violet")
+         "--output", PREBRAND,
+         "--append",
+         "init=/init rdinit=/init androidboot.qeaf_ramboot_probe=violet-v3"],
+        "mk_bootimg_violet")
     if not os.path.isfile(PREBRAND):
         fail("mk_bootimg_violet did not produce %s" % PREBRAND)
 
@@ -454,11 +683,16 @@ def main(argv=None):
         print("package_violet: crDroid Wi-Fi config gate FAILED (fake MAC)")
         return 1
 
+    manifest = build_manifest(init_path=INIT, structural_gate="PASS",
+                              rescue_gate="PASS")
+    write_manifest(manifest)
     final_size = os.path.getsize(IMAGE)
     print()
     print("package_violet: %s" % IMAGE)
     print("  size  : %d bytes (p77 is %d)" % (final_size, P77_SIZE))
     print("  sha256: %s" % sha256(IMAGE))
+    print("  kernel: %s (matches stock reference)" % manifest["kernel"]["release"])
+    print("  manifest: %s" % MANIFEST)
     return 0
 
 

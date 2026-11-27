@@ -4,9 +4,12 @@ Trình tự dưới đây là thiết kế có kiểm soát cho `VqeafWcn3990Sta
 (`kernel/include/vqeaf/wcn3990.h`). Mỗi bước có trạng thái, timeout, error code,
 cleanup/rollback. **Không bước nào được bỏ qua hay giả thành công.**
 
-Timeout (ABI v2): op trả `-EAGAIN` được retry tới `step_timeout_ms` (mặc định
-1000 ms) rồi `-ETIMEDOUT` + unwind ngược thứ tự. Cần provider cấp `now_ms`/`delay_ms`;
-backend hiện **chưa có** primitive này nên không tự retry — không giả thời gian/kết quả.
+Hợp đồng ABI cần phân biệt: `VqeafWcn3990Device`/`VqeafWcn3990State` là
+**ABI 1** và không có timeout primitive. Vòng đời Phase 2 là **ABI 3** (timeout
+được giới thiệu từ v2): op trả `-EAGAIN` được retry tới `step_timeout_ms` (mặc định
+1000 ms), dừng nếu clock không tiến triển hoặc đạt 1024 attempt, rồi `-ETIMEDOUT` +
+unwind ngược thứ tự. Cần provider cấp `now_ms`/`delay_ms`; backend hiện **chưa có**
+primitive này nên không tự retry — không giả thời gian/kết quả.
 
 | # | Bước | Trạng thái hiện tại | Error khi thiếu | clean-up |
 | --- | --- | --- | --- | --- |
@@ -53,8 +56,15 @@ Không có `wlfw_cal_*` được tạo. Hash firmware khớp file đã stage →
   khi parse DT thất bại; sau khi resolve MSA thật thì dừng ở `-ENOSYS` tại
   `map_snoc`/`map_registers` → **không** có device với resource suy đoán.
 - Mọi callback phần cứng trả `-ENOSYS` → không caller nào nhầm là thao tác thành công.
-- Timeout/error code/rollback: driver retry `-EAGAIN` có deadline rồi unwind;
-  steps thiếu primitive dừng ở `-ENOSYS`/`-ENODEV`, không rơi vào success path.
+- FDT: giới hạn đệ quy 32 cấp, header dùng phép trừ chặn overflow; Phase 2 chỉ nhận
+  đúng 12 IRQ; legacy bind từ chối IRQ không liên tục hoặc vượt `UINT32_MAX`.
+- Timeout/error code/rollback: Phase 2 retry `-EAGAIN` có deadline, giới hạn clock/attempt
+  rồi unwind; steps thiếu primitive dừng ở `-ENOSYS`/`-ENODEV`, không rơi vào success path.
+- CE ABI 2: source/destination ring-base đều là register 32-bit; không tồn tại
+  base-high và backend không ghi offset `0x10`/`0x12`. `ce_disable` chỉ trả `0`
+  khi CE không còn tham chiếu DMA ring. Nếu cleanup lỗi, Phase 2 giữ
+  quiesce/resource, không giải phóng IRQ/MSA hay unmap, và từ chối bind mới bằng
+  `-EBUSY` tới khi reset.
 
 ## Không tuyên bố
 

@@ -11,6 +11,9 @@ extern "C" {
 #define VQEAF_VIOLET_MAX_MEMORY_REGIONS 4u
 #define VQEAF_VIOLET_MAX_RESERVED_REGIONS 32u
 #define VQEAF_VIOLET_MAX_PMM_DESCRIPTORS 160u
+#define VQEAF_VIOLET_MAX_DISPLAY_CLOCKS 6u
+#define VQEAF_VIOLET_MAX_DISPLAY_SUPPLIES 8u
+#define VQEAF_VIOLET_DISPLAY_SUPPLY_NAME 16u
 
 #define VQEAF_VIOLET_DTB_SOURCE_UNTRUSTED       0u
 #define VQEAF_VIOLET_DTB_SOURCE_LIVE_HANDSET    (1u << 0)
@@ -20,6 +23,43 @@ typedef struct vqeaf_violet_region {
     uint64_t base;
     uint64_t size;
 } vqeaf_violet_region_t;
+typedef struct vqeaf_violet_clock_ref {
+    uint32_t provider_phandle;
+    uint32_t id;
+} vqeaf_violet_clock_ref_t;
+typedef struct vqeaf_violet_supply_ref {
+    uint32_t phandle;
+    char name[VQEAF_VIOLET_DISPLAY_SUPPLY_NAME];
+} vqeaf_violet_supply_ref_t;
+typedef struct vqeaf_violet_display_info {
+    uint32_t found;
+    uint32_t mdss_found, dpu_found, dsi_found, phy_found, dispcc_found, panel_found;
+    uint64_t mdss_base, mdss_size;
+    uint64_t dpu_base, dpu_size;
+    uint64_t dpu_vbif_base, dpu_vbif_size;
+    uint64_t dsi_base, dsi_size;
+    uint64_t phy_base, phy_size;
+    uint64_t phy_lane_base, phy_lane_size;
+    uint64_t phy_pll_base, phy_pll_size;
+    uint64_t dispcc_base, dispcc_size;
+    uint32_t mdss_irq;
+    uint32_t dpu_irq_controller, dpu_irq_index;
+    uint32_t dsi_irq_controller, dsi_irq_index;
+    uint32_t dsi_clock_count;
+    vqeaf_violet_clock_ref_t dsi_clocks[VQEAF_VIOLET_MAX_DISPLAY_CLOCKS];
+    uint32_t dsi_assigned_clock_count;
+    vqeaf_violet_clock_ref_t dsi_assigned_clocks[VQEAF_VIOLET_MAX_DISPLAY_CLOCKS];
+    uint32_t dsi_assigned_parent_count;
+    vqeaf_violet_clock_ref_t dsi_assigned_parents[VQEAF_VIOLET_MAX_DISPLAY_CLOCKS];
+    uint32_t lane_count;
+    uint8_t lanes[4];
+    uint32_t reset_phandle, reset_gpio, reset_flags, reset_active_low;
+    uint32_t backlight_phandle;
+    uint32_t supply_count;
+    vqeaf_violet_supply_ref_t supplies[VQEAF_VIOLET_MAX_DISPLAY_SUPPLIES];
+    uint32_t panel_timing_present;
+    uint32_t panel_command_data_present;
+} vqeaf_violet_display_info_t;
 
 typedef struct vqeaf_efi_memory_descriptor {
     uint32_t type;
@@ -53,6 +93,8 @@ typedef struct vqeaf_violet_boot_info {
     uint32_t gic_found;
     uint32_t uart_found;
     uint32_t timer_found;
+    int32_t display_discovery_status;
+    vqeaf_violet_display_info_t display;
     uint32_t memory_map_valid;
     uint32_t memory_region_count;
     uint32_t reserved_region_count;
@@ -113,6 +155,9 @@ int vqeaf_violet_irq_init(void);
 int vqeaf_violet_irq_is_active(void);
 uint64_t vqeaf_violet_irq_dispatch(uint64_t frame_base);
 void vqeaf_a64_timer_external_tick(void);
+/* Select the DTB-discovered GENI console only after MMU activation and explicit
+ * clock/pin/inherited-configuration verification. No PL011 fallback is allowed. */
+int vqeaf_violet_uart_init(uint32_t verified_flags);
 
 #ifdef __cplusplus
 }

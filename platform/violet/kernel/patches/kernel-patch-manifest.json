@@ -1,0 +1,16 @@
+﻿{
+    "target_device":  "violet",
+    "patch_file":  "0001-initramfs-unpack-external-ramdisk-with-skip-initramfs.patch",
+    "patch_sha256":  "f5da25807ed16b5df85f50a96a49788aa695e16810f822b6b60f742ea098b8ce",
+    "reference_source":  "MiCode/Xiaomi_Kernel_OpenSource",
+    "reference_branch":  "violet-q-oss",
+    "reference_commit":  "1488fa3d05e2f9be5fc62e0bb16ad85d96db2076",
+    "reference_base_kernel":  "4.14.117",
+    "git_apply_check":  "PASS",
+    "target_kernel_release":  "4.14.215-azure-Pixel+",
+    "exact_target_source_available":  false,
+    "compiled":  false,
+    "ramboot_tested":  false,
+    "production_ready":  false,
+    "reason":  "Exact 4.14.215 source commit not proven. Patch is a candidate to bypass skip_initramfs only when an external initrd is supplied."
+}

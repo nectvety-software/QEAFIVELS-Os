@@ -10,11 +10,17 @@
  * The runtime deliberately executes only the declarative `app` and `print`
  * lines of the entry script. Arbitrary native code is never mapped.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #include "vqeaf_qeapp.h"
 
+#include <vqeaf/qeapp_package.h>
+
+#include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,8 +38,34 @@
 #define QEAPP_DEV_KEY "VQEAF-QEAPP-DEV-KEY-2026"
 
 static vqeaf_qeapp_t g_apps[QEAPP_MAX];
+static lv_image_dsc_t g_icon_dsc[QEAPP_MAX];
 static int g_app_count;
 static int g_selected;
+static int g_last_status = VQEAF_QEAPP_PACKAGE_OK;
+static int g_last_persisted;
+static void refresh_icon_descriptor(int index);
+
+int vqeaf_qeapp_last_status(void)
+{
+#ifdef __linux__
+    return g_last_status;
+#else
+    return VQEAF_QEAPP_PACKAGE_UNSUPPORTED;
+#endif
+}
+
+int vqeaf_qeapp_persisted(void)
+{
+    return g_last_persisted;
+}
+
+static int package_error(int status, char *error, size_t cap,
+                         const char *message)
+{
+    g_last_status = status;
+    if(error != NULL && cap > 0) snprintf(error, cap, "%s", message);
+    return -1;
+}
 
 /* ---- SHA-256 / HMAC ------------------------------------------------------ */
 
@@ -149,6 +181,23 @@ static void sha256_final(sha256_t *ctx, uint8_t out[32])
     }
 }
 
+static void package_sha256(const uint8_t *data, size_t length, uint8_t out[32])
+{
+    sha256_t ctx;
+
+    sha256_init(&ctx);
+    sha256_update(&ctx, data, length);
+    sha256_final(&ctx, out);
+}
+
+static int hash_equal(const uint8_t *a, const uint8_t *b)
+{
+    uint32_t difference = 0u;
+
+    for(size_t i = 0; i < 32u; i++) difference |= a[i] ^ b[i];
+    return difference == 0u;
+}
+
 static void hmac_sha256(const uint8_t *key, size_t key_length,
                         const uint8_t *data, size_t length, uint8_t out[32])
 {
@@ -183,6 +232,9 @@ typedef struct {
     uint16_t name_len;
     const uint8_t *data;
     uint32_t size;
+    uint32_t local_offset;
+    uint32_t crc;
+    uint16_t flags;
 } zip_entry_t;
 
 static uint16_t le16(const uint8_t *p)
@@ -196,6 +248,122 @@ static uint32_t le32(const uint8_t *p)
            ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+static uint32_t zip_crc32(const uint8_t *data, size_t size)
+{
+    uint32_t crc = 0xffffffffu;
+
+    for(size_t i = 0; i < size; i++) {
+        crc ^= data[i];
+        for(int bit = 0; bit < 8; bit++)
+            crc = (crc >> 1) ^ ((crc & 1u) ? 0xedb88320u : 0u);
+    }
+    return crc ^ 0xffffffffu;
+}
+
+static int zip_name_safe(const uint8_t *name, size_t length)
+{
+    size_t start = 0;
+
+    if(length == 0 || name[0] == '/' || name[0] == '\\' ||
+       name[length - 1] == '\\')
+        return 0;
+    for(size_t i = 0; i < length; i++) {
+        if(name[i] < 0x20u || name[i] == 0x7fu || name[i] == '\\' ||
+           name[i] == ':') return 0;
+        if(name[i] != '/') continue;
+        size_t part = i - start;
+        if(part == 0 || (part == 1 && name[start] == '.') ||
+           (part == 2 && name[start] == '.' && name[start + 1] == '.'))
+            return 0;
+        start = i + 1;
+    }
+    {
+        size_t part = length - start;
+        return part != 0 &&
+               !(part == 1 && name[start] == '.') &&
+               !(part == 2 && name[start] == '.' && name[start + 1] == '.');
+    }
+}
+
+static int zip_central_directory(const uint8_t *zip, size_t size,
+                                 const zip_entry_t *entries, int count,
+                                 size_t offset, char *error, size_t cap)
+{
+    size_t central_start = offset;
+
+    if(offset + 4 > size || le32(zip + offset) != 0x02014b50u) {
+        snprintf(error, cap, "Thieu central directory ZIP.");
+        return -1;
+    }
+    for(int i = 0; i < count; i++) {
+        uint16_t flags;
+        uint16_t method;
+        uint32_t csize;
+        uint32_t usize;
+        uint32_t crc;
+        uint32_t local_offset;
+        uint16_t nlen;
+        uint16_t elen;
+        uint16_t clen;
+        size_t data_offset;
+        int found = 0;
+
+        if(offset + 46 > size || le32(zip + offset) != 0x02014b50u) {
+            snprintf(error, cap, "Central directory ZIP bi hung.");
+            return -1;
+        }
+        flags = le16(zip + offset + 8);
+        method = le16(zip + offset + 10);
+        crc = le32(zip + offset + 16);
+        csize = le32(zip + offset + 20);
+        usize = le32(zip + offset + 24);
+        nlen = le16(zip + offset + 28);
+        elen = le16(zip + offset + 30);
+        clen = le16(zip + offset + 32);
+        local_offset = le32(zip + offset + 42);
+        data_offset = offset + 46 + nlen + elen + clen;
+        if(data_offset > size || (flags & (1u | 8u | 0x40u | 0x2000u)) != 0u ||
+           method != 0 || csize != usize ||
+           ((le32(zip + offset + 38) >> 16) & 0170000u) == 0120000u ||
+           !zip_name_safe(zip + offset + 46, nlen)) {
+            snprintf(error, cap, "Central directory ZIP khong hop le.");
+            return -1;
+        }
+        for(int j = 0; j < count; j++) {
+            if(entries[j].local_offset != local_offset ||
+               entries[j].name_len != nlen ||
+               memcmp(entries[j].name, zip + offset + 46, nlen) != 0)
+                continue;
+            if(entries[j].flags != flags || entries[j].size != csize ||
+               entries[j].crc != crc) {
+                snprintf(error, cap, "Local/central ZIP khong khop.");
+                return -1;
+            }
+            found = 1;
+            break;
+        }
+        if(!found) {
+            snprintf(error, cap, "Central directory ZIP thieu local entry.");
+            return -1;
+        }
+        offset = data_offset;
+    }
+    if(offset + 22 > size || le32(zip + offset) != 0x06054b50u) {
+        snprintf(error, cap, "Thieu EOCD ZIP.");
+        return -1;
+    }
+    if(le16(zip + offset + 4) != 0u || le16(zip + offset + 6) != 0u ||
+       le16(zip + offset + 8) != (uint16_t)count ||
+       le16(zip + offset + 10) != (uint16_t)count ||
+       le32(zip + offset + 12) != (uint32_t)(offset - central_start) ||
+       le32(zip + offset + 16) != (uint32_t)central_start ||
+       offset + 22u + le16(zip + offset + 20) != size) {
+        snprintf(error, cap, "EOCD ZIP khong khop hoac co du lieu thua.");
+        return -1;
+    }
+    return 0;
+}
+
 static int zip_entries(const uint8_t *zip, size_t size, zip_entry_t *out,
                        int max, char *error, size_t cap)
 {
@@ -203,29 +371,63 @@ static int zip_entries(const uint8_t *zip, size_t size, zip_entry_t *out,
     int count = 0;
 
     while(offset + 30 <= size && le32(zip + offset) == 0x04034b50u) {
-        if(count >= max) break;
+        uint16_t flags = le16(zip + offset + 6);
         uint16_t method = le16(zip + offset + 8);
+        uint32_t crc = le32(zip + offset + 14);
         uint32_t csize = le32(zip + offset + 18);
         uint32_t usize = le32(zip + offset + 22);
         uint16_t nlen = le16(zip + offset + 26);
         uint16_t elen = le16(zip + offset + 28);
-        size_t data_offset = offset + 30 + nlen + elen;
+        const uint8_t *name;
+        size_t data_offset;
 
-        if(method != 0) {
-            snprintf(error, cap, "QEAPP phải là ZIP stored (không nén).");
+        if(count >= max) {
+            snprintf(error, cap, "QEAPP vuot qua %d entry.", max);
             return -1;
         }
-        if(data_offset + csize > size || csize != usize) {
+        if(offset + 30 > size || (size_t)nlen > size - offset - 30) {
+            snprintf(error, cap, "Local header ZIP bi hang.");
+            return -1;
+        }
+        name = zip + offset + 30;
+        data_offset = offset + 30 + nlen;
+        if((size_t)elen > size - data_offset) {
+            snprintf(error, cap, "Local header ZIP bi hang.");
+            return -1;
+        }
+        data_offset += elen;
+        if(!zip_name_safe(name, nlen)) {
+            snprintf(error, cap, "Entry ZIP co duong dan khong an toan.");
+            return -1;
+        }
+        for(int i = 0; i < count; i++) {
+            if(out[i].name_len == nlen &&
+               memcmp(out[i].name, name, nlen) == 0) {
+                snprintf(error, cap, "Entry ZIP trung ten.");
+                return -1;
+            }
+        }
+        if((flags & (1u | 8u | 0x40u | 0x2000u)) != 0u || method != 0) {
+            snprintf(error, cap, "QEAPP phải là ZIP stored (không mã hóa).");
+            return -1;
+        }
+        if((size_t)csize > size - data_offset || csize != usize ||
+           zip_crc32(zip + data_offset, csize) != crc) {
             snprintf(error, cap, "Entry ZIP hỏng hoặc vượt biên.");
             return -1;
         }
-        out[count].name = (const char *)(zip + offset + 30);
+        out[count].name = (const char *)name;
         out[count].name_len = nlen;
         out[count].data = zip + data_offset;
         out[count].size = csize;
+        out[count].local_offset = (uint32_t)offset;
+        out[count].crc = crc;
+        out[count].flags = flags;
         count++;
         offset = data_offset + csize;
     }
+    if(zip_central_directory(zip, size, out, count, offset, error, cap) != 0)
+        return -1;
     return count;
 }
 
@@ -262,7 +464,7 @@ static int verify_signature(const zip_entry_t *entries, int count,
     uint8_t digest[32];
     char hex[65];
 
-    if(signature == NULL || signature->size < 64) return -1;
+    if(signature == NULL || signature->size != 64u) return -1;
     for(int i = 0; i < count; i++)
         if(!(entries[i].name_len == 9 &&
              memcmp(entries[i].name, "SIGNATURE", 9) == 0))
@@ -292,83 +494,9 @@ static int verify_signature(const zip_entry_t *entries, int count,
     free(canonical);
     for(int i = 0; i < 32; i++) snprintf(hex + i * 2, 3, "%02x", digest[i]);
     hex[64] = '\0';
-    for(int i = 0; i < 64; i++) {
-        char c = (char)signature->data[i];
-        if(c >= 'A' && c <= 'F') c = (char)(c - 'A' + 'a');
-        if(c != hex[i]) return -1;
-    }
+    for(int i = 0; i < 64; i++)
+        if(signature->data[i] != (uint8_t)hex[i]) return -1;
     return 0;
-}
-
-static int json_string(const uint8_t *json, size_t length, const char *key,
-                       char *out, size_t cap)
-{
-    char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\"", key);
-    for(size_t i = 0; i + strlen(needle) < length; i++) {
-        if(memcmp(json + i, needle, strlen(needle)) != 0) continue;
-        size_t j = i + strlen(needle);
-        while(j < length && (json[j] == ' ' || json[j] == ':')) j++;
-        if(j >= length || json[j] != '"') continue;
-        j++;
-        size_t n = 0;
-        while(j < length && json[j] != '"' && n + 1 < cap) {
-            if(json[j] == '\\' && j + 1 < length) j++;
-            out[n++] = (char)json[j++];
-        }
-        out[n] = '\0';
-        return 0;
-    }
-    return -1;
-}
-
-static int json_int(const uint8_t *json, size_t length, const char *key,
-                    int *out)
-{
-    char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\"", key);
-    for(size_t i = 0; i + strlen(needle) < length; i++) {
-        if(memcmp(json + i, needle, strlen(needle)) != 0) continue;
-        size_t j = i + strlen(needle);
-        while(j < length && (json[j] == ' ' || json[j] == ':')) j++;
-        int value = 0;
-        int digits = 0;
-        while(j < length && json[j] >= '0' && json[j] <= '9') {
-            value = value * 10 + (json[j] - '0');
-            j++;
-            digits++;
-        }
-        if(digits > 0) {
-            *out = value;
-            return 0;
-        }
-    }
-    return -1;
-}
-
-/* Reads the first string element of a JSON array such as
- * "architecture": ["arm64"]. */
-static int json_first_array_string(const uint8_t *json, size_t length,
-                                   const char *key, char *out, size_t cap)
-{
-    char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\"", key);
-    for(size_t i = 0; i + strlen(needle) < length; i++) {
-        if(memcmp(json + i, needle, strlen(needle)) != 0) continue;
-        size_t j = i + strlen(needle);
-        while(j < length && json[j] != '[') j++;
-        if(j >= length) return -1;
-        j++;
-        while(j < length && json[j] != '"' && json[j] != ']') j++;
-        if(j >= length || json[j] != '"') return -1;
-        j++;
-        size_t n = 0;
-        while(j < length && json[j] != '"' && n + 1 < cap)
-            out[n++] = (char)json[j++];
-        out[n] = '\0';
-        return n > 0 ? 0 : -1;
-    }
-    return -1;
 }
 
 /* Maps a manifest permission string to its bit (qeaf_permission_t). */
@@ -382,33 +510,672 @@ static uint32_t permission_bit(const char *name)
     return 0u;
 }
 
-/* ORs every string element of a JSON array such as "permissions": [...]. */
-static uint32_t json_permission_mask(const uint8_t *json, size_t length,
-                                     const char *key)
+typedef struct {
+    const uint8_t *data;
+    size_t size;
+    size_t pos;
+} manifest_parser_t;
+
+enum {
+    MANIFEST_FORMAT = 1u << 0,
+    MANIFEST_FORMAT_VERSION = 1u << 1,
+    MANIFEST_ID = 1u << 2,
+    MANIFEST_NAME = 1u << 3,
+    MANIFEST_VERSION = 1u << 4,
+    MANIFEST_MIN_OS = 1u << 5,
+    MANIFEST_ENTRY = 1u << 6,
+    MANIFEST_ARCHITECTURE = 1u << 7,
+    MANIFEST_PERMISSIONS = 1u << 8,
+    MANIFEST_DEPENDENCIES = 1u << 9,
+    MANIFEST_RUNTIME = 1u << 10,
+    MANIFEST_ABI_VERSION = 1u << 11,
+    MANIFEST_ICON = 1u << 12,
+    MANIFEST_REQUIRED = (1u << 10) - 1u
+};
+
+typedef struct {
+    char format[16];
+    char id[64];
+    char name[64];
+    char version[24];
+    char min_os[24];
+    char entry[128];
+    char architecture[16];
+    char runtime[16];
+    char icon[128];
+    int format_version;
+    int abi_version;
+    int architecture_count;
+    int dependency_count;
+    uint32_t permissions;
+    unsigned seen;
+} manifest_values_t;
+
+static void manifest_ws(manifest_parser_t *parser)
 {
-    char needle[64];
-    uint32_t mask = 0u;
-    snprintf(needle, sizeof(needle), "\"%s\"", key);
-    for(size_t i = 0; i + strlen(needle) < length; i++) {
-        if(memcmp(json + i, needle, strlen(needle)) != 0) continue;
-        size_t j = i + strlen(needle);
-        while(j < length && json[j] != '[') j++;
-        if(j >= length) return 0u;
-        j++;
-        while(j < length && json[j] != ']') {
-            if(json[j] != '"') { j++; continue; }
-            j++;
-            char name[64];
-            size_t n = 0;
-            while(j < length && json[j] != '"' && n + 1 < sizeof(name))
-                name[n++] = (char)json[j++];
-            name[n] = '\0';
-            if(j < length && json[j] == '"') j++;
-            mask |= permission_bit(name);
+    while(parser->pos < parser->size &&
+          (parser->data[parser->pos] == ' ' ||
+           parser->data[parser->pos] == '\t' ||
+           parser->data[parser->pos] == '\r' ||
+           parser->data[parser->pos] == '\n'))
+        parser->pos++;
+}
+
+static int utf8_valid(const uint8_t *text, size_t length)
+{
+    size_t i = 0;
+
+    while(i < length) {
+        uint8_t c = text[i++];
+        size_t extra;
+        uint32_t code;
+        uint32_t minimum;
+        if(c < 0x80u) continue;
+        if(c >= 0xc2u && c <= 0xdfu) {
+            extra = 1; code = c & 0x1fu; minimum = 0x80u;
         }
-        return mask;
+        else if(c >= 0xe0u && c <= 0xefu) {
+            extra = 2; code = c & 0x0fu; minimum = 0x800u;
+        }
+        else if(c >= 0xf0u && c <= 0xf4u) {
+            extra = 3; code = c & 0x07u; minimum = 0x10000u;
+        }
+        else return 0;
+        if(extra > length - i) return 0;
+        for(size_t j = 0; j < extra; j++) {
+            uint8_t next = text[i++];
+            if((next & 0xc0u) != 0x80u) return 0;
+            code = (code << 6) | (next & 0x3fu);
+        }
+        if(code < minimum || code > 0x10ffffu ||
+           (code >= 0xd800u && code <= 0xdfffu))
+            return 0;
     }
-    return 0u;
+    return 1;
+}
+
+static int manifest_put(char *out, size_t cap, size_t *used,
+                        const uint8_t *bytes, size_t length)
+{
+    if(out != NULL) {
+        if(*used > cap || length >= cap - *used) return -1;
+        memcpy(out + *used, bytes, length);
+    }
+    *used += length;
+    return 0;
+}
+
+static int manifest_put_codepoint(char *out, size_t cap, size_t *used,
+                                  uint32_t code)
+{
+    uint8_t bytes[4];
+    size_t count;
+
+    if(code <= 0x7fu) {
+        bytes[0] = (uint8_t)code; count = 1;
+    }
+    else if(code <= 0x7ffu) {
+        bytes[0] = (uint8_t)(0xc0u | (code >> 6));
+        bytes[1] = (uint8_t)(0x80u | (code & 0x3fu)); count = 2;
+    }
+    else if(code <= 0xffffu) {
+        bytes[0] = (uint8_t)(0xe0u | (code >> 12));
+        bytes[1] = (uint8_t)(0x80u | ((code >> 6) & 0x3fu));
+        bytes[2] = (uint8_t)(0x80u | (code & 0x3fu)); count = 3;
+    }
+    else {
+        bytes[0] = (uint8_t)(0xf0u | (code >> 18));
+        bytes[1] = (uint8_t)(0x80u | ((code >> 12) & 0x3fu));
+        bytes[2] = (uint8_t)(0x80u | ((code >> 6) & 0x3fu));
+        bytes[3] = (uint8_t)(0x80u | (code & 0x3fu)); count = 4;
+    }
+    return manifest_put(out, cap, used, bytes, count);
+}
+
+static int manifest_hex4(manifest_parser_t *parser, uint32_t *out)
+{
+    uint32_t value = 0;
+
+    if(parser->size - parser->pos < 4u) return -1;
+    for(int i = 0; i < 4; i++) {
+        uint8_t c = parser->data[parser->pos++];
+        value <<= 4;
+        if(c >= '0' && c <= '9') value |= c - '0';
+        else if(c >= 'a' && c <= 'f') value |= c - 'a' + 10u;
+        else if(c >= 'A' && c <= 'F') value |= c - 'A' + 10u;
+        else return -1;
+    }
+    *out = value;
+    return 0;
+}
+
+static int manifest_string(manifest_parser_t *parser, char *out, size_t cap)
+{
+    size_t used = 0;
+    size_t segment;
+
+    if(parser->pos >= parser->size || parser->data[parser->pos++] != '"')
+        return -1;
+    segment = parser->pos;
+    while(parser->pos < parser->size) {
+        uint8_t c = parser->data[parser->pos];
+        if(c == '"') {
+            if(!utf8_valid(parser->data + segment, parser->pos - segment))
+                return -1;
+            if(manifest_put(out, cap, &used, parser->data + segment,
+                            parser->pos - segment) != 0)
+                return -1;
+            parser->pos++;
+            if(out != NULL) out[used] = '\0';
+            return 0;
+        }
+        if(c < 0x20u) return -1;
+        if(c != '\\') {
+            parser->pos++;
+            continue;
+        }
+        if(!utf8_valid(parser->data + segment, parser->pos - segment) ||
+           manifest_put(out, cap, &used, parser->data + segment,
+                        parser->pos - segment) != 0)
+            return -1;
+        parser->pos++;
+        if(parser->pos >= parser->size) return -1;
+        c = parser->data[parser->pos++];
+        switch(c) {
+        case '"': case '\\': case '/':
+            if(manifest_put(out, cap, &used, &c, 1) != 0) return -1;
+            break;
+        case 'b': c = '\b'; if(manifest_put(out, cap, &used, &c, 1) != 0) return -1; break;
+        case 'f': c = '\f'; if(manifest_put(out, cap, &used, &c, 1) != 0) return -1; break;
+        case 'n': c = '\n'; if(manifest_put(out, cap, &used, &c, 1) != 0) return -1; break;
+        case 'r': c = '\r'; if(manifest_put(out, cap, &used, &c, 1) != 0) return -1; break;
+        case 't': c = '\t'; if(manifest_put(out, cap, &used, &c, 1) != 0) return -1; break;
+        case 'u': {
+            uint32_t code;
+            if(manifest_hex4(parser, &code) != 0) return -1;
+            if(code >= 0xd800u && code <= 0xdbffu) {
+                uint32_t low;
+                if(parser->size - parser->pos < 6u ||
+                   parser->data[parser->pos] != '\\' ||
+                   parser->data[parser->pos + 1] != 'u') return -1;
+                parser->pos += 2;
+                if(manifest_hex4(parser, &low) != 0 || low < 0xdc00u ||
+                   low > 0xdfffu) return -1;
+                code = 0x10000u + ((code - 0xd800u) << 10) + (low - 0xdc00u);
+            }
+            else if((code >= 0xdc00u && code <= 0xdfffu) || code == 0u) return -1;
+            if(manifest_put_codepoint(out, cap, &used, code) != 0) return -1;
+            break;
+        }
+        default: return -1;
+        }
+        segment = parser->pos;
+    }
+    return -1;
+}
+
+static int manifest_number(manifest_parser_t *parser)
+{
+    if(parser->pos < parser->size && parser->data[parser->pos] == '-')
+        parser->pos++;
+    if(parser->pos >= parser->size) return -1;
+    if(parser->data[parser->pos] == '0') parser->pos++;
+    else {
+        if(parser->data[parser->pos] < '1' ||
+           parser->data[parser->pos] > '9') return -1;
+        while(parser->pos < parser->size && parser->data[parser->pos] >= '0' &&
+              parser->data[parser->pos] <= '9') parser->pos++;
+    }
+    if(parser->pos < parser->size && parser->data[parser->pos] == '.') {
+        parser->pos++;
+        if(parser->pos >= parser->size || parser->data[parser->pos] < '0' ||
+           parser->data[parser->pos] > '9') return -1;
+        while(parser->pos < parser->size && parser->data[parser->pos] >= '0' &&
+              parser->data[parser->pos] <= '9') parser->pos++;
+    }
+    if(parser->pos < parser->size &&
+       (parser->data[parser->pos] == 'e' || parser->data[parser->pos] == 'E')) {
+        parser->pos++;
+        if(parser->pos < parser->size &&
+           (parser->data[parser->pos] == '+' || parser->data[parser->pos] == '-'))
+            parser->pos++;
+        if(parser->pos >= parser->size || parser->data[parser->pos] < '0' ||
+           parser->data[parser->pos] > '9') return -1;
+        while(parser->pos < parser->size && parser->data[parser->pos] >= '0' &&
+              parser->data[parser->pos] <= '9') parser->pos++;
+    }
+    return 0;
+}
+
+static int manifest_skip_value(manifest_parser_t *parser, int depth)
+{
+    if(depth > 16) return -1;
+    manifest_ws(parser);
+    if(parser->pos >= parser->size) return -1;
+    if(parser->data[parser->pos] == '"')
+        return manifest_string(parser, NULL, 0);
+    if(parser->data[parser->pos] == '{') {
+        parser->pos++;
+        manifest_ws(parser);
+        if(parser->pos < parser->size && parser->data[parser->pos] == '}') {
+            parser->pos++;
+            return 0;
+        }
+        for(;;) {
+            if(manifest_string(parser, NULL, 0) != 0) return -1;
+            manifest_ws(parser);
+            if(parser->pos >= parser->size || parser->data[parser->pos++] != ':')
+                return -1;
+            if(manifest_skip_value(parser, depth + 1) != 0) return -1;
+            manifest_ws(parser);
+            if(parser->pos >= parser->size) return -1;
+            if(parser->data[parser->pos] == '}') {
+                parser->pos++;
+                return 0;
+            }
+            if(parser->data[parser->pos++] != ',') return -1;
+            manifest_ws(parser);
+        }
+    }
+    if(parser->data[parser->pos] == '[') {
+        parser->pos++;
+        manifest_ws(parser);
+        if(parser->pos < parser->size && parser->data[parser->pos] == ']') {
+            parser->pos++;
+            return 0;
+        }
+        for(;;) {
+            if(manifest_skip_value(parser, depth + 1) != 0) return -1;
+            manifest_ws(parser);
+            if(parser->pos >= parser->size) return -1;
+            if(parser->data[parser->pos] == ']') {
+                parser->pos++;
+                return 0;
+            }
+            if(parser->data[parser->pos++] != ',') return -1;
+        }
+    }
+    if(parser->size - parser->pos >= 4u &&
+       memcmp(parser->data + parser->pos, "true", 4) == 0) {
+        parser->pos += 4; return 0;
+    }
+    if(parser->size - parser->pos >= 5u &&
+       memcmp(parser->data + parser->pos, "false", 5) == 0) {
+        parser->pos += 5; return 0;
+    }
+    if(parser->size - parser->pos >= 4u &&
+       memcmp(parser->data + parser->pos, "null", 4) == 0) {
+        parser->pos += 4; return 0;
+    }
+    if(parser->data[parser->pos] == '-' ||
+       (parser->data[parser->pos] >= '0' && parser->data[parser->pos] <= '9'))
+        return manifest_number(parser);
+    return -1;
+}
+
+static int manifest_integer(manifest_parser_t *parser, int *out)
+{
+    int value = 0;
+
+    manifest_ws(parser);
+    if(parser->pos >= parser->size || parser->data[parser->pos] < '0' ||
+       parser->data[parser->pos] > '9')
+        return -1;
+    while(parser->pos < parser->size && parser->data[parser->pos] >= '0' &&
+           parser->data[parser->pos] <= '9') {
+        int digit = parser->data[parser->pos++] - '0';
+        if(value > (INT_MAX - digit) / 10) return -1;
+        value = value * 10 + digit;
+    }
+    *out = value;
+    return 0;
+}
+
+static int manifest_string_array(manifest_parser_t *parser, int kind,
+                                 manifest_values_t *values)
+{
+    int count = 0;
+
+    manifest_ws(parser);
+    if(parser->pos >= parser->size || parser->data[parser->pos++] != '[')
+        return -1;
+    manifest_ws(parser);
+    if(parser->pos < parser->size && parser->data[parser->pos] == ']') {
+        parser->pos++;
+        return kind == 1 ? -1 : 0;
+    }
+    for(;;) {
+        char text[128];
+        if(manifest_string(parser, text, sizeof(text)) != 0) return -1;
+        if(kind == 1) {
+            if(strcmp(text, "arm64") != 0 && strcmp(text, "x86_64") != 0)
+                return -1;
+            if(count == 0) {
+                if(snprintf(values->architecture, sizeof(values->architecture),
+                            "%s", text) < 0) return -1;
+            }
+            else if(strcmp(text, values->architecture) == 0)
+                return -1;
+        }
+        else if(kind == 2) {
+            uint32_t bit = permission_bit(text);
+            if(bit == 0u) return -1;
+            values->permissions |= bit;
+        }
+        else if(text[0] == '\0') return -1;
+        count++;
+        manifest_ws(parser);
+        if(parser->pos >= parser->size) return -1;
+        if(parser->data[parser->pos] == ']') {
+            parser->pos++;
+            if(kind == 1) values->architecture_count = count;
+            if(kind == 3) values->dependency_count = count;
+            return 0;
+        }
+        if(parser->data[parser->pos++] != ',') return -1;
+        manifest_ws(parser);
+    }
+}
+
+static int manifest_parse(const zip_entry_t *entry, manifest_values_t *values,
+                          char *error, size_t cap)
+{
+    manifest_parser_t parser = { entry->data, entry->size, 0 };
+
+    memset(values, 0, sizeof(*values));
+    manifest_ws(&parser);
+    if(parser.pos >= parser.size || parser.data[parser.pos++] != '{')
+        goto invalid;
+    manifest_ws(&parser);
+    if(parser.pos < parser.size && parser.data[parser.pos] == '}') {
+        parser.pos++;
+        goto missing;
+    }
+    for(;;) {
+        char key[128];
+        char *text = NULL;
+        size_t text_cap = 0;
+        unsigned field = 0u;
+
+        if(manifest_string(&parser, key, sizeof(key)) != 0) goto invalid;
+        manifest_ws(&parser);
+        if(parser.pos >= parser.size || parser.data[parser.pos++] != ':')
+            goto invalid;
+        manifest_ws(&parser);
+
+        if(strcmp(key, "format") == 0) {
+            field = MANIFEST_FORMAT; text = values->format;
+            text_cap = sizeof(values->format);
+        }
+        else if(strcmp(key, "id") == 0) {
+            field = MANIFEST_ID; text = values->id; text_cap = sizeof(values->id);
+        }
+        else if(strcmp(key, "name") == 0) {
+            field = MANIFEST_NAME; text = values->name; text_cap = sizeof(values->name);
+        }
+        else if(strcmp(key, "version") == 0) {
+            field = MANIFEST_VERSION; text = values->version;
+            text_cap = sizeof(values->version);
+        }
+        else if(strcmp(key, "min_os") == 0) {
+            field = MANIFEST_MIN_OS; text = values->min_os;
+            text_cap = sizeof(values->min_os);
+        }
+        else if(strcmp(key, "entry") == 0) {
+            field = MANIFEST_ENTRY; text = values->entry;
+            text_cap = sizeof(values->entry);
+        }
+        else if(strcmp(key, "runtime") == 0) {
+            field = MANIFEST_RUNTIME; text = values->runtime;
+            text_cap = sizeof(values->runtime);
+        }
+        else if(strcmp(key, "icon") == 0) {
+            field = MANIFEST_ICON; text = values->icon;
+            text_cap = sizeof(values->icon);
+        }
+
+        if(field != 0u) {
+            if((values->seen & field) != 0u ||
+               manifest_string(&parser, text, text_cap) != 0)
+                goto invalid;
+            values->seen |= field;
+        }
+        else if(strcmp(key, "format_version") == 0) {
+            if((values->seen & MANIFEST_FORMAT_VERSION) != 0u ||
+               manifest_integer(&parser, &values->format_version) != 0)
+                goto invalid;
+            values->seen |= MANIFEST_FORMAT_VERSION;
+        }
+        else if(strcmp(key, "abi_version") == 0) {
+            if((values->seen & MANIFEST_ABI_VERSION) != 0u ||
+               manifest_integer(&parser, &values->abi_version) != 0)
+                goto invalid;
+            values->seen |= MANIFEST_ABI_VERSION;
+        }
+        else if(strcmp(key, "architecture") == 0) {
+            if((values->seen & MANIFEST_ARCHITECTURE) != 0u ||
+               manifest_string_array(&parser, 1, values) != 0)
+                goto invalid;
+            values->seen |= MANIFEST_ARCHITECTURE;
+        }
+        else if(strcmp(key, "permissions") == 0) {
+            if((values->seen & MANIFEST_PERMISSIONS) != 0u ||
+               manifest_string_array(&parser, 2, values) != 0)
+                goto invalid;
+            values->seen |= MANIFEST_PERMISSIONS;
+        }
+        else if(strcmp(key, "dependencies") == 0) {
+            if((values->seen & MANIFEST_DEPENDENCIES) != 0u ||
+               manifest_string_array(&parser, 3, values) != 0)
+                goto invalid;
+            values->seen |= MANIFEST_DEPENDENCIES;
+        }
+        else if(manifest_skip_value(&parser, 1) != 0) goto invalid;
+
+        manifest_ws(&parser);
+        if(parser.pos >= parser.size) goto invalid;
+        if(parser.data[parser.pos] == '}') {
+            parser.pos++;
+            break;
+        }
+        if(parser.data[parser.pos++] != ',') goto invalid;
+        manifest_ws(&parser);
+    }
+    manifest_ws(&parser);
+    if(parser.pos != parser.size) goto invalid;
+    if((values->seen & MANIFEST_REQUIRED) != MANIFEST_REQUIRED) goto missing;
+    return 0;
+
+invalid:
+    return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                         "Manifest JSON khong hop le.");
+missing:
+    return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                         "Manifest thieu truong bat buoc.");
+}
+
+static int valid_package_id(const char *id)
+{
+    size_t length = strlen(id);
+    int separator = 0;
+    int segment = 0;
+
+    if(length == 0 || length >= 64u) return 0;
+    for(size_t i = 0; i < length; i++) {
+        unsigned char c = (unsigned char)id[i];
+        if(islower(c) || isdigit(c)) {
+            segment = 1;
+            continue;
+        }
+        if((c == '.' || c == '-') && segment) {
+            separator = 1;
+            segment = 0;
+            continue;
+        }
+        return 0;
+    }
+    return segment && separator;
+}
+
+static int valid_version(const char *version)
+{
+    int dots = 0;
+    int digits = 0;
+    size_t length = strlen(version);
+
+    if(length == 0 || length >= 24u) return 0;
+    for(size_t i = 0; i < length; i++) {
+        if(isdigit((unsigned char)version[i])) {
+            digits = 1;
+            continue;
+        }
+        if(version[i] == '.' && digits) {
+            dots++;
+            digits = 0;
+            continue;
+        }
+        return 0;
+    }
+    return dots == 2 && digits;
+}
+
+static int safe_entry_path(const char *path, const char *extension)
+{
+    size_t length = strlen(path);
+    size_t ext_length = strlen(extension);
+    size_t start = 0;
+
+    if(length == 0 || length >= 128u || path[0] == '/' ||
+       length <= ext_length || strcmp(path + length - ext_length, extension) != 0)
+        return 0;
+    for(size_t i = 0; i <= length; i++) {
+        if(i != length && path[i] != '/') {
+            unsigned char c = (unsigned char)path[i];
+            if(!(isalnum(c) || c == '_' || c == '-' || c == '.')) return 0;
+            continue;
+        }
+        size_t part = i - start;
+        if(part == 0 || (part == 2 && path[start] == '.' &&
+                         path[start + 1] == '.'))
+            return 0;
+        start = i + 1;
+    }
+    return 1;
+}
+
+static int valid_display_name(const char *name)
+{
+    size_t length = strlen(name);
+    int visible = 0;
+    if(length == 0 || length >= 64u) return 0;
+    for(size_t i = 0; i < length; i++) {
+        if((unsigned char)name[i] < 0x20u) return 0;
+        if(name[i] != ' ') visible = 1;
+    }
+    return visible;
+}
+
+static int script_valid(const uint8_t *script, size_t length)
+{
+    size_t start = 0;
+
+    if(!utf8_valid(script, length)) return 0;
+    for(size_t i = 0; i <= length; i++) {
+        if(i != length && script[i] != '\n') continue;
+        size_t end = i;
+        while(end > start && (script[end - 1] == '\r' ||
+                              script[end - 1] == ' ' || script[end - 1] == '\t'))
+            end--;
+        size_t line = start;
+        while(line < end && (script[line] == ' ' || script[line] == '\t'))
+            line++;
+        if(line == end || script[line] == '#') {
+            start = i + 1;
+            continue;
+        }
+        if(end - line > 4 && memcmp(script + line, "app ", 4) == 0) {
+            size_t p = line + 4;
+            if(p == end || !(isalpha(script[p]) || script[p] == '_')) return 0;
+            for(p++; p < end; p++)
+                if(!(isalnum(script[p]) || script[p] == '_')) return 0;
+        }
+        else if(end - line > 6 && memcmp(script + line, "print ", 6) == 0) {
+            size_t p = line + 6;
+            int closed = 0;
+            if(p == end || script[p++] != '"') return 0;
+            while(p < end) {
+                if(script[p] == '\\') {
+                    p++;
+                    if(p == end) return 0;
+                }
+                else if(script[p] == '"') {
+                    closed = 1;
+                    p++;
+                    break;
+                }
+                p++;
+            }
+            if(!closed) return 0;
+            while(p < end && (script[p] == ' ' || script[p] == '\t')) p++;
+            if(p != end) return 0;
+        }
+        else return 0;
+        start = i + 1;
+    }
+    return 1;
+}
+
+static int manifest_common(const manifest_values_t *manifest,
+                           char *id, size_t id_cap, char *name, size_t name_cap,
+                           char *version, size_t version_cap, char *entry_name,
+                           size_t entry_cap, char *arch, size_t arch_cap,
+                           int *format_version, uint32_t *permissions,
+                           char *error, size_t cap)
+{
+    *permissions = manifest->permissions;
+    if(strcmp(manifest->format, "qeapp") != 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest format phai la qeapp.");
+    if(manifest->format_version != 1 && manifest->format_version != 2)
+        return package_error(VQEAF_QEAPP_PACKAGE_UNSUPPORTED, error, cap,
+                             "Manifest format_version chua ho tro.");
+    if(!valid_package_id(manifest->id))
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest id khong hop le.");
+    if(!valid_display_name(manifest->name))
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest name khong hop le.");
+    if(!valid_version(manifest->version))
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest version phai la x.y.z.");
+    if(!valid_version(manifest->min_os))
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest min_os phai la x.y.z.");
+    if(manifest->entry[0] == '\0')
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest thieu entry.");
+    if((manifest->seen & MANIFEST_ICON) != 0u &&
+       (!zip_name_safe((const uint8_t *)manifest->icon,
+                       strlen(manifest->icon)) ||
+        manifest->icon[strlen(manifest->icon) - 1] == '/' ||
+        strcmp(manifest->icon, "assets/icon.rgba") != 0))
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest icon phai la assets/icon.rgba.");
+    if(manifest->format_version == 2 && manifest->architecture_count != 1)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Format_version 2 can dung mot architecture.");
+    if(manifest->architecture_count == 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_UNSUPPORTED, error, cap,
+                             "Manifest architecture khong ho tro.");
+    if(snprintf(id, id_cap, "%s", manifest->id) < 0 ||
+       snprintf(name, name_cap, "%s", manifest->name) < 0 ||
+       snprintf(version, version_cap, "%s", manifest->version) < 0 ||
+       snprintf(entry_name, entry_cap, "%s", manifest->entry) < 0 ||
+       snprintf(arch, arch_cap, "%s", manifest->architecture) < 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_INTERNAL_ERROR, error, cap,
+                             "Manifest vuot qua bo dem dau ra.");
+    *format_version = manifest->format_version;
+    return 0;
 }
 
 static void parse_script(const uint8_t *script, size_t length, char *message,
@@ -456,134 +1223,162 @@ int vqeaf_qeapp_inspect_native(const uint8_t *zip, size_t size,
     const zip_entry_t *manifest_entry;
     const zip_entry_t *signature;
     const zip_entry_t *entry;
-    char runtime[16];
+    manifest_values_t manifest;
+    char id[64], name[64], version[24];
     char entry_name[128];
     char arch[16];
+    uint32_t permissions;
     int format_version;
     int abi_version;
     int arch_id;
     int count;
 
     if(zip == NULL || size == 0 || info == NULL || module == NULL ||
-       module_size == NULL) {
-        snprintf(error, cap, "Native QEAPP input khong hop le.");
-        return -1;
-    }
+       module_size == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, error, cap,
+                             "Native QEAPP input khong hop le.");
+    if(size > QEAPP_FILE_CAP)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "QEAPP vuot qua 512 KiB.");
     *module = NULL;
     *module_size = 0;
     memset(info, 0, sizeof(*info));
+    g_last_status = VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE;
 
     count = zip_entries(zip, size, entries, QEAPP_ZIP_MAX_ENTRIES, error, cap);
     if(count < 0) return -1;
     manifest_entry = zip_find(entries, count, "manifest.json");
     signature = zip_find(entries, count, "SIGNATURE");
-    if(manifest_entry == NULL) {
-        snprintf(error, cap, "Native QEAPP thieu manifest.json.");
+    if(manifest_entry == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Native QEAPP thieu manifest.json.");
+    if(signature == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_SIGNATURE_ERROR, error, cap,
+                             "Native QEAPP thieu SIGNATURE.");
+    if(verify_signature(entries, count, signature) != 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_SIGNATURE_ERROR, error, cap,
+                             "Native QEAPP chu ky khong hop le.");
+    if(manifest_parse(manifest_entry, &manifest, error, cap) != 0 ||
+       manifest_common(&manifest, id, sizeof(id), name, sizeof(name),
+                       version, sizeof(version), entry_name, sizeof(entry_name),
+                       arch, sizeof(arch), &format_version, &permissions,
+                       error, cap) != 0)
         return -1;
-    }
-    if(signature == NULL) {
-        snprintf(error, cap, "Native QEAPP thieu SIGNATURE.");
-        return -1;
-    }
-    if(verify_signature(entries, count, signature) != 0) {
-        snprintf(error, cap, "Native QEAPP chu ky khong hop le.");
-        return -1;
-    }
-    if(json_int(manifest_entry->data, manifest_entry->size,
-                "format_version", &format_version) != 0 ||
-       format_version != 2) {
-        snprintf(error, cap, "Native QEAPP can format_version 2.");
-        return -1;
-    }
-    if(json_int(manifest_entry->data, manifest_entry->size,
-                "abi_version", &abi_version) != 0 ||
+    if(format_version != 2)
+        return package_error(VQEAF_QEAPP_PACKAGE_UNSUPPORTED, error, cap,
+                             "Native QEAPP can format_version 2.");
+    abi_version = manifest.abi_version;
+    if((manifest.seen & MANIFEST_ABI_VERSION) == 0u ||
        (abi_version != 2 && abi_version != 3 && abi_version != 4 &&
-        abi_version != 5)) {
-        snprintf(error, cap, "Native QEAPP can abi_version 2, 3, 4 hoac 5.");
-        return -1;
-    }
-    if(json_string(manifest_entry->data, manifest_entry->size, "runtime",
-                   runtime, sizeof(runtime)) != 0 ||
-       strcmp(runtime, "native") != 0) {
-        snprintf(error, cap, "Native QEAPP can runtime native.");
-        return -1;
-    }
-    if(json_string(manifest_entry->data, manifest_entry->size, "entry",
-                   entry_name, sizeof(entry_name)) != 0) {
-        snprintf(error, cap, "Native QEAPP thieu entry.");
-        return -1;
-    }
-    if(json_first_array_string(manifest_entry->data, manifest_entry->size,
-                               "architecture", arch, sizeof(arch)) != 0) {
-        snprintf(error, cap, "Native QEAPP thieu architecture.");
-        return -1;
-    }
+        abi_version != 5))
+        return package_error(VQEAF_QEAPP_PACKAGE_UNSUPPORTED, error, cap,
+                             "Native QEAPP can abi_version 2, 3, 4 hoac 5.");
+    if((manifest.seen & MANIFEST_RUNTIME) == 0u ||
+       strcmp(manifest.runtime, "native") != 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Native QEAPP can runtime native.");
+    if(!safe_entry_path(entry_name, ".qen"))
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Native QEAPP entry khong an toan.");
     arch_id = vqeaf_qeapp_native_arch_id(arch);
-    if(arch_id == 0) {
-        snprintf(error, cap, "Native QEAPP architecture khong ho tro.");
-        return -1;
-    }
+    if(arch_id == 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_UNSUPPORTED, error, cap,
+                             "Native QEAPP architecture khong ho tro.");
     entry = zip_find(entries, count, entry_name);
-    if(entry == NULL) {
-        snprintf(error, cap, "Native QEAPP thieu module .qen.");
-        return -1;
-    }
+    if(entry == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Native QEAPP thieu module .qen.");
     if(vqeaf_qeapp_native_validate_module(entry->data, entry->size,
-                                          arch_id) != 0) {
-        snprintf(error, cap, "Native QEAPP module khong hop le.");
-        return -1;
-    }
+                                          arch_id) != 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Native QEAPP module khong hop le.");
+    if(entry->data[10] != (uint8_t)abi_version ||
+       (uint16_t)(entry->data[53] | (entry->data[54] << 8)) !=
+           (uint16_t)abi_version)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest/module ABI hoac min_api khong khop.");
 
     info->format_version = format_version;
     info->abi_version = abi_version;
     info->arch_id = arch_id;
-    info->permissions = json_permission_mask(manifest_entry->data,
-                                             manifest_entry->size, "permissions");
+    info->permissions = permissions;
     snprintf(info->entry, sizeof(info->entry), "%s", entry_name);
     snprintf(info->arch, sizeof(info->arch), "%s", arch);
     *module = entry->data;
     *module_size = entry->size;
+    g_last_status = VQEAF_QEAPP_PACKAGE_OK;
     return 0;
 }
 
 #ifdef __linux__
-/* Mirrors the installed list into the p77 catalog. The package bytes are read
- * back from the rescue volume, so the catalog never trusts stale memory. */
+static int read_metadata(const uint8_t *buffer, size_t size,
+                         vqeaf_qeapp_preview_t *meta, char *error, size_t cap);
+
+/* New records are keyed by manifest.id. Legacy filename-keyed records remain
+ * readable only after their signed metadata proves the same identity. */
+static int load_stored_package(const char *id, const char *legacy_name,
+                               uint8_t **out, size_t *size,
+                               char key[APPSTORE_NAME])
+{
+    const char *names[2];
+    int count = 1;
+
+    *out = NULL;
+    *size = 0;
+    names[0] = id;
+    if(legacy_name != NULL && strcmp(legacy_name, id) != 0) {
+        names[1] = legacy_name;
+        count = 2;
+    }
+    for(int i = 0; i < count; i++) {
+        uint8_t *bytes = NULL;
+        size_t bytes_size = 0;
+        vqeaf_qeapp_preview_t meta;
+        char error[128];
+
+        if(appstore_read(names[i], &bytes, &bytes_size) != 0 ||
+           bytes == NULL)
+            continue;
+        if(read_metadata(bytes, bytes_size, &meta, error, sizeof(error)) != 0 ||
+           strcmp(meta.id, id) != 0) {
+            free(bytes);
+            return -1;
+        }
+        snprintf(key, APPSTORE_NAME, "%s", names[i]);
+        *out = bytes;
+        *size = bytes_size;
+        return 0;
+    }
+    return -1;
+}
+
+/* Mirrors the exact verified package bytes retained by each installed record
+ * into the p77 catalog; a later FAT file replacement cannot change the save. */
 static void persist_apps(void)
 {
     appstore_entry_t entries[QEAPP_MAX];
-    uint8_t *fallback[QEAPP_MAX] = { 0 };
     int n = 0;
     int rc;
 
-    if(appstore_is_restoring()) return;
+    g_last_persisted = 0;
+    if(appstore_is_restoring()) {
+        g_last_persisted = 1;
+        return;
+    }
     for(int i = 0; i < g_app_count && n < QEAPP_MAX; i++) {
-        const char *path = g_apps[i].package_file;
-        const char *name = strrchr(path, '/');
-        name = name ? name + 1 : path;
-        snprintf(entries[n].name, sizeof(entries[n].name), "%s", name);
-        entries[n].size = 0;
-        entries[n].path = path;
-        entries[n].data = NULL;
-        entries[n].data_size = 0;
+        snprintf(entries[n].name, sizeof(entries[n].name), "%s",
+                 g_apps[i].id);
+        entries[n].size = (uint32_t)g_apps[i].package_size;
+        entries[n].path = NULL;
+        entries[n].data = g_apps[i].package_data;
+        entries[n].data_size = g_apps[i].package_size;
         entries[n].app_data = g_apps[i].data;
         entries[n].app_data_size = g_apps[i].data_size;
         entries[n].granted_permissions = g_apps[i].granted_permissions;
-        /* An app restored at boot has no file in the RAM volume any more;
-         * hand its stored bytes to the catalog instead of failing the save. */
-        if(!appstore_volume_has(path)) {
-            uint8_t *bytes = NULL;
-            size_t bytes_size = 0;
-            if(appstore_read(entries[n].name, &bytes, &bytes_size) == 0) {
-                entries[n].data = bytes;
-                entries[n].data_size = bytes_size;
-                fallback[n] = bytes;
-            }
-        }
         n++;
     }
     rc = appstore_save(entries, n);
-    for(int i = 0; i < n; i++) free(fallback[i]);
+    g_last_persisted = rc == 0;
     if(rc != 0)
         umos_logf("qeapp: catalog save failed; app stays for this boot only\n");
 }
@@ -600,44 +1395,53 @@ static int read_metadata(const uint8_t *buffer, size_t size,
     const zip_entry_t *manifest_entry;
     const zip_entry_t *entry;
     const zip_entry_t *signature;
-    char entry_name[128], runtime[16];
+    manifest_values_t manifest;
+    char entry_name[128], arch[16];
+    uint32_t permissions;
+    int format_version;
     int count;
 
     memset(meta, 0, sizeof(*meta));
-    if(buffer == NULL || size == 0) {
-        snprintf(error, cap, "Gói QEAPP rỗng.");
-        return -1;
-    }
+    if(buffer == NULL || size == 0 || meta == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, error, cap,
+                             "Gói QEAPP rỗng.");
+    if(size > QEAPP_FILE_CAP)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Gói QEAPP vượt quá 512 KiB.");
+    g_last_status = VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE;
     count = zip_entries(buffer, size, entries, QEAPP_ZIP_MAX_ENTRIES,
                         error, cap);
     if(count < 0) return -1;
     manifest_entry = zip_find(entries, count, "manifest.json");
     signature = zip_find(entries, count, "SIGNATURE");
-    if(manifest_entry == NULL) {
-        snprintf(error, cap, "Thiếu manifest.json.");
+    if(manifest_entry == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Thiếu manifest.json.");
+    if(signature == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_SIGNATURE_ERROR, error, cap,
+                             "Thiếu SIGNATURE: chưa ký.");
+    if(verify_signature(entries, count, signature) != 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_SIGNATURE_ERROR, error, cap,
+                             "Chữ ký không hợp lệ hoặc tệp đã bị sửa.");
+    if(manifest_parse(manifest_entry, &manifest, error, cap) != 0 ||
+       manifest_common(&manifest, meta->id, sizeof(meta->id), meta->name,
+                       sizeof(meta->name), meta->version, sizeof(meta->version),
+                       entry_name, sizeof(entry_name), arch, sizeof(arch),
+                       &format_version, &permissions, error, cap) != 0)
         return -1;
-    }
-    if(signature == NULL) {
-        snprintf(error, cap, "Thiếu SIGNATURE: chưa ký.");
-        return -1;
-    }
-    if(verify_signature(entries, count, signature) != 0) {
-        snprintf(error, cap, "Chữ ký không hợp lệ hoặc tệp đã bị sửa.");
-        return -1;
-    }
-    if(json_string(manifest_entry->data, manifest_entry->size, "name",
-                   meta->name, sizeof(meta->name)) != 0)
-        snprintf(meta->name, sizeof(meta->name), "QEAPP");
-    if(json_string(manifest_entry->data, manifest_entry->size, "id",
-                   meta->id, sizeof(meta->id)) != 0)
-        snprintf(meta->id, sizeof(meta->id), "org.unknown.app");
-    if(json_string(manifest_entry->data, manifest_entry->size, "version",
-                   meta->version, sizeof(meta->version)) != 0)
-        snprintf(meta->version, sizeof(meta->version), "1.0.0");
-    runtime[0] = '\0';
-    json_string(manifest_entry->data, manifest_entry->size, "runtime",
-                runtime, sizeof(runtime));
-    meta->native = strcmp(runtime, "native") == 0;
+    if((manifest.seen & MANIFEST_RUNTIME) != 0u &&
+       strcmp(manifest.runtime, "script") != 0 &&
+       strcmp(manifest.runtime, "native") != 0)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Manifest runtime khong ho tro.");
+    meta->native = (manifest.seen & MANIFEST_RUNTIME) != 0u &&
+                   strcmp(manifest.runtime, "native") == 0;
+    if(meta->native && format_version != 2)
+        return package_error(VQEAF_QEAPP_PACKAGE_UNSUPPORTED, error, cap,
+                             "Runtime native yêu cầu format_version 2.");
+    if(format_version == 2 && !meta->native)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                             "Format_version 2 yêu cầu runtime native.");
     if(meta->native) {
         vqeaf_qeapp_native_info_t info;
         const uint8_t *module = NULL;
@@ -648,26 +1452,26 @@ static int read_metadata(const uint8_t *buffer, size_t size,
         if(vqeaf_qeapp_inspect_native(buffer, size, &info, &module, &module_size,
                                       error, cap) != 0)
             return -1;
-        if(info.arch_id != VQEAF_QEN_ARCH_ARM64) {
-            snprintf(error, cap, "Ứng dụng native phải là arm64 để chạy trên violet.");
-            return -1;
-        }
+        if(info.arch_id != VQEAF_QEN_ARCH_ARM64)
+            return package_error(VQEAF_QEAPP_PACKAGE_UNSUPPORTED, error, cap,
+                                 "Ứng dụng native phải là arm64 để chạy trên violet.");
         meta->abi_version = info.abi_version;
         meta->permissions = info.permissions;
         snprintf(meta->message, sizeof(meta->message),
                  "Ứng dụng native arm64 · %s", meta->id);
     }
     else {
-        if(json_string(manifest_entry->data, manifest_entry->size, "entry",
-                       entry_name, sizeof(entry_name)) != 0) {
-            snprintf(error, cap, "Manifest thiếu entry.");
-            return -1;
-        }
+        if(!safe_entry_path(entry_name, ".qe"))
+            return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                                 "Manifest entry .qe khong an toan.");
         entry = zip_find(entries, count, entry_name);
-        if(entry == NULL) {
-            snprintf(error, cap, "Không thấy entry %s.", entry_name);
-            return -1;
-        }
+        if(entry == NULL)
+            return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                                 "Thiếu entry .qe khai báo trong manifest.");
+        if(!script_valid(entry->data, entry->size))
+            return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE, error, cap,
+                                 "Entry .qe chua cau lenh hop le.");
+        meta->permissions = permissions;
         parse_script(entry->data, entry->size, meta->message,
                      sizeof(meta->message));
     }
@@ -676,17 +1480,26 @@ static int read_metadata(const uint8_t *buffer, size_t size,
     {
         const zip_entry_t *icon_entry =
             zip_find(entries, count, "assets/icon.rgba");
-        if(icon_entry != NULL && icon_entry->size == 64u * 64u * 4u) {
+        if(icon_entry != NULL) {
+            if(icon_entry->size != 64u * 64u * 4u)
+                return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE,
+                                     error, cap,
+                                     "Icon runtime phải đúng 64x64 x 4 byte.");
             memcpy(meta->icon, icon_entry->data, 64u * 64u * 4u);
             meta->has_icon = 1;
         }
+        else if((manifest.seen & MANIFEST_ICON) != 0u) {
+            return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE,
+                                 error, cap,
+                                 "Thiếu icon runtime khai báo trong manifest.");
+        }
     }
+    g_last_status = VQEAF_QEAPP_PACKAGE_OK;
     return 0;
 }
 
-/* Verifies and registers one package. The caller owns `buffer`; this function
- * always frees it, so restore-from-store and install-from-file share the same
- * validation path. */
+/* Verifies and registers one package. On success the record retains `buffer`
+ * so later catalog saves use the exact verified bytes, not a mutable FAT path. */
 static int install_buffer(const char *file, uint8_t *buffer, size_t size,
                           char *error, size_t cap)
 {
@@ -707,48 +1520,33 @@ static int install_buffer(const char *file, uint8_t *buffer, size_t size,
         }
     if(is_new) {
         if(g_app_count >= QEAPP_MAX) {
-            snprintf(error, cap, "Bộ nhớ ứng dụng đã đầy.");
             free(buffer);
-            return -1;
+            return package_error(VQEAF_QEAPP_PACKAGE_CAPACITY, error, cap,
+                                 "Bộ nhớ ứng dụng đã đầy.");
         }
         g_app_count++;
     }
     if(is_new) {
         /* New install: take over any data blob already stored for this app
          * (boot restore). An update keeps the in-RAM blob untouched. */
-        char base[APPSTORE_NAME];
         const char *slash = strrchr(file, '/');
         const char *leaf = slash ? slash + 1 : file;
 
-        snprintf(base, sizeof(base), "%s", leaf);
         g_apps[slot].data = NULL;
         g_apps[slot].data_size = 0;
-        /* A catalog record is keyed by filename. Before reusing its grants or
-         * private data, verify that the stored signed package has the same
-         * manifest ID; otherwise a filename collision could inherit access. */
         g_apps[slot].granted_permissions = 0u;
         {
             uint8_t *old_package = NULL;
             size_t old_size = 0;
-            int same_identity = 0;
-            if(appstore_read(base, &old_package, &old_size) == 0) {
-                vqeaf_qeapp_preview_t old_meta;
-                char identity_error[128];
-                same_identity =
-                    read_metadata(old_package, old_size, &old_meta,
-                                  identity_error, sizeof(identity_error)) == 0 &&
-                    strcmp(old_meta.id, meta.id) == 0;
-                free(old_package);
-            }
-            if(same_identity) {
-                (void)appstore_read_grants(base,
+            char stored_key[APPSTORE_NAME];
+
+            if(load_stored_package(meta.id, leaf, &old_package, &old_size,
+                                   stored_key) == 0) {
+                (void)appstore_read_grants(stored_key,
                                            &g_apps[slot].granted_permissions);
-                (void)appstore_read_data(base, &g_apps[slot].data,
+                (void)appstore_read_data(stored_key, &g_apps[slot].data,
                                          &g_apps[slot].data_size);
-            }
-            else {
-                g_apps[slot].data = NULL;
-                g_apps[slot].data_size = 0;
+                free(old_package);
             }
         }
     }
@@ -760,6 +1558,9 @@ static int install_buffer(const char *file, uint8_t *buffer, size_t size,
              meta.message);
     snprintf(g_apps[slot].package_file, sizeof(g_apps[slot].package_file),
              "%s", file);
+    free(g_apps[slot].package_data);
+    g_apps[slot].package_data = buffer;
+    g_apps[slot].package_size = size;
     g_apps[slot].native = meta.native;
     /* Kept so the app page reports the ABI the package actually declares
      * instead of one build-wide constant. Boot restore re-reads the package,
@@ -770,23 +1571,23 @@ static int install_buffer(const char *file, uint8_t *buffer, size_t size,
      * install also starts with no grants; the user grants ui.display explicitly. */
     g_apps[slot].granted_permissions &= meta.permissions;
 
-    /* The descriptor's data pointer is refreshed on every vqeaf_qeapp_icon()
-     * call because uninstall shifts the slot array. */
     g_apps[slot].has_icon = meta.has_icon;
     memcpy(g_apps[slot].icon, meta.icon, sizeof(meta.icon));
-    memset(&g_apps[slot].icon_dsc, 0, sizeof(g_apps[slot].icon_dsc));
-    g_apps[slot].icon_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
-    g_apps[slot].icon_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
-    g_apps[slot].icon_dsc.header.w = 64;
-    g_apps[slot].icon_dsc.header.h = 64;
-    g_apps[slot].icon_dsc.header.stride = 64 * 4;
-    g_apps[slot].icon_dsc.data_size = 64u * 64u * 4u;
-    g_apps[slot].icon_dsc.data = g_apps[slot].icon;
+    memcpy(g_apps[slot].icon_render, meta.icon, sizeof(meta.icon));
+    if(meta.has_icon)
+        (void)vqeaf_qeapp_icon_display_copy(g_apps[slot].icon_render,
+                                            sizeof(g_apps[slot].icon_render),
+                                            g_apps[slot].icon,
+                                            sizeof(g_apps[slot].icon));
+    refresh_icon_descriptor(slot);
 
     g_selected = slot;
-    free(buffer);
 #ifdef __linux__
     persist_apps();
+    g_last_status = g_last_persisted ? VQEAF_QEAPP_PACKAGE_OK :
+                   VQEAF_QEAPP_PACKAGE_OK_SESSION_ONLY;
+#else
+    g_last_status = VQEAF_QEAPP_PACKAGE_OK;
 #endif
     return 0;
 }
@@ -852,24 +1653,51 @@ int vqeaf_qeapp_take_launch_request(char *out, size_t cap)
     return 1;
 }
 
-int vqeaf_qeapp_install(const char *file, char *error, size_t cap)
+static int install_file(const char *file, const uint8_t *expected_hash,
+                        char *error, size_t cap)
 {
 #ifdef __linux__
     uint8_t *buffer = NULL;
     size_t size = 0;
+    uint8_t actual_hash[32];
 
-    if(file == NULL) return -1;
-    if(vqeaf_ui_read_file(file, &buffer, &size) != 0 || buffer == NULL) {
-        snprintf(error, cap, "Không đọc được tệp từ QEAFRESCUE.");
-        return -1;
+    if(file == NULL || file[0] == '\0')
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, error, cap,
+                             "Đường dẫn gói QEAPP không hợp lệ.");
+    if(vqeaf_ui_read_file(file, &buffer, &size) != 0 || buffer == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_IO_ERROR, error, cap,
+                             "Không đọc được tệp từ QEAFRESCUE.");
+    if(expected_hash != NULL) {
+        package_sha256(buffer, size, actual_hash);
+        if(!hash_equal(actual_hash, expected_hash)) {
+            free(buffer);
+            return package_error(VQEAF_QEAPP_PACKAGE_INVALID_PACKAGE,
+                                 error, cap,
+                                 "Gói đã thay đổi sau bước xác nhận; hãy xem trước lại.");
+        }
     }
     return install_buffer(file, buffer, size, error, cap);
 #else
-    (void)file;
+    (void)expected_hash;
     seed();
     if(error != NULL && cap > 0) snprintf(error, cap, "Host render demo");
     return 0;
 #endif
+}
+
+int vqeaf_qeapp_install(const char *file, char *error, size_t cap)
+{
+    return install_file(file, NULL, error, cap);
+}
+
+int vqeaf_qeapp_install_verified(const char *file,
+                                 const uint8_t *expected_hash,
+                                 char *error, size_t cap)
+{
+    if(expected_hash == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, error, cap,
+                             "Cần SHA-256 của gói đã xem trước.");
+    return install_file(file, expected_hash, error, cap);
 }
 
 int vqeaf_qeapp_preview(const char *file, vqeaf_qeapp_preview_t *out,
@@ -880,12 +1708,14 @@ int vqeaf_qeapp_preview(const char *file, vqeaf_qeapp_preview_t *out,
     size_t size = 0;
     int rc;
 
-    if(file == NULL || out == NULL) return -1;
-    if(vqeaf_ui_read_file(file, &buffer, &size) != 0 || buffer == NULL) {
-        snprintf(error, cap, "Không đọc được tệp từ QEAFRESCUE.");
-        return -1;
-    }
+    if(file == NULL || file[0] == '\0' || out == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, error, cap,
+                             "Đầu vào xem trước QEAPP không hợp lệ.");
+    if(vqeaf_ui_read_file(file, &buffer, &size) != 0 || buffer == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_IO_ERROR, error, cap,
+                             "Không đọc được tệp từ QEAFRESCUE.");
     rc = read_metadata(buffer, size, out, error, cap);
+    if(rc == 0) package_sha256(buffer, size, out->package_hash);
     free(buffer);
     return rc;
 #else
@@ -918,11 +1748,12 @@ int vqeaf_qeapp_install_stored(const char *name, char *error, size_t cap)
     uint8_t *buffer = NULL;
     size_t size = 0;
 
-    if(name == NULL) return -1;
-    if(appstore_read(name, &buffer, &size) != 0 || buffer == NULL) {
-        snprintf(error, cap, "Không đọc được gói từ kho p77.");
-        return -1;
-    }
+    if(name == NULL || name[0] == '\0')
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, error, cap,
+                             "Tên gói trong kho p77 không hợp lệ.");
+    if(appstore_read(name, &buffer, &size) != 0 || buffer == NULL)
+        return package_error(VQEAF_QEAPP_PACKAGE_IO_ERROR, error, cap,
+                             "Không đọc được gói từ kho p77.");
     return install_buffer(name, buffer, size, error, cap);
 #else
     (void)name; (void)error; (void)cap;
@@ -993,11 +1824,17 @@ int vqeaf_qeapp_data_write(int index, const void *buf, size_t size)
 #ifndef __linux__
     seed();
 #endif
-    if(index < 0 || index >= g_app_count) return -1;
-    if(size > 64u * 1024u) return -1;
+    if(index < 0 || index >= g_app_count || (size > 0 && buf == NULL))
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, NULL, 0,
+                             "Invalid app-data write.");
+    if(size > 64u * 1024u)
+        return package_error(VQEAF_QEAPP_PACKAGE_CAPACITY, NULL, 0,
+                             "App data exceeds 64 KiB.");
     if(size > 0) {
         copy = malloc(size);
-        if(copy == NULL) return -1;
+        if(copy == NULL)
+            return package_error(VQEAF_QEAPP_PACKAGE_INTERNAL_ERROR, NULL, 0,
+                                 "App-data allocation failed.");
         memcpy(copy, buf, size);
     }
     free(g_apps[index].data);
@@ -1005,6 +1842,10 @@ int vqeaf_qeapp_data_write(int index, const void *buf, size_t size)
     g_apps[index].data_size = size;
 #ifdef __linux__
     persist_apps();
+    g_last_status = g_last_persisted ? VQEAF_QEAPP_PACKAGE_OK :
+                   VQEAF_QEAPP_PACKAGE_OK_SESSION_ONLY;
+#else
+    g_last_status = VQEAF_QEAPP_PACKAGE_UNSUPPORTED;
 #endif
     return 0;
 }
@@ -1012,8 +1853,30 @@ int vqeaf_qeapp_data_write(int index, const void *buf, size_t size)
 int vqeaf_qeapp_package(int index, uint8_t **out, size_t *size)
 {
 #ifdef __linux__
-    if(index < 0 || index >= g_app_count) return -1;
-    return appstore_read(g_apps[index].package_file, out, size);
+    if(index < 0 || index >= g_app_count || out == NULL || size == NULL) return -1;
+    if(g_apps[index].package_data != NULL && g_apps[index].package_size > 0) {
+        uint8_t *bytes = malloc(g_apps[index].package_size);
+        if(bytes == NULL) return -1;
+        memcpy(bytes, g_apps[index].package_data, g_apps[index].package_size);
+        *out = bytes;
+        *size = g_apps[index].package_size;
+        return 0;
+    }
+    {
+        const char *path = g_apps[index].package_file;
+        const char *leaf = strrchr(path, '/');
+        uint8_t *bytes = NULL;
+        size_t bytes_size = 0;
+        char stored_key[APPSTORE_NAME];
+
+        leaf = leaf ? leaf + 1 : path;
+        if(load_stored_package(g_apps[index].id, leaf, &bytes, &bytes_size,
+                               stored_key) != 0)
+            return -1;
+        *out = bytes;
+        *size = bytes_size;
+        return 0;
+    }
 #else
     (void)index; (void)out; (void)size;
     return -1;
@@ -1039,15 +1902,27 @@ const vqeaf_qeapp_t *vqeaf_qeapp_at(int index)
 
 int vqeaf_qeapp_uninstall(int index)
 {
-    if(index < 0 || index >= g_app_count) return -1;
+    if(index < 0 || index >= g_app_count)
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, NULL, 0,
+                             "Invalid installed package index.");
     /* The catalog rewrite drops this app's record, and with it the data. */
     free(g_apps[index].data);
+    free(g_apps[index].package_data);
     g_apps[index].data = NULL;
     g_apps[index].data_size = 0;
+    g_apps[index].package_data = NULL;
+    g_apps[index].package_size = 0;
     for(int i = index; i + 1 < g_app_count; i++) g_apps[i] = g_apps[i + 1];
     g_app_count--;
+    memset(&g_apps[g_app_count], 0, sizeof(g_apps[g_app_count]));
+    for(int i = 0; i < g_app_count; i++) refresh_icon_descriptor(i);
+    memset(&g_icon_dsc[g_app_count], 0, sizeof(g_icon_dsc[g_app_count]));
 #ifdef __linux__
     persist_apps();
+    g_last_status = g_last_persisted ? VQEAF_QEAPP_PACKAGE_OK :
+                   VQEAF_QEAPP_PACKAGE_OK_SESSION_ONLY;
+#else
+    g_last_status = VQEAF_QEAPP_PACKAGE_UNSUPPORTED;
 #endif
     if(g_selected >= g_app_count) g_selected = g_app_count - 1;
     if(g_selected < 0) g_selected = 0;
@@ -1060,15 +1935,21 @@ int vqeaf_qeapp_set_permission(int index, uint32_t bit, int granted)
     const uint32_t known = (1u << 5) - 1u;
     if(index < 0 || index >= g_app_count || bit == 0u ||
        (bit & (bit - 1u)) != 0u || (bit & known) == 0u)
-        return -1;
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, NULL, 0,
+                             "Invalid permission grant.");
     if((g_apps[index].permissions & bit) == 0u)
-        return -1; /* never grant a capability absent from the signed manifest */
+        return package_error(VQEAF_QEAPP_PACKAGE_INVALID_ARGUMENT, NULL, 0,
+                             "Permission is absent from the signed manifest.");
     if(granted)
         g_apps[index].granted_permissions |= bit;
     else
         g_apps[index].granted_permissions &= ~bit;
 #ifdef __linux__
     persist_apps();
+    g_last_status = g_last_persisted ? VQEAF_QEAPP_PACKAGE_OK :
+                   VQEAF_QEAPP_PACKAGE_OK_SESSION_ONLY;
+#else
+    g_last_status = VQEAF_QEAPP_PACKAGE_UNSUPPORTED;
 #endif
     return 0;
 }
@@ -1089,6 +1970,69 @@ void vqeaf_qeapp_select(int index)
     if(index >= 0 && index < g_app_count) g_selected = index;
 }
 
+int vqeaf_qeapp_icon_display_copy(uint8_t *out, size_t out_size,
+                                  const uint8_t *icon, size_t icon_size)
+{
+    const size_t bytes = 64u * 64u * 4u;
+    uint8_t max_alpha = 0;
+    uint8_t *workspace;
+    uint16_t *queue;
+    uint8_t *seen;
+    size_t head = 0;
+    size_t tail = 0;
+
+    if(out == NULL || icon == NULL || out_size < bytes || icon_size < bytes)
+        return -1;
+    memcpy(out, icon, bytes);
+    for(size_t i = 3; i < bytes; i += 4)
+        if(icon[i] > max_alpha) max_alpha = icon[i];
+    if(max_alpha == 0) return 0;
+
+    workspace = malloc(64u * 64u * (sizeof(uint16_t) + 1u));
+    if(workspace == NULL) return -1;
+    queue = (uint16_t *)workspace;
+    seen = workspace + 64u * 64u * sizeof(uint16_t);
+    memset(seen, 0, 64u * 64u);
+    for(size_t i = 0; i < 64u * 64u; i++) {
+        if(icon[i * 4u + 3u] != max_alpha) continue;
+        seen[i] = 1;
+        queue[tail++] = (uint16_t)i;
+    }
+    while(head < tail) {
+        uint16_t i = queue[head++];
+        unsigned x = i & 63u;
+        unsigned y = i >> 6;
+        static const int dx[4] = { -1, 1, 0, 0 };
+        static const int dy[4] = { 0, 0, -1, 1 };
+        for(unsigned n = 0; n < 4; n++) {
+            int nx = (int)x + dx[n];
+            int ny = (int)y + dy[n];
+            size_t next;
+            if(nx < 0 || nx >= 64 || ny < 0 || ny >= 64) continue;
+            next = (size_t)ny * 64u + (unsigned)nx;
+            if(seen[next]) continue;
+            seen[next] = 1;
+            memcpy(out + next * 4u, out + i * 4u, 3);
+            queue[tail++] = (uint16_t)next;
+        }
+    }
+    free(workspace);
+    return 0;
+}
+
+static void refresh_icon_descriptor(int index)
+{
+    lv_image_dsc_t *dsc = &g_icon_dsc[index];
+    memset(dsc, 0, sizeof(*dsc));
+    dsc->header.magic = LV_IMAGE_HEADER_MAGIC;
+    dsc->header.cf = LV_COLOR_FORMAT_ARGB8888;
+    dsc->header.w = 64;
+    dsc->header.h = 64;
+    dsc->header.stride = 64 * 4;
+    dsc->data_size = 64u * 64u * 4u;
+    dsc->data = g_apps[index].icon_render;
+}
+
 const lv_image_dsc_t *vqeaf_qeapp_icon(int index)
 {
 #ifndef __linux__
@@ -1096,6 +2040,6 @@ const lv_image_dsc_t *vqeaf_qeapp_icon(int index)
 #endif
     if(index < 0 || index >= g_app_count) return NULL;
     if(!g_apps[index].has_icon) return NULL;
-    g_apps[index].icon_dsc.data = g_apps[index].icon;
-    return &g_apps[index].icon_dsc;
+    refresh_icon_descriptor(index);
+    return &g_icon_dsc[index];
 }

@@ -24,12 +24,14 @@ Sau khi MSA resolved, bind vẫn dừng có kiểm soát tại `map_snoc`/`map_r
 ## Trạng thái
 | Thành phần | Trạng thái |
 | --- | --- |
-| FDT parse + resource census | IMPLEMENTED, host test PASS |
+| FDT parse + resource census | IMPLEMENTED, host test PASS; giới hạn depth 32 và kiểm tra overflow/header |
+| Legacy CE IRQ range | IMPLEMENTED: chỉ chấp nhận IRQ liên tục, từ chối wrap/rải rác trước khi bind |
 | Kết nối phase2/wcn3990 | IMPLEMENTED (fail-closed) |
 | MMIO map / regulator / clock / reset / IRQ / DMA / remoteproc | UNSUPPORTED (không có primitive kernel) |
 | Phandle MSA resolution | IMPLEMENTED (`0x93300000/0x200000` + bounds check, host test PASS) |
 | Regulator resource discovery | IMPLEMENTED (4 supplies/phandles; enable UNSUPPORTED) |
-| Timeout phase2 (ABI v2) | IMPLEMENTED ở driver: `-EAGAIN` retry đến deadline rồi `-ETIMEDOUT`; host test PASS. Backend chưa có clock/delay primitive → `now_ms/delay_ms = NULL`, nên `-EAGAIN` được propagate, không loop vô hạn |
+| Timeout phase2 (ABI 3, giới thiệu từ v2) | IMPLEMENTED: `-EAGAIN` retry đến deadline, dừng khi clock không tiến triển hoặc đạt 1024 attempt rồi `-ETIMEDOUT`; wrap `uint64` an toàn. Backend chưa có clock/delay primitive → `now_ms/delay_ms = NULL`, nên `-EAGAIN` được propagate, không loop vô hạn |
+| CE ring map + cleanup/quiesce (CE ABI 2, phase2 ABI 3) | IMPLEMENTED: source/destination ring-base đều 32-bit, không ghi base-high; lỗi `ce_disable` giữ ring/resource và chặn bind mới bằng `-EBUSY`. Fixture PASS gồm biên 4 GiB, persistent MMIO và teardown CE11 thành công trước CE10 lỗi |
 | WLFW 0x45 / wlan0 | BLOCKED như trước, không đổi |
 
 ## Lỗi đã phát hiện nhờ bật assert thật

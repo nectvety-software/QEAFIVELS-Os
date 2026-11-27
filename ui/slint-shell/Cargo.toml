@@ -1,0 +1,17 @@
+[package]
+name = "qeaf-shell"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[features]
+default = ["host-preview"]
+host-preview = ["slint/backend-winit", "slint/renderer-software"]
+violet-kms = ["slint/backend-linuxkms", "slint/backend-linuxkms-libinput", "slint/renderer-software"]
+violet-kms-display = ["slint/backend-linuxkms", "slint/renderer-software"]
+
+[dependencies]
+slint = { version = "1.19.0", default-features = false, features = ["std", "compat-1-18"] }
+
+[build-dependencies]
+slint-build = "1.19.0"

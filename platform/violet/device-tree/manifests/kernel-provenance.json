@@ -1,0 +1,115 @@
+﻿{
+    "schema_version":  1,
+    "target_device":  "violet",
+    "qeaf_boot_image":  {
+                            "path":  "dist/boot-vqeaf-violet.img",
+                            "size":  51679232,
+                            "sha256":  "91441cc80c3b0814d277f96c633592ad65ff5ad36de1d962bfcd26624aad7041"
+                        },
+    "stock_reference_boot":  {
+                                 "path":  "QeafdropOs/out/reference/stock-violet/boot.img",
+                                 "size":  67108864,
+                                 "sha256":  "59b51ee2220ea367c6a48d3204a2727625301319f019cb28300adc83ae77ac41",
+                                 "ramdisk_size":  194913
+                             },
+    "kernel_payload":  {
+                           "size":  17505611,
+                           "compressed_sha256":  "6d298f543cfee08f7b72687cf975b6ed232e4ed565d337156db39ceb0fc18513",
+                           "uncompressed_size":  42653712,
+                           "uncompressed_sha256":  "4497522ad305ccba7eae83a9b26b6590630b2ac4ff28f3d49bf7b389c74fba62",
+                           "release":  "4.14.215-azure-Pixel+",
+                           "identical_to_stock_reference_kernel":  true,
+                           "compiler":  "Android clang 14.0.6 (r450784d)",
+                           "build_host":  "root@9615eb99fb8a",
+                           "byte_identical_to_stock":  true
+                       },
+    "embedded_kernel_config":  {
+                                   "generated_header":  "Linux/arm64 4.14.122",
+                                   "sha256":  "e457bd472e78090c0b447b30eff4a89069d5b1b5aa9b4b6b11a991b1d054e2c2",
+                                   "localversion":  "-perf",
+                                   "source_artifact":  "build/violet/qeaf-extracted.config",
+                                   "flags":  {
+                                                 "CONFIG_DRM_MSM":  "y",
+                                                 "CONFIG_DRM_MSM_DSI":  "n",
+                                                 "CONFIG_DRM_MSM_DSI_STAGING":  "y",
+                                                 "CONFIG_USB_DWC3":  "y",
+                                                 "CONFIG_USB_DWC3_DUAL_ROLE":  "y",
+                                                 "CONFIG_USB_DWC3_MSM":  "y",
+                                                 "CONFIG_USB_DWC3_GADGET":  "n (mutually exclusive mode selector; dual-role selected)",
+                                                 "CONFIG_USB_GADGET":  "y",
+                                                 "CONFIG_USB_CONFIGFS":  "y",
+                                                 "CONFIG_USB_CONFIGFS_MASS_STORAGE":  "y",
+                                                 "CONFIG_USB_F_MASS_STORAGE":  "y",
+                                                 "CONFIG_DEVTMPFS":  "n",
+                                                 "CONFIG_CMDLINE":  "ramoops_memreserve=4M",
+                                                 "CONFIG_CMDLINE_EXTEND":  "y",
+                                                 "CONFIG_CMDLINE_FORCE":  "n",
+                                                 "CONFIG_INITRAMFS_FORCE":  "n",
+                                                 "CONFIG_BLK_DEV_INITRD":  "y"
+                                             },
+                                   "generated_config_header":  "Linux/arm64 4.14.122 Kernel Configuration"
+                               },
+    "source_candidates":  [
+                              {
+                                  "repository":  "MiCode/Xiaomi_Kernel_OpenSource",
+                                  "branch":  "violet-q-oss",
+                                  "commit":  "1488fa3d05e2f9be5fc62e0bb16ad85d96db2076",
+                                  "makefile_version":  "4.14.117",
+                                  "config_path":  "arch/arm64/configs/vendor/violet-perf_defconfig",
+                                  "config_git_blob_sha1":  "af61d04ea8cb2dc475b2e263c67a1a33b04bf963",
+                                  "board_dts_role":  "official SM6150 IDP/Violet panel reference; both FT8719 and NT36672A descriptors",
+                                  "exact_binary_source_proven":  false
+                              },
+                              {
+                                  "repository":  "Panchajanya1999/msm-4.14",
+                                  "branch":  "Q",
+                                  "commit":  "a27bbe564caa84dfd0fd6c9ae15dc0b056b91c92",
+                                  "makefile_version":  "4.14.206",
+                                  "config_header":  "4.14.206",
+                                  "exact_binary_source_proven":  false,
+                                  "note":  "TWRP-like azure-perf lineage; overlay branch activates HX83112A rather than the two Violet panels"
+                              }
+                          ],
+    "conclusion":  "QEAF repacks the exact stock-reference 4.14.215 kernel payload. Its embedded config is verified. The TWRP 4.14.206 kernel is a different binary despite sharing the same config. Exact 4.14.215 source commit is not yet identified. RAM boot confirms skip_initramfs causes the external initrd to be discarded; NT36672A display and DWC3 UDC initialize successfully.",
+    "physical_boot_tested":  false,
+    "production_ready":  false,
+    "ramboot_test":  {
+                         "date":  "2026-11-26",
+                         "image":  "dist/boot-vqeaf-violet-diagnostic-20261126.img",
+                         "image_size":  51675136,
+                         "image_sha256":  "1724047675e3e193ed95efba5a7997d516a79d5e6ec4bfa513a8f65399d33a65",
+                         "fastboot_boot_accepted":  true,
+                         "cmdline_skip_initramfs":  true,
+                         "external_initrd_freed_kib":  33360,
+                         "qeaf_pid1_reached":  false,
+                         "actual_pid1":  "/system/bin/initsecond_stage",
+                         "panel_selected":  "NT36672A Shenchao",
+                         "panel_bind_success":  true,
+                         "drm_initialized":  true,
+                         "dsi_connector":  "connected",
+                         "dsi_mode":  "1080x2340x60",
+                         "dwc3_udc":  "a600000.dwc3",
+                         "dwc3_udc_state":  "configured",
+                         "qeaf_mass_storage_bound":  false,
+                         "usb_exposed":  "Android ADB",
+                         "conclusion":  "skip_initramfs in final bootargs prevents unpacking the supplied external initramfs; Android rootfs boots instead.",
+                         "ramdisk_size":  34164506,
+                         "ramdisk_sha256":  "0be1b8277f3ba7a9952c6db44c1f452e8e06798634d07caa069097342872648c",
+                         "panel_bind_log":  "Successfully bind display panel dsi_nt36672a_shenchao_vid_display",
+                         "drm_connector_status":  "connected",
+                         "drm_connector_mode":  "1080x2340x60",
+                         "visual_screen_confirmed":  false,
+                         "device_returned_to_fastboot":  true,
+                         "partition_writes":  0
+                     },
+    "twrp_reference":  {
+                           "kernel_release":  "4.14.206-azure-perf+",
+                           "kernel_sha256":  "f4a615ffaee13cd74070bf9a14744980edada701491c3af878c5c12b049f64cc",
+                           "kernel_builder":  "panchanjaya@cloud.drone.io",
+                           "compiler":  "Azure clang 12.0.0",
+                           "embedded_config_sha256":  "e457bd472e78090c0b447b30eff4a89069d5b1b5aa9b4b6b11a991b1d054e2c2",
+                           "source_candidate":  "Panchajanya1999/msm-4.14 branch Q",
+                           "source_commit":  "a27bbe564caa84dfd0fd6c9ae15dc0b056b91c92",
+                           "matches_qeaf_kernel":  false
+                       }
+}

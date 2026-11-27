@@ -10,6 +10,8 @@
 #ifndef VIO_BOOT_JOURNAL_H
 #define VIO_BOOT_JOURNAL_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -39,6 +41,29 @@ void vio_journal_stage(const char *stage);
 /* Signal-path record: header, then the record text. open/lseek/write/fsync
  * only, no formatting, so a fault handler can call it. */
 void vio_journal_crash(const char *text);
+
+/* ---- live trace ----------------------------------------------------------
+ * A SoC reset (watchdog, PMIC, modem-triggered SSR) kills PID 1 outright: no
+ * signal runs, CRASH.TXT dies with RAM, and the next boot can only report
+ * "ended without a caught signal". While armed, the newest bytes of the OS log
+ * are rewritten into the same p77 slot once a second, so the next boot's
+ * LASTBOOT.TXT ends at the last heartbeat before the reset instead of saying
+ * nothing. Armed only around `wifi up` (modem bring-up), where the reset is
+ * reproducible, so an idle phone does not write flash.
+ */
+void vio_journal_trace_arm(int on);
+void vio_journal_trace_raw(const char *line);
+void vio_journal_trace(const char *fmt, ...)
+    __attribute__((format(printf, 1, 2)));
+
+/* One line recorded and flushed immediately, armed or not. */
+void vio_journal_note(const char *text);
+
+/* The bootloader/kernel's own account of why the previous boot ended:
+ * `androidboot.bootreason` from /proc/cmdline, `chosen/pureason`, and the raw
+ * IMEM restart_reason word. Writes one line; values are never invented, an
+ * unreadable source is reported as absent. */
+void vio_reset_reason(char *out, size_t cap);
 
 #ifdef __cplusplus
 }

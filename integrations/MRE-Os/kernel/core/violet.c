@@ -44,6 +44,215 @@ static mre_status_t get_reg_or_fail(const mre_fdt_t *fdt,mre_fdt_node_t node,
     if(st!=MRE_OK || reg.size==0u) return MRE_E_INVALID;
     *base=reg.address; *size=reg.size; return MRE_OK;
 }
+static void copy_supply_name(char *dst,const char *src)
+{
+    size_t i=0u;
+    while(i+1u<MRE_VIOLET_DISPLAY_SUPPLY_NAME && src[i]!=0) {
+        dst[i]=src[i]; ++i;
+    }
+    dst[i]=0;
+}
+static mre_status_t add_supply(const mre_fdt_t *fdt,mre_fdt_node_t node,
+                               const char *name,mre_violet_display_info_t *display)
+{
+    const void *data; uint32_t length; uint32_t phandle; mre_fdt_node_t provider;
+    mre_violet_supply_ref_t *supply;
+    if(mre_fdt_get_property(fdt,node,name,&data,&length)!=MRE_OK) return MRE_OK;
+    if(length!=4u) return MRE_E_INVALID;
+    phandle=fdt_be32((const uint8_t *)data);
+    if(phandle==0u || mre_fdt_find_phandle(fdt,phandle,&provider)!=MRE_OK)
+        return MRE_E_INVALID;
+    if(display->supply_count>=MRE_VIOLET_MAX_DISPLAY_SUPPLIES) return MRE_E_NOMEM;
+    supply=&display->supplies[display->supply_count++];
+    supply->phandle=phandle; copy_supply_name(supply->name,name);
+    return MRE_OK;
+}
+static mre_status_t parse_clock_refs(const mre_fdt_t *fdt,mre_fdt_node_t node,
+                                     const char *name,mre_violet_clock_ref_t *out,
+                                     uint32_t *count)
+{
+    const void *data; uint32_t length,i;
+    mre_status_t st=mre_fdt_get_property(fdt,node,name,&data,&length);
+    if(st!=MRE_OK) return st;
+    if(length==0u || (length&7u)!=0u || length/8u>MRE_VIOLET_MAX_DISPLAY_CLOCKS)
+        return MRE_E_INVALID;
+    *count=length/8u;
+    for(i=0u;i<*count;++i) {
+        const uint8_t *p=(const uint8_t *)data+i*8u;
+        mre_fdt_node_t provider;
+        out[i].provider_phandle=fdt_be32(p);
+        out[i].id=fdt_be32(p+4u);
+        if(out[i].provider_phandle==0u ||
+           mre_fdt_find_phandle(fdt,out[i].provider_phandle,&provider)!=MRE_OK)
+            return MRE_E_INVALID;
+    }
+    return MRE_OK;
+}
+static mre_status_t parse_interrupt_extended(const mre_fdt_t *fdt,
+                                              mre_fdt_node_t node,
+                                              uint32_t *controller,
+                                              uint32_t *index)
+{
+    const void *data; uint32_t length,cells; uint32_t phandle;
+    mre_fdt_node_t provider;
+    mre_status_t st=mre_fdt_get_property(fdt,node,"interrupts-extended",&data,&length);
+    if(st!=MRE_OK) return st;
+    if(length<8u) return MRE_E_INVALID;
+    phandle=fdt_be32((const uint8_t *)data);
+    if(phandle==0u || mre_fdt_find_phandle(fdt,phandle,&provider)!=MRE_OK)
+        return MRE_E_INVALID;
+    st=mre_fdt_get_u32(fdt,provider,"#interrupt-cells",&cells);
+    if(st!=MRE_OK || cells==0u || cells>4u || length<(cells+1u)*4u)
+        return MRE_E_INVALID;
+    *controller=phandle;
+    *index=fdt_be32((const uint8_t *)data+4u);
+    return MRE_OK;
+}
+static mre_status_t parse_reset_gpio(const mre_fdt_t *fdt,mre_fdt_node_t node,
+                                     mre_violet_display_info_t *display)
+{
+    const void *data; uint32_t length,cells,phandle; mre_fdt_node_t provider;
+    mre_status_t st=mre_fdt_get_property(fdt,node,"reset-gpios",&data,&length);
+    if(st!=MRE_OK) return st;
+    if(length<8u) return MRE_E_INVALID;
+    phandle=fdt_be32((const uint8_t *)data);
+    if(phandle==0u || mre_fdt_find_phandle(fdt,phandle,&provider)!=MRE_OK)
+        return MRE_E_INVALID;
+    st=mre_fdt_get_u32(fdt,provider,"#gpio-cells",&cells);
+    if(st!=MRE_OK || cells==0u || cells>2u || length!=(cells+1u)*4u)
+        return MRE_E_INVALID;
+    display->reset_phandle=phandle;
+    display->reset_gpio=fdt_be32((const uint8_t *)data+4u);
+    display->reset_flags=(cells==2u)?fdt_be32((const uint8_t *)data+8u):0u;
+    display->reset_active_low=(display->reset_flags&1u)?1u:0u;
+    return MRE_OK;
+}
+static mre_status_t parse_lanes(const mre_fdt_t *fdt,mre_fdt_node_t dsi,
+                                mre_violet_display_info_t *display)
+{
+    const void *data; uint32_t length,i,j,count; uint32_t cursor=0u;
+    mre_fdt_node_t endpoint;
+    mre_status_t st=mre_fdt_find_descendant_property(fdt,dsi,"data-lanes",
+                                                      &cursor,&endpoint);
+    if(st!=MRE_OK) return st;
+    st=mre_fdt_get_property(fdt,endpoint,"data-lanes",&data,&length);
+    if(st!=MRE_OK) return st;
+    if(length==0u || (length&3u)!=0u) return MRE_E_INVALID;
+    count=length/4u;
+    if(count>4u) return MRE_E_INVALID;
+    display->lane_count=count;
+    for(i=0u;i<count;++i) {
+        display->lanes[i]=(uint8_t)fdt_be32((const uint8_t *)data+i*4u);
+        if(display->lanes[i]>3u) return MRE_E_INVALID;
+        for(j=0u;j<i;++j) if(display->lanes[j]==display->lanes[i])
+            return MRE_E_INVALID;
+    }
+    return MRE_OK;
+}
+static mre_status_t discover_display(const mre_fdt_t *fdt,
+                                     mre_violet_boot_info_t *info)
+{
+    mre_violet_display_info_t *display=&info->display;
+    mre_fdt_node_t node;
+    mre_status_t st;
+    uint32_t any=0u,complete=1u;
+    memset(display,0,sizeof(*display));
+
+    st=find_one(fdt,"qcom,sm6150-mdss",&node);
+    if(st==MRE_OK) {
+        any=1u; display->mdss_found=1u;
+        if(get_reg_or_fail(fdt,node,0u,&display->mdss_base,&display->mdss_size)!=MRE_OK)
+            return MRE_E_INVALID;
+        {
+            const void *ints; uint32_t length,cells=3u;
+            if(mre_fdt_get_interrupt_cells(fdt,node,&cells)!=MRE_OK) cells=3u;
+            if(mre_fdt_get_property(fdt,node,"interrupts",&ints,&length)==MRE_OK &&
+               cells>=3u && length>=cells*4u) {
+                const uint8_t *p=(const uint8_t *)ints;
+                if(fdt_be32(p)==0u) display->mdss_irq=32u+fdt_be32(p+4u);
+            }
+        }
+    } else complete=0u;
+
+    st=find_one(fdt,"qcom,sm6150-dpu",&node);
+    if(st==MRE_OK) {
+        any=1u; display->dpu_found=1u;
+        if(get_reg_or_fail(fdt,node,0u,&display->dpu_base,&display->dpu_size)!=MRE_OK ||
+           get_reg_or_fail(fdt,node,1u,&display->dpu_vbif_base,&display->dpu_vbif_size)!=MRE_OK)
+            return MRE_E_INVALID;
+        st=parse_interrupt_extended(fdt,node,&display->dpu_irq_controller,
+                                    &display->dpu_irq_index);
+        if(st!=MRE_OK && st!=MRE_E_NOT_FOUND) return st;
+    } else complete=0u;
+
+    st=find_one(fdt,"qcom,sm6150-dsi-ctrl",&node);
+    if(st==MRE_OK) {
+        any=1u; display->dsi_found=1u;
+        if(get_reg_or_fail(fdt,node,0u,&display->dsi_base,&display->dsi_size)!=MRE_OK)
+            return MRE_E_INVALID;
+        st=parse_interrupt_extended(fdt,node,&display->dsi_irq_controller,
+                                    &display->dsi_irq_index);
+        if(st!=MRE_OK) return st;
+        st=parse_clock_refs(fdt,node,"clocks",display->dsi_clocks,
+                            &display->dsi_clock_count);
+        if(st!=MRE_OK) return st;
+        st=parse_clock_refs(fdt,node,"assigned-clocks",display->dsi_assigned_clocks,
+                            &display->dsi_assigned_clock_count);
+        if(st!=MRE_OK && st!=MRE_E_NOT_FOUND) return st;
+        st=parse_clock_refs(fdt,node,"assigned-clock-parents",
+                            display->dsi_assigned_parents,
+                            &display->dsi_assigned_parent_count);
+        if(st!=MRE_OK && st!=MRE_E_NOT_FOUND) return st;
+        st=parse_lanes(fdt,node,display);
+        if(st!=MRE_OK) return st;
+        st=add_supply(fdt,node,"vdda-supply",display);
+        if(st!=MRE_OK) return st;
+    } else complete=0u;
+
+    st=find_one(fdt,"qcom,sm6150-dsi-phy-14nm",&node);
+    if(st==MRE_OK) {
+        any=1u; display->phy_found=1u;
+        if(get_reg_or_fail(fdt,node,0u,&display->phy_base,&display->phy_size)!=MRE_OK ||
+           get_reg_or_fail(fdt,node,1u,&display->phy_lane_base,&display->phy_lane_size)!=MRE_OK ||
+           get_reg_or_fail(fdt,node,2u,&display->phy_pll_base,&display->phy_pll_size)!=MRE_OK)
+            return MRE_E_INVALID;
+        st=add_supply(fdt,node,"vcca-supply",display);
+        if(st!=MRE_OK) return st;
+    } else complete=0u;
+
+    st=find_one(fdt,"qcom,qcs615-dispcc",&node);
+    if(st==MRE_OK) {
+        any=1u; display->dispcc_found=1u;
+        if(get_reg_or_fail(fdt,node,0u,&display->dispcc_base,&display->dispcc_size)!=MRE_OK)
+            return MRE_E_INVALID;
+    } else complete=0u;
+
+    st=find_one(fdt,"novatek,nt36672a-shenchao",&node);
+    if(st==MRE_OK) {
+        const void *data; uint32_t length; uint32_t phandle; mre_fdt_node_t provider;
+        any=1u; display->panel_found=1u;
+        st=add_supply(fdt,node,"vddi-supply",display); if(st!=MRE_OK) return st;
+        st=add_supply(fdt,node,"avdd-supply",display); if(st!=MRE_OK) return st;
+        st=add_supply(fdt,node,"avee-supply",display); if(st!=MRE_OK) return st;
+        st=parse_reset_gpio(fdt,node,display); if(st!=MRE_OK) return st;
+        st=mre_fdt_get_property(fdt,node,"backlight",&data,&length);
+        if(st==MRE_OK) {
+            if(length!=4u) return MRE_E_INVALID;
+            phandle=fdt_be32((const uint8_t *)data);
+            if(phandle==0u || mre_fdt_find_phandle(fdt,phandle,&provider)!=MRE_OK)
+                return MRE_E_INVALID;
+            display->backlight_phandle=phandle;
+        } else if(st!=MRE_E_NOT_FOUND) return st;
+        display->panel_timing_present=
+            (mre_fdt_get_property(fdt,node,"panel-timing",&data,&length)==MRE_OK)?1u:0u;
+        display->panel_command_data_present=
+            (mre_fdt_get_property(fdt,node,"qcom,mdss-dsi-on-command",
+                                  &data,&length)==MRE_OK)?1u:0u;
+    } else complete=0u;
+
+    display->found=any;
+    return (any && complete)?MRE_OK:MRE_E_NOT_FOUND;
+}
 static mre_status_t discover_memory(const mre_fdt_t *fdt,mre_violet_boot_info_t *info)
 {
     mre_fdt_node_t node;
@@ -160,6 +369,7 @@ mre_status_t mre_violet_discover(const mre_fdt_t *fdt,mre_violet_boot_info_t *in
             }
         }
     }
+    info->display_status=discover_display(fdt,info);
     st=discover_memory(fdt,info);
     if(st!=MRE_OK) return st;
     info->valid=1;
@@ -352,6 +562,32 @@ mre_status_t mre_violet_build_page_tables(const mre_violet_boot_info_t *info,
     }
     if(info->uart_found) {
         st=map_mmio(info->uart_base,info->uart_size);
+        if(st!=MRE_OK) return st;
+    }
+    if(info->display.mdss_found) {
+        st=map_mmio(info->display.mdss_base,info->display.mdss_size);
+        if(st!=MRE_OK) return st;
+    }
+    if(info->display.dpu_found) {
+        st=map_mmio(info->display.dpu_base,info->display.dpu_size);
+        if(st!=MRE_OK) return st;
+        st=map_mmio(info->display.dpu_vbif_base,info->display.dpu_vbif_size);
+        if(st!=MRE_OK) return st;
+    }
+    if(info->display.dsi_found) {
+        st=map_mmio(info->display.dsi_base,info->display.dsi_size);
+        if(st!=MRE_OK) return st;
+    }
+    if(info->display.phy_found) {
+        st=map_mmio(info->display.phy_base,info->display.phy_size);
+        if(st!=MRE_OK) return st;
+        st=map_mmio(info->display.phy_lane_base,info->display.phy_lane_size);
+        if(st!=MRE_OK) return st;
+        st=map_mmio(info->display.phy_pll_base,info->display.phy_pll_size);
+        if(st!=MRE_OK) return st;
+    }
+    if(info->display.dispcc_found) {
+        st=map_mmio(info->display.dispcc_base,info->display.dispcc_size);
         if(st!=MRE_OK) return st;
     }
     return MRE_OK;

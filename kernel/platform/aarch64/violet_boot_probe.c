@@ -68,6 +68,10 @@ int vqeaf_violet_probe_dtb(const void *blob, size_t available,
     out->gic_redistributor_size = g_mre_info.gic.redistributor_size;
     out->uart_base = g_mre_info.uart_base;
     out->uart_size = g_mre_info.uart_size;
+    out->display_discovery_status = (int32_t)g_mre_info.display_status;
+    _Static_assert(sizeof(out->display) == sizeof(g_mre_info.display),
+                   "Violet display discovery ABI mismatch");
+    memcpy(&out->display, &g_mre_info.display, sizeof(out->display));
 
     for (i = 0; i < g_mre_info.memory_region_count &&
                 i < VQEAF_VIOLET_MAX_MEMORY_REGIONS; ++i) {

@@ -24,6 +24,7 @@ class QrtrQmiTests(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("test_wifi_hal: ALL OK", p.stdout)
         self.assertIn("test_qrtr_qmi: ALL OK", p.stdout)
+        self.assertIn("test_wlfw_client: ALL OK", p.stdout)
 
     def test_discovery_only_ingests_received_packets(self):
         src = (ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" /

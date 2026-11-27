@@ -72,7 +72,7 @@ typedef struct {
     /* Panel backlight, 0..100, the value last written to sysfs. */
     int brightness;
 
-    /* Volume level, 0..100 (no audio backend yet). */
+    /* Volume level, 0..100, applied only when a PCM backend is ready. */
     int volume;
 
     /* Screen timeout: 0 never, otherwise seconds of inactivity. */

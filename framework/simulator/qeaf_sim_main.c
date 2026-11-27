@@ -39,10 +39,11 @@ static uint8_t *read_package(const char *path, size_t *size)
 
 /* ---- interactive window (--ui) ------------------------------------------
  * The simulator is intentionally dependency-free, so the window is plain
- * Win32 + GDI: the app framebuffer is StretchDIBits'd into the client area and
- * WM_KEYDOWN is translated to the evdev key codes the device sends, then fed
- * to the app through qeaf_sim_input(). This is what makes a keyboard app (a
- * game, a menu) playable on the PC instead of a single printed frame. */
+ * Win32 + GDI: the app framebuffer is StretchDIBits'd into the client area.
+ * WM_KEYDOWN is translated to evdev key codes and mouse press/move/release is
+ * translated to touch events in the app canvas, then fed to the app through
+ * qeaf_sim_input(). This makes a Redmi Note 7 Pro touch app playable on the PC
+ * instead of a single printed frame. */
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -67,6 +68,39 @@ static int ui_key_code(WPARAM vk)
     case VK_RETURN:return 28;
     default:       return -1;
     }
+}
+
+/* Mouse input is delivered in simulator client pixels. The client shows the
+ * QEAPP canvas (720x1560 for violet), so map straight into canvas coordinates
+ * before handing the event to the app. Device profiles that letterbox the
+ * canvas are handled by panel_scale for --touches; the interactive window
+ * always renders only the canvas. */
+static void ui_touch(sim_window_t *win, HWND hwnd, LPARAM lp, int pressed)
+{
+    RECT rc;
+    int canvas_x, canvas_y;
+    qeaf_input_event_t event;
+    char error[128];
+
+    if(win == NULL || !GetClientRect(hwnd, &rc) || rc.right <= 0 || rc.bottom <= 0)
+        return;
+    canvas_x = (int)LOWORD(lp) * (int)win->width / rc.right;
+    canvas_y = (int)HIWORD(lp) * (int)win->height / rc.bottom;
+    if(canvas_x < 0) canvas_x = 0;
+    if(canvas_y < 0) canvas_y = 0;
+    if((uint32_t)canvas_x >= win->width) canvas_x = (int)win->width - 1;
+    if((uint32_t)canvas_y >= win->height) canvas_y = (int)win->height - 1;
+
+    event.type = QEAF_INPUT_TOUCH;
+    event.code = 1u;
+    event.x = canvas_x;
+    event.y = canvas_y;
+    event.pressed = (uint32_t)pressed;
+    if(qeaf_sim_input(win->sim, &event, error, sizeof(error)) != 0)
+        fprintf(stderr, "WINDOW: %s\n", error);
+    else
+        fprintf(stderr, "WINDOW: touch %d,%d pressed=%d\n", canvas_x, canvas_y, pressed);
+    InvalidateRect(hwnd, NULL, FALSE);
 }
 
 static LRESULT CALLBACK sim_window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -114,6 +148,25 @@ static LRESULT CALLBACK sim_window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
                 fprintf(stderr, "WINDOW: %s\n", error);
             InvalidateRect(hwnd, NULL, FALSE);
         }
+        return 0;
+    }
+    case WM_LBUTTONDOWN: {
+        sim_window_t *win = (sim_window_t *)(intptr_t)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+        ui_touch(win, hwnd, lp, 1);
+        SetCapture(hwnd);
+        return 0;
+    }
+    case WM_MOUSEMOVE: {
+        if((wp & MK_LBUTTON) != 0) {
+            sim_window_t *win = (sim_window_t *)(intptr_t)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+            ui_touch(win, hwnd, lp, 1);
+        }
+        return 0;
+    }
+    case WM_LBUTTONUP: {
+        sim_window_t *win = (sim_window_t *)(intptr_t)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+        ui_touch(win, hwnd, lp, 0);
+        ReleaseCapture();
         return 0;
     }
     case WM_ERASEBKGND:
@@ -184,7 +237,7 @@ static int run_ui(qeaf_sim_t *sim, const char *title, char *error, size_t cap)
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)&win);
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
-    fprintf(stderr, "WINDOW: %dx%d client, keys: arrows / WASD, close to exit\n",
+    fprintf(stderr, "WINDOW: %dx%d client, touch: mouse click/drag, keys: arrows / WASD, close to exit\n",
             client_w, client_h);
 
     while(GetMessageW(&msg, NULL, 0, 0) > 0) {
@@ -250,6 +303,7 @@ int main(int argc, char **argv)
     const char *scope = NULL;
     const char *device_id = NULL;
     const char *keys = NULL;
+    const char *touches = NULL;
     int ui = 0;
     qeaf_input_event_t input[QEAF_SIM_MAX_INPUT];
     size_t input_count = 0;
@@ -281,6 +335,8 @@ int main(int argc, char **argv)
             call_ms = (uint32_t)strtoul(argv[++i], NULL, 10);
         else if(strcmp(argv[i], "--keys") == 0 && i + 1 < argc)
             keys = argv[++i];
+        else if(strcmp(argv[i], "--touches") == 0 && i + 1 < argc)
+            touches = argv[++i];
         else if(strcmp(argv[i], "--ui") == 0)
             ui = 1;
         else if(argv[i][0] == '-') {
@@ -296,7 +352,8 @@ int main(int argc, char **argv)
     if(package_path == NULL) {
         printf("usage: %s package.qeapp [--device id] [--fb out.raw] "
                "[--panel-fb out.raw] [--scope prefix] [--mem-bytes N] "
-               "[--call-ms N] [--keys code[,code...]] [--list-devices]\n",
+               "[--call-ms N] [--keys code[,code...]] "
+               "[--touches x,y,pressed;...] [--list-devices]\n",
                argv[0]);
         return 2;
     }
@@ -307,11 +364,17 @@ int main(int argc, char **argv)
     if(keys != NULL) {
         const char *cursor = keys;
 
-        while(*cursor != '\0' && input_count < QEAF_SIM_MAX_INPUT) {
+        while(*cursor != '\0') {
             char *end = NULL;
-            unsigned long code = strtoul(cursor, &end, 0);
+            unsigned long code;
 
-            if(end == cursor || code > 0xFFFFFFFFul) {
+            if(input_count >= QEAF_SIM_MAX_INPUT) {
+                fprintf(stderr, "ERROR: --keys exceeds the input event limit\n");
+                return 2;
+            }
+            code = strtoul(cursor, &end, 0);
+            if(end == cursor || code > 0xFFFFFFFFul ||
+               (*end != '\0' && *end != ',')) {
                 fprintf(stderr, "ERROR: --keys expects numeric key codes, "
                                 "e.g. --keys 103,106\n");
                 return 2;
@@ -322,7 +385,58 @@ int main(int argc, char **argv)
             input[input_count].y = 0;
             input[input_count].pressed = 1;
             input_count++;
-            cursor = (*end == ',') ? end + 1 : end;
+            cursor = end;
+            if(*cursor == ',') {
+                cursor++;
+                if(*cursor == '\0') {
+                    fprintf(stderr, "ERROR: --keys has a trailing comma\n");
+                    return 2;
+                }
+            }
+        }
+    }
+    /* Touch scripts use semicolons between complete down/move/up events so a
+     * drag is distinguishable from a tap in deterministic host runs. */
+    if(touches != NULL) {
+        const char *cursor = touches;
+        while(*cursor != '\0') {
+            char *end = NULL;
+            if(input_count >= QEAF_SIM_MAX_INPUT) {
+                fprintf(stderr, "ERROR: --touches exceeds the input event limit\n");
+                return 2;
+            }
+            long x = strtol(cursor, &end, 10);
+            if(end == cursor || *end != ',' || x < 0 || x > 2147483647L) {
+                fprintf(stderr, "ERROR: --touches expects x,y,pressed;... events\n");
+                return 2;
+            }
+            cursor = end + 1;
+            long y = strtol(cursor, &end, 10);
+            if(end == cursor || *end != ',' || y < 0 || y > 2147483647L) {
+                fprintf(stderr, "ERROR: --touches expects x,y,pressed;... events\n");
+                return 2;
+            }
+            cursor = end + 1;
+            long pressed = strtol(cursor, &end, 10);
+            if(end == cursor || (pressed != 0 && pressed != 1) ||
+               (*end != '\0' && *end != ';')) {
+                fprintf(stderr, "ERROR: --touches expects x,y,pressed;... events\n");
+                return 2;
+            }
+            input[input_count].type = QEAF_INPUT_TOUCH;
+            input[input_count].code = 1u;
+            input[input_count].x = (int32_t)x;
+            input[input_count].y = (int32_t)y;
+            input[input_count].pressed = (uint32_t)pressed;
+            input_count++;
+            cursor = end;
+            if(*cursor == ';') {
+                cursor++;
+                if(*cursor == '\0') {
+                    fprintf(stderr, "ERROR: --touches has a trailing semicolon\n");
+                    return 2;
+                }
+            }
         }
     }
     const qeaf_device_profile_t *device = qeaf_device_find(device_id);

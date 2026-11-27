@@ -43,6 +43,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 
+#include "boot_journal.h"
 #include "fat_ro.h"
 #include "host_services.h"
 #include "qrtr_ns.h"
@@ -502,6 +503,10 @@ static int bind_platform_device(const char *match, const char *driver_match)
 
 void vio_wifi_modem_start(void)
 {
+    /* Arm the p77 live trace before the modem runs: this is the path where
+     * the SoC resets 14-16 s after ONLINE with no signal handler and no
+     * pstore, so the only record left is the one written to flash here. */
+    vio_journal_trace_arm(1);
     wifi_modem_hold = 0;
     wifi_modem_opt_in = 1;
     wifi_t0 = vio_monotonic_ms();
@@ -517,6 +522,7 @@ void vio_wifi_modem_start(void)
 
 void vio_wifi_modem_stop(void)
 {
+    vio_journal_trace_arm(0);
     wifi_modem_hold = 1;
     if(wifi_modem_fd >= 0) {
         close(wifi_modem_fd);

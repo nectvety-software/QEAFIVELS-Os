@@ -63,7 +63,8 @@ $iconNames = @(
   "folder_open","image","audiotrack","videocam","gamepad","lock_open",
   "person","group","verified_user","cloud_download","update","delete_sweep",
   "signal_wifi_off","bluetooth_disabled","brightness_6","headphones",
-  "skip_previous","queue_music","content_copy","link","attach_file","save",
+  "skip_previous","queue_music","content_copy","content_paste","link",
+  "attach_file","save",
   "keyboard","text_fields","touch_app","spellcheck","aspect_ratio",
   "view_stream","push_pin","check_circle","keyboard_alt",
   "wifi_tethering","location_on","battery_saver","screen_rotation",
@@ -295,7 +296,8 @@ foreach($face in @(@{size = 20; name = "vqeaf_font_bold_20"},
 
 Write-Output "generate_lvgl_fonts: Ubuntu bold display faces"
 foreach($face in @(@{size = 56; name = "vqeaf_font_bold_56"},
-                   @{size = 96; name = "vqeaf_font_bold_96"})) {
+                   @{size = 96; name = "vqeaf_font_bold_96"},
+                   @{size = 160; name = "vqeaf_font_bold_160"})) {
   Emit-GlyphFont -FontPath $UbuntuBold -Style ([System.Drawing.FontStyle]::Bold) `
     -Size $face.size -Codepoints $digitCodepoints -Symbol $face.name `
     -OutFile (Join-Path $OutDir ($face.name + ".c"))
@@ -324,8 +326,10 @@ $header = @(
   "LV_FONT_DECLARE(vqeaf_font_bold_34);",
   "LV_FONT_DECLARE(vqeaf_font_bold_56);",
   "LV_FONT_DECLARE(vqeaf_font_bold_96);",
+  "LV_FONT_DECLARE(vqeaf_font_bold_160);",
   "LV_FONT_DECLARE(vqeaf_icon_28);",
   "LV_FONT_DECLARE(vqeaf_icon_40);",
+  "LV_FONT_DECLARE(vqeaf_emoji_28);",
   "",
   "/* Typography weights. VQEAF_FONT_* resolve through vqeaf_type_font() so the",
   " * whole shell honours the bold-text accessibility mode; *_BOLD pins a face. */",
@@ -357,6 +361,7 @@ $header = @(
   "#define VQEAF_FONT_HEADLINE_BOLD (vqeaf_type_font_weight(VQEAF_ROLE_HEADLINE, VQEAF_WEIGHT_BOLD))",
   "#define VQEAF_FONT_HOME_CLOCK (&vqeaf_font_bold_56)",
   "#define VQEAF_FONT_CLOCK     (&vqeaf_font_bold_96)",
+  "#define VQEAF_FONT_LOCK_CLOCK (&vqeaf_font_bold_160)",
   "#define VQEAF_ICON_SM        (&vqeaf_icon_28)",
   "#define VQEAF_ICON           (&vqeaf_icon_40)",
   "",

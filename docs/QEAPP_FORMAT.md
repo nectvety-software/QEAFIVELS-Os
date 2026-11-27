@@ -1,9 +1,10 @@
-# QEAPP package format v1
+# QEAPP package formats and installer API
 
-A `.qeapp` is a ZIP_STORED container, not an APK. The generated project
-layout and packaging metadata do not change manifest format v1 or the
-runtime ABI v1. The current compiler validates bounded declarative scripts;
-it does not compile or execute arbitrary native code.
+A `.qeapp` is a ZIP_STORED container, not an APK. Format v1 carries a bounded
+declarative `.qe` script. Format v2 carries a QEAF-owned `.qen` native module;
+host inspection only validates its structure and never maps or executes it.
+The generated project layout and packaging metadata do not change either
+manifest format.
 
 ## Project inputs and names
 
@@ -32,7 +33,9 @@ The required manifest fields remain `format` (`qeapp`), `format_version`
 (`1`), `id`, `name`, `version`, `min_os`, `entry`, `architecture`,
 `permissions`, and `dependencies`. The scaffold sets `entry` to
 `src/main.qe` and `icon` to `assets/icon.rgba`. The runtime icon is raw
-64x64 BGRA (16384 bytes); `assets/icon.png` is its editable source.
+64x64 BGRA (16384 bytes); `assets/icon.png` is its editable source. A declared
+icon must use the canonical `assets/icon.rgba` path and that entry must exist.
+Format v2 requires exactly one declared architecture; Violet accepts arm64.
 Older flat runtime examples are not the generated scaffold.
 
 `packaging/package.json` is build-only metadata, with these required fields:
@@ -107,8 +110,10 @@ entry point. Both routes use the same confirmation sheet:
 1. Verify the package signature and parse the manifest without changing the
    installed registry.
 2. Show the actual app name, version, ID, icon and requested permissions.
-3. On confirmation, read and verify the package again, then install or update
-   by `manifest.id`.
+3. On confirmation, call `vqeaf_qeapp_package_install_verified()` with the
+   SHA-256 returned by preview. It re-reads and verifies the exact package
+   bytes, rejects a substituted package, then installs or updates by
+   `manifest.id`.
 4. Show the installing state and a success/error result. **Mở** opens the
    installed app.
 
@@ -118,21 +123,55 @@ Installing a newer package with the same `manifest.id` updates that app
 instead of creating a duplicate. Uninstall removes the package and its
 per-app data.
 
+### Public package API v1
+
+The LVGL-independent C contract is
+`system/core/include/vqeaf/qeapp_package.h`. It exposes package preview,
+install, update-by-ID, enumeration, lookup, and uninstall without exposing the
+LVGL registry internals.
+
+- `vqeaf_qeapp_package_preview()` verifies and parses without mutating state;
+  `info.package_hash` is the SHA-256 of the exact verified package bytes.
+- `vqeaf_qeapp_package_install()` re-verifies the bytes before committing.
+  `result.updated` is `0` for a new ID and `1` for an existing-ID update.
+- `vqeaf_qeapp_package_install_verified()` accepts only the digest returned by
+  a preceding preview and rejects changed bytes before any registry mutation.
+- `vqeaf_qeapp_package_find()` returns a zero-based installed index or `-1`.
+- `OK` means the mutation succeeded and the durable p77 catalog was written
+  and read back successfully. `OK_SESSION_ONLY` means only the in-memory
+  mutation succeeded; the UI must not describe it as durable.
+- `persisted` is `-1` when not applicable, otherwise `0` or `1`.
+  `updated` is `-1` for non-install operations.
+
+The desktop UI renderer has no QEAPP storage backend: preview, install, and
+uninstall return `UNSUPPORTED` and leave the seeded registry unchanged. It is
+a layout harness, not a desktop package manager. Separate host runtime tests
+execute the real verifier with a failing persistence stub and therefore
+expect `OK_SESSION_ONLY`, not `OK`.
+
 ### Durable install store (Violet)
 
 QEAFRESCUE is RAM-backed, so the installer mirrors signed package bytes and
 per-app data into the two-slot app catalog in the reserved tail of
-`/dev/mmcblk0p77` (32–64 MiB). Each slot has a sequence number and CRC.
-A save writes and syncs the payload before committing its header; the previous
-valid slot remains available if power is lost during an update. At boot,
-QEAF restores the newest valid catalog and sends every package through the
-same signature/manifest validation path again. Per-app data is capped at
-64 KiB; the in-memory app registry currently exposes up to 24 apps.
+`/dev/mmcblk0p77` (32–64 MiB). New records are keyed by `manifest.id`, not by
+the package filename. Each installed record retains the exact verified bytes,
+so later data/permission saves do not reread a mutable QEAFRESCUE path and do
+not require a FAT volume. Each slot has a sequence number and CRC. A save
+writes and syncs the payload before committing its header; the previous valid
+slot remains available if power is lost during an update. At boot, QEAF
+restores the newest valid catalog and sends every package through the same
+signature/manifest validation path again. Legacy filename-keyed records are
+accepted only when their signed metadata proves the expected identity; their
+data and grants are inherited after validation and the next save migrates the
+key to `manifest.id`. Per-app data is capped at 64 KiB; the in-memory app
+registry currently exposes up to 24 apps.
 
-This describes the current Violet implementation. Before deployment on a
-different partition map, verify that p77 exists and that its 32–64 MiB range
-is genuinely reserved for QEAF app storage; do not assume those offsets are
-portable to another device or partition layout.
+A failed save leaves the app usable for the current boot but does not promise
+that it will survive reboot. The installer and uninstall notifications report
+that session-only outcome separately. Before deployment on a different
+partition map, verify that p77 exists and that its 32–64 MiB range is genuinely
+reserved for QEAF app storage; do not assume those offsets are portable to
+another device or partition layout.
 
 ### Runtime and trust limits
 
@@ -149,6 +188,36 @@ but it is not a production publisher identity or a secure third-party trust
 root. A production app ecosystem still needs asymmetric signatures with a
 private signing key kept off-device, plus kernel-enforced process isolation.
 
+## Host SDK inspection
+
+The reusable Python API is read-only:
+
+```python
+from sdk.qeapp import QEAPPError, preview_package
+
+try:
+    metadata = preview_package("my-app/build/releases/hello-qeapp.qeapp")
+except QEAPPError as error:
+    print(error.code, error.message)
+```
+
+Successful metadata includes the manifest identity, runtime, architecture,
+permissions, dependencies, icon size, package path/size, `package_sha256`,
+`signature_verified: true`, `signature_scheme: "development-hmac-sha256"`, and
+`publisher_authenticated: false`. Inspection validates ZIP structure, CRC,
+manifest/script or native-module structure, exact signature, and size limits.
+It does not install, modify, launch, or simulate the package.
+
+The equivalent CLI is:
+
+```text
+python sdk/cli/qeaf.py preview my-app/build/releases/hello-qeapp.qeapp
+```
+
+It prints deterministic JSON on success. Failure prints
+`ERROR [<CODE>]: <message>` and exits nonzero. There is intentionally no host
+desktop installer command.
+
 ## Build and test commands
 
 From the repository root (`D:/QEAFIVELS-Os`):
@@ -158,6 +227,7 @@ python sdk/cli/qeaf.py create my-app --id org.example.hello --package-name hello
 python sdk/cli/qeaf.py build my-app --config all
 python sdk/cli/qeaf.py package my-app --config release
 python sdk/cli/qeaf.py validate my-app/build/releases/hello-qeapp.qeapp
+python sdk/cli/qeaf.py preview my-app/build/releases/hello-qeapp.qeapp
 ```
 
 `create` refuses existing directories; optional ID and package-name defaults
@@ -189,5 +259,18 @@ python -m unittest discover -s tests -v
 
 A build also accepts `--sdk "D:\QEAFIVELS-Os\sdk\cli\qeaf.py"`; external
 tests use `VQEAF_SDK`. Without either override, the launcher searches for
-the SDK in an ancestor repository. These are host-side packaging and test
-instructions; they do not establish hardware support or perform flashing.
+the SDK in an ancestor repository.
+
+Repository-level verification commands:
+
+```text
+python -m unittest tests.test_qeapp_sdk tests.test_qeapp_native -v
+python scripts/test_qeapp_runtime.py
+python scripts/test_violet_shell.py
+python scripts/render_phone_ui.py
+python scripts/package_violet.py
+```
+
+These are host-side packaging, runtime, UI, build, and image-gate
+instructions; they do not establish physical installation or perform
+flashing.

@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: QEAFIVELS Kernel Bring-up <kernel@qeafivels.local>
+Date: Thu, 26 Nov 2026 20:30:00 +0700
+Subject: [PATCH] initramfs: unpack supplied ramdisk when skip_initramfs is set
+
+The Violet bootloader appends skip_initramfs to the command line even when
+fastboot boot supplies a non-empty external ramdisk. In the current 4.14
+initramfs.c, do_skip_initramfs causes populate_rootfs() to call
+default_rootfs() and free initrd_start without unpacking it. The kernel then
+mounts the Android root partition and executes its /init.
+
+Keep the skip behavior for normal boots with no supplied initrd, but allow a
+valid external initramfs to be unpacked when the bootloader supplied one.
+This is needed for QEAF's RAM-boot diagnostic image. It does not change the
+boot partition or the persistent device tree.
+
+This patch is based on the official MiCode Violet source snapshot
+(violet-q-oss, base 4.14.117). It is NOT yet verified against the exact
+4.14.215-azure-Pixel+ source tree and must not be shipped until rebuilt and
+tested with the matching source/toolchain.
+
+---
+ init/initramfs.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/init/initramfs.c b/init/initramfs.c
+index 000000000000..000000000000 100644
+--- a/init/initramfs.c
++++ b/init/initramfs.c
+@@ -623,9 +623,7 @@ static int __init populate_rootfs(void)
+ {
+ 	char *err;
+ 
+-	if (do_skip_initramfs) {
+-		if (initrd_start)
+-			free_initrd();
++	if (do_skip_initramfs && !initrd_start) {
+ 		return default_rootfs();
+ 	}
+ 
+-- 
+2.43.0

@@ -33,8 +33,8 @@ MTK = os.path.join(ROOT, "platform", "mt689x")
 CHANNEL = os.path.join(VIOLET, "channel")
 
 # Shared with violet. The board-specific violet sources (main_violet.c,
-# display_hal.c, vio_caps.c, wifi_bringup.c, qrtr_ns.c, boot_journal.c) are
-# deliberately absent: their MTK counterparts are listed below instead.
+# display_hal.c, vio_caps.c, wifi_bringup.c, boot_journal.c) are deliberately
+# absent: their MTK counterparts are listed below instead.
 SHARED = [
     os.path.join(CHANNEL, "core", "log.c"),
     os.path.join(CHANNEL, "core", "sysio.c"),
@@ -54,20 +54,28 @@ SHARED = [
     os.path.join(VIOLET, "ui", "vqeaf_shutdown.c"),
     os.path.join(VIOLET, "ui", "vqeaf_pages.c"),
     os.path.join(VIOLET, "ui", "vqeaf_theme.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_components.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_drag.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_sound.c"),
+    os.path.join(VIOLET, "ui", "sounds", "vqeaf_sound_data.c"),
     os.path.join(VIOLET, "ui", "vqeaf_ime.c"),
     os.path.join(VIOLET, "ui", "vqeaf_state.c"),
     os.path.join(VIOLET, "ui", "vqeaf_wifi.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_security.c"),
     os.path.join(VIOLET, "ui", "vqeaf_files.c"),
     os.path.join(VIOLET, "ui", "vqeaf_sys_tools.c"),
     os.path.join(VIOLET, "ui", "vqeaf_tools_ui.c"),
     os.path.join(VIOLET, "ui", "vqeaf_media.c"),
     os.path.join(VIOLET, "ui", "vqeaf_video.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp.c"),
+    os.path.join(VIOLET, "qeapp_package.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp_native.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp_runtime.c"),
     os.path.join(VIOLET, "ui", "vqeaf_qeapp_device.c"),
+    os.path.join(VIOLET, "ui", "vqeaf_qeapp_sandbox.c"),
     os.path.join(ROOT, "framework", "security", "qeaf_broker.c"),
     os.path.join(ROOT, "system", "core", "settings.c"),
+    os.path.join(ROOT, "system", "core", "clipboard.c"),
     os.path.join(ROOT, "system", "core", "capability.c"),
     os.path.join(VIOLET, "ui", "icons", "vqeaf_app_icons.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_20.c"),
@@ -80,6 +88,7 @@ SHARED = [
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_bold_34.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_bold_56.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_bold_96.c"),
+    os.path.join(VIOLET, "ui", "fonts", "vqeaf_font_bold_160.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_icon_28.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_icon_40.c"),
     os.path.join(VIOLET, "ui", "fonts", "vqeaf_emoji_28.c"),
@@ -89,6 +98,11 @@ SHARED = [
     # on the MTK board too (inert unless a rescue verb invokes them).
     os.path.join(VIOLET, "qrtr_ns.c"),
     os.path.join(VIOLET, "host_services.c"),
+    os.path.join(VIOLET, "vqeaf_camera.c"),
+    os.path.join(VIOLET, "qvf_encode.c"),
+    os.path.join(VIOLET, "qrtr_probe.c"),
+    os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "qrtr_transport.c"),
+    os.path.join(ROOT, "drives", "violet", "violet_drivers.c"),
 ]
 
 MTK_SOURCES = [
@@ -97,6 +111,7 @@ MTK_SOURCES = [
     os.path.join(MTK, "mt689x_bringup.c"),
     os.path.join(MTK, "mt689x_wifi.c"),
     os.path.join(MTK, "mt689x_session.c"),
+    os.path.join(MTK, "mt689x_services.c"),
     os.path.join(MTK, "main_mt689x.c"),
 ]
 
@@ -122,6 +137,7 @@ for dirpath, _dirs, filenames in os.walk(LVGL_SRC):
 INCLUDES = [
     "-I", MTK,
     "-I", VIOLET,
+    "-I", os.path.join(ROOT, "drives", "violet"),
     "-I", CHANNEL,
     "-I", os.path.join(CHANNEL, "core"),
     "-I", os.path.join(CHANNEL, "fs"),
@@ -135,6 +151,7 @@ INCLUDES = [
     "-I", os.path.join(ROOT, "framework", "application_api"),
     "-I", os.path.join(ROOT, "framework", "security"),
     "-I", os.path.join(ROOT, "system", "core", "include"),
+    "-I", os.path.join(ROOT, "kernel", "include"),
     "-I", os.path.join(ROOT, "platform", "lvgl", "src", "libs", "lz4"),
 ]
 

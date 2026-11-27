@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* platform/violet/ui/vqeaf_theme.h - VQEAF OS phone shell look and feel.
  *
- * The palette and soft vector wallpaper use native shapes and gradients. The
- * OS background has no LVGL image descriptor, bitmap asset, or image decoder.
+ * The palette and cobalt wallpaper use native shapes and gradients. The OS
+ * background has no LVGL image descriptor, bitmap asset, or image decoder.
  */
 #ifndef VQEAF_THEME_H
 #define VQEAF_THEME_H
@@ -102,7 +102,7 @@ void vqeaf_glass_surface(lv_obj_t *obj, int32_t radius, lv_opa_t opacity);
 void vqeaf_theme_set_fluent(int on);
 int vqeaf_theme_fluent(void);
 /* Corner radius for shell cards: Fluent 8 dp (12 px on the 720-wide canvas),
- * the stock 28 otherwise. */
+ * the stock cobalt style 32 otherwise. */
 int32_t vqeaf_theme_card_radius(void);
 /* Acrylic surface: translucent Mica tint, hairline border and a short drop
  * shadow. The renderer has no backdrop blur, so the tint is alpha only. */
@@ -141,6 +141,7 @@ lv_obj_t *vqeaf_weighted_row(lv_obj_t *parent);
 lv_obj_t *vqeaf_weighted_column(lv_obj_t *parent, int32_t height);
 void vqeaf_weight(lv_obj_t *obj, int weight);
 /* Text and Material Icons glyphs. */
+const lv_font_t *vqeaf_type_font_with_emoji(const lv_font_t *font);
 lv_obj_t *vqeaf_label(lv_obj_t *parent, const char *text,
                       const lv_font_t *font, lv_color_t color);
 lv_obj_t *vqeaf_glyph(lv_obj_t *parent, const char *symbol,
@@ -152,8 +153,8 @@ lv_obj_t *vqeaf_tile(lv_obj_t *parent, const char *symbol,
 /* Vivid app icon tile: top is the app accent and bottom is its deep shade. */
 void vqeaf_app_icon_style(lv_obj_t *tile, lv_color_t top,
                           lv_color_t bottom);
-/* A bitmap app icon (VPEPixel art compiled into the shell) scaled to size.
- * Returns NULL when dsc is NULL so callers can fall back to a glyph tile. */
+/* A centered bitmap app icon scaled to size and clipped to 10 px rounded corners;
+ * 32x32 pixel art uses nearest-neighbor scaling. Returns NULL if unavailable. */
 lv_obj_t *vqeaf_icon_img(lv_obj_t *parent, const lv_image_dsc_t *dsc,
                          int32_t size);
 /* Make an object clickable and route LV_EVENT_CLICKED to cb. */

@@ -1,9 +1,15 @@
 # Skill: Kernel Core Engineering
 
 ## Scope
-Boot handoff, architecture startup, CPU exceptions, interrupt controller, timer, memory management, scheduler, IPC primitives, VFS and kernel diagnostics.
+Linux-core boot/provenance, kernel configuration, driver integration and diagnostics; plus the retained freestanding reference kernel.
 
-## Required method
+## Production Linux-core method
+- Violet uses vendor Linux 4.14.215; x86_64/QEMU requires a separately pinned Linux baseline. Record source revision, config, toolchain, DTB and artifact hashes.
+- Linux owns process/memory, interrupts, VFS, namespaces, security primitives and drivers. QEAF userspace must use documented kernel interfaces, never MMIO or a parallel kernel ABI.
+- Verify `/proc/version`, `/sys/module`, `/sys/class`, `/dev`, kernel config and firmware provenance before changing code.
+- Kernel changes require the exact matching source tree, reviewed patch/config, reproducible build and target-appropriate tests. A stock binary is binary provenance, not a source build.
+
+## Retained freestanding reference method
 - Keep architecture-specific code under `kernel/arch/<arch>`; common code under `kernel/core` and `kernel/include`.
 - Document privilege level, calling convention, stack alignment, memory map and ownership for each entry point.
 - Validate UEFI memory map descriptors before ExitBootServices; retry GetMemoryMap if the map key changes.
@@ -23,7 +29,9 @@ Boot handoff, architecture startup, CPU exceptions, interrupt controller, timer,
 - Never add an EL0 syscall without a policy row and a denial test, and never let an app inherit the system identity or `VQEAF_CAP_FS_ADMIN`.
 
 ## Tests
-Boot handoff validation, allocator fragmentation/exhaustion, page mapping/unmapping, invalid pointers, timer wrap, scheduler fairness, IPC malformed messages, VFS traversal and panic output. Kernel security: capability allow/deny per syscall, cross-app path denial, read-only file write denial, handle-table isolation and release on exit (`scripts/test_kernel_aarch64.py`).
+Linux-core gates: kernel/package provenance, source/config/toolchain hashes, initramfs contents, PID 1/service startup, QEAPP sandbox behavior, rescue availability and clean QEMU poweroff. Keep the x86_64 Linux QEMU path mandatory once its pinned baseline exists.
+
+Freestanding reference gates: boot handoff validation, allocator fragmentation/exhaustion, page mapping/unmapping, invalid pointers, timer wrap, scheduler fairness, IPC malformed messages, VFS traversal and panic output. Kernel security: capability allow/deny per syscall, cross-app path denial, read-only file write denial, handle-table isolation and release on exit (`scripts/test_kernel_aarch64.py`).
 
 ## Safety
 No kernel code may assume a phone peripheral exists. No direct device writes on physical hardware without explicit approval.

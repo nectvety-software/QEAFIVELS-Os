@@ -83,6 +83,14 @@ void rescue_set_swipe_hook(rescue_swipe_fn fn);
 typedef int (*rescue_page_fn)(const char *name);
 void rescue_set_page_hook(rescue_page_fn fn);
 
+/* Optional terminal command. The platform queues the line for the UI thread,
+ * because vqeaf_terminal_run() touches LVGL objects that only that thread may
+ * touch. Returns 1 when queued for the next UI frame, 0 when applied on this
+ * thread (host render), negative when the UI is down. Without a hook the
+ * `term` verb runs the command directly (single-threaded host builds only). */
+typedef int (*rescue_term_fn)(const char *line);
+void rescue_set_term_hook(rescue_term_fn fn);
+
 /* Optional power-key equivalent. The platform runs its short-press handler on
  * the UI thread: screen off locks to the lock page, the next press wakes to
  * it. Lets a host exercise lock and unlock without a finger on the button.

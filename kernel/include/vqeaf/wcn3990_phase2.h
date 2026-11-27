@@ -6,9 +6,10 @@
 extern "C" {
 #endif
 
-#define VQEAF_WCN3990_P2_ABI 2u
+#define VQEAF_WCN3990_P2_ABI 4u
 #define VQEAF_WCN3990_CE_MAX 12u
 #define VQEAF_WCN3990_P2_DEFAULT_TIMEOUT_MS 1000u
+#define VQEAF_WCN3990_P2_MAX_STEP_ATTEMPTS 1024u
 #define VQEAF_WCN3990_DMA_BITS 37u
 #define VQEAF_WCN3990_CE_RING_ALIGN 8u
 
@@ -60,10 +61,20 @@ typedef struct {
  void (*dma_free)(void *,uint64_t,void *,uint64_t);
  int (*ce_configure)(void *,const VqeafWcn3990CeConfig *,
                      uint64_t,uint64_t);
- void (*ce_disable)(void *,uint8_t);
- /* Optional timeout support (ABI v2): a step returning -EAGAIN is retried
-  * until step_timeout_ms elapses, then fails with -ETIMEDOUT. Without a
-  * clock, -EAGAIN is propagated instead of looping forever. */
+ /* ABI v3: return 0 only when the CE no longer references its DMA rings.
+  * A failure keeps quiesce pending and forbids freeing or reusing them. */
+ int (*ce_disable)(void *,uint8_t);
+ /* ABI v4, optional: program the DDR RRI array poll-mode CEs read indices
+  * from. Without it phase2 skips RRI and poll CE index reads stay
+  * -EOPNOTSUPP. rri_disable is required whenever ce_rri is supplied and must
+  * return 0 only when no CE still publishes indices into the array; on
+  * failure phase2 must keep the DMA block allocated. */
+ int (*ce_rri)(void *,void *,uint64_t);
+ int (*ce_rri_disable)(void *);
+ /* Optional timeout support introduced in ABI v2 and retained in v3:
+  * a step returning -EAGAIN is retried until step_timeout_ms elapses, the
+  * clock stops advancing, or the attempt cap is reached, then fails with
+  * -ETIMEDOUT. Without both clock and delay, -EAGAIN is propagated. */
  uint64_t (*now_ms)(void *);
  void (*delay_ms)(void *,uint32_t);
 } VqeafWcn3990P2Ops;

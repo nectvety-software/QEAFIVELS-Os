@@ -1,0 +1,36 @@
+/dts-v1/;
+/plugin/;
+/ {
+    model = "Xiaomi Redmi Note 7 Pro (Violet)";
+    compatible = "xiaomi,violet", "qcom,sm6150-idp", "qcom,sm6150", "qcom,idp";
+    qcom,msm-id = <355 0>;
+    qcom,board-id = <34 0>;
+
+    fragment@0 {
+        target-path = "/soc/qcom,dsi-display@10";
+        __overlay__ { qcom,dsi-display-active; };
+    };
+    fragment@1 {
+        target-path = "/soc/qcom,dsi-display@11";
+        __overlay__ { qcom,dsi-display-active; };
+    };
+    fragment@2 {
+        target-path = "/soc/ssusb@a600000/dwc3@a600000";
+        __overlay__ {
+            snps,dis_u2_susphy_quirk;
+            snps,dis_enblslpm_quirk;
+            maximum-speed = "high-speed";
+        };
+    };
+    fragment@3 {
+        target-path = "/soc/hsusb@a800000/dwc3@a800000";
+        __overlay__ {
+            snps,dis_u2_susphy_quirk;
+            snps,dis_enblslpm_quirk;
+        };
+    };
+    fragment@4 {
+        target-path = "/soc/ssphy@88e6000";
+        __overlay__ { status = "disabled"; };
+    };
+};
