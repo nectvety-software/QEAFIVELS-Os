@@ -59,7 +59,7 @@ The Violet ICNSS/WCN3990 path now has a stronger Device Tree resource parser, a 
 
 Artifacts:
 
-- `build/violet/vqeaf-init` — 12,785,504 bytes (295 objects)
+- `build/violet/vqeaf-init` — 12,785,472 bytes (295 objects)
 - `build/kernel-aarch64/vqeaf-kernel-aarch64.elf` — 829,856 bytes
 - `build/violet/libvqeaf-drives.a` — 303,614 bytes (17 objects)
 
