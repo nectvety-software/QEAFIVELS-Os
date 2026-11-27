@@ -16,6 +16,10 @@ typedef void (*mre_irq_handler_t)(uint32_t irq, void *context);
 mre_status_t mre_gic_configure(const mre_gic_config_t *config);
 mre_status_t mre_gic_register_handler(uint32_t irq, mre_irq_handler_t handler, void *context);
 mre_status_t mre_gic_enable_irq(uint32_t irq);
+mre_status_t mre_gic_disable_irq(uint32_t irq);
+/* Disable the source, wait for the distributor write to complete, then clear
+ * the registered handler. Safe to call only after the IRQ subsystem is live. */
+mre_status_t mre_gic_unregister_handler(uint32_t irq);
 uint32_t mre_gic_acknowledge(void);
 void mre_gic_end(uint32_t irq);
 void mre_gic_dispatch(void);

@@ -94,6 +94,7 @@ typedef struct vqeaf_violet_boot_info {
     uint32_t uart_found;
     uint32_t timer_found;
     int32_t display_discovery_status;
+    int32_t icnss_discovery_status; /* DT resource discovery only; no radio powered */
     vqeaf_violet_display_info_t display;
     uint32_t memory_map_valid;
     uint32_t memory_region_count;
@@ -153,6 +154,10 @@ int vqeaf_violet_mmu_is_enabled(void);
  * the Violet MMU has been enabled with DTB-derived MMIO mappings. */
 int vqeaf_violet_irq_init(void);
 int vqeaf_violet_irq_is_active(void);
+/* Dynamic IRQ registration is available only after the verified GIC is live. */
+int vqeaf_violet_irq_request(uint32_t irq, void (*handler)(uint32_t, void *),
+                             void *context);
+int vqeaf_violet_irq_release(uint32_t irq);
 uint64_t vqeaf_violet_irq_dispatch(uint64_t frame_base);
 void vqeaf_a64_timer_external_tick(void);
 /* Select the DTB-discovered GENI console only after MMU activation and explicit

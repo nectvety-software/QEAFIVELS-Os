@@ -48,6 +48,28 @@ int vqeaf_violet_irq_is_active(void)
     return g_violet_irq_ready ? 1 : 0;
 }
 
+int vqeaf_violet_irq_request(uint32_t irq,
+                             void (*handler)(uint32_t, void *), void *context)
+{
+    mre_status_t st;
+    if(!g_violet_irq_ready || handler == 0 || irq < 32u)
+        return -1;
+    st = mre_gic_register_handler(irq, handler, context);
+    if(st != MRE_OK) return (int)st;
+    st = mre_gic_enable_irq(irq);
+    if(st != MRE_OK) {
+        (void)mre_gic_unregister_handler(irq);
+        return (int)st;
+    }
+    return 0;
+}
+
+int vqeaf_violet_irq_release(uint32_t irq)
+{
+    if(!g_violet_irq_ready || irq < 32u) return -1;
+    return (int)mre_gic_unregister_handler(irq);
+}
+
 uint64_t vqeaf_violet_irq_dispatch(uint64_t frame_base)
 {
     uint64_t before, after;

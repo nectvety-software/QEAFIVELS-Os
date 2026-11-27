@@ -67,6 +67,8 @@ typedef enum {
     VQEAF_PAGE_ADVISORY_DETAIL,
     /* First-boot setup. Appended so page IDs used by apps and rescue stay stable. */
     VQEAF_PAGE_SETUP,
+    /* Advanced radio configuration: policy/preflight only on Violet. */
+    VQEAF_PAGE_WIFI_ADVANCED,
     VQEAF_PAGE_COUNT
 } vqeaf_page_t;
 

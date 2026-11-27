@@ -93,6 +93,8 @@ def build():
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "qrtr_transport.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "qmi_service.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wlfw_client.c",
+               ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wlfw_session.c",
+               ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wifi_advanced.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "violet_platform.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "wcn3990_ce.c",
                ROOT / "kernel" / "drivers" / "wifi" / "wcn3990" / "firmware_boot.c",

@@ -77,7 +77,7 @@ static int icnss(void*p){return hit(p,4);} static void un_icnss(void*p){((Mock*)
 static int msa(void*p,uint64_t b,uint64_t s){assert(b&&s);return hit(p,5);}
 static void unmsa(void*p){((Mock*)p)->msa_release_calls++;}
 static int irq(void*p,uint32_t n,uint8_t ce){Mock*m=p;assert(n==130u+ce);m->irq_count++;return 0;}
-static void unirq(void*p,uint32_t n,uint8_t ce){(void)n;(void)ce;Mock*m=p;m->irq_count--;m->free_irq_calls++;}
+static int unirq(void*p,uint32_t n,uint8_t ce){(void)n;(void)ce;Mock*m=p;m->irq_count--;m->free_irq_calls++;return 0;}
 static int dma_alloc(void*p,uint64_t n,uint64_t a,void**cpu,uint64_t*dma){
  Mock*m=p;assert((a==4||a==8)&&n);*cpu=malloc((size_t)((n+7)&~7ull));if(!*cpu)return -ENOMEM;
  m->next_dma=(m->next_dma+7)&~7ull;*dma=m->next_dma;m->next_dma+=n;return 0;
@@ -229,4 +229,4 @@ int main(void){
  assert(m.clock_disable_calls==0&&m.regulator_disable_calls==0&&m.unmap_calls==0);
 
  return 0;
- }
+}

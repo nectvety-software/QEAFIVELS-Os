@@ -49,6 +49,19 @@ add_executable(vqeaf_settings_smoke tests/vqeaf_settings.c system/core/settings.
 target_include_directories(vqeaf_settings_smoke PRIVATE kernel/include system/core system/core/include)
 add_executable(vqeaf_violet_tap_smoke tests/violet_tap_smoke.c)
 target_include_directories(vqeaf_violet_tap_smoke PRIVATE platform/violet)
+add_executable(vqeaf_violet_platform_test
+  tests/vqeaf_violet_platform_test.c
+  tests/violet_platform_host_stubs.c
+  kernel/drivers/wifi/wcn3990/violet_platform.c
+  kernel/drivers/wifi/wcn3990/wcn3990_ce.c
+  kernel/drivers/wcn3990_phase2.c
+  kernel/drivers/wcn3990_snoc.c
+  system/core/driver.c
+  system/core/capability.c)
+target_include_directories(vqeaf_violet_platform_test PRIVATE
+  kernel/include system/core system/core/include
+  integrations/MRE-Os/kernel/include/mre)
+
 add_executable(vqeaf_violet_drivers_test tests/violet_drivers.c
   drives/violet/violet_drivers.c
   platform/violet/vio_caps.c
@@ -67,6 +80,11 @@ add_executable(vqeaf_violet_boot_probe_test
   kernel/platform/aarch64/violet_bootstrap.c
   kernel/platform/aarch64/violet_memory.c
   kernel/platform/aarch64/violet_irq_bridge.c
+  kernel/drivers/wifi/wcn3990/violet_platform.c
+  kernel/drivers/wifi/wcn3990/wcn3990_ce.c
+  kernel/drivers/wcn3990_phase2.c
+  system/core/driver.c
+  system/core/capability.c
   kernel/core/memory.c
   ${MRE_AARCH64_ROOT}/kernel/core/fdt.c
   ${MRE_AARCH64_ROOT}/kernel/core/violet.c
@@ -77,7 +95,8 @@ add_executable(vqeaf_violet_boot_probe_test
   ${MRE_AARCH64_ROOT}/kernel/arch/aarch64/timer.c)
 target_include_directories(vqeaf_violet_boot_probe_test PRIVATE
   kernel/include
-  ${MRE_AARCH64_ROOT}/kernel/include/mre)
+  ${MRE_AARCH64_ROOT}/kernel/include/mre
+  system/core/include)
 target_compile_definitions(vqeaf_violet_boot_probe_test PRIVATE
   VQEAF_REFERENCE_DTB_PATH="${CMAKE_CURRENT_SOURCE_DIR}/platform/violet/device-tree/build/violet-reference.dtb")
 add_executable(vqeaf_qvf_encode_test tests/vqeaf_qvf_encode.c platform/violet/qvf_encode.c)
@@ -89,6 +108,17 @@ add_executable(vqeaf_wcn3990_smoke tests/wcn3990_driver_smoke.c kernel/drivers/w
 target_include_directories(vqeaf_wcn3990_smoke PRIVATE kernel/include system/core)
 add_executable(vqeaf_wcn3990_phase2_smoke tests/wcn3990_phase2_smoke.c kernel/drivers/wcn3990_phase2.c system/core/driver.c system/core/capability.c)
 target_include_directories(vqeaf_wcn3990_phase2_smoke PRIVATE kernel/include system/core)
+add_executable(vqeaf_wlfw_session_smoke
+  tests/wifi/wlfw_session_smoke.c
+  kernel/drivers/wifi/wcn3990/wlfw_session.c
+  kernel/drivers/wifi/wcn3990/wlfw_client.c
+  kernel/drivers/wifi/wcn3990/qmi_service.c
+  kernel/drivers/wifi/wcn3990/qrtr_transport.c)
+target_include_directories(vqeaf_wlfw_session_smoke PRIVATE kernel/include)
+add_executable(vqeaf_wifi_advanced_policy_test
+  tests/wifi/wifi_advanced_policy_test.c
+  kernel/drivers/wifi/wcn3990/wifi_advanced.c)
+target_include_directories(vqeaf_wifi_advanced_policy_test PRIVATE kernel/include)
 add_executable(vqeaf_wcn3990_ce_smoke tests/wcn3990_ce_smoke.c kernel/drivers/wifi/wcn3990/wcn3990_ce.c)
 target_include_directories(vqeaf_wcn3990_ce_smoke PRIVATE kernel/include)
 add_executable(vqeaf_wcn3990_bt_smoke tests/wcn3990_bt_smoke.c kernel/drivers/bluetooth/wcn3990_bt.c)
@@ -186,9 +216,11 @@ set(VQEAF_TEST_TARGETS vqeaf_ui_font_smoke vqeaf_update_screen_smoke
     vqeaf_kernel_core_smoke
     vqeaf_core_services_smoke vqeaf_system_v03_smoke vqeaf_vfs_mount_smoke
     vqeaf_settings_smoke vqeaf_violet_tap_smoke vqeaf_violet_drivers_test
+    vqeaf_violet_platform_test
     vqeaf_violet_boot_probe_test vqeaf_volume_lock_test
     vqeaf_qvf_encode_test
     vqeaf_wcn3990_smoke vqeaf_wcn3990_phase2_smoke
+    vqeaf_wifi_advanced_policy_test vqeaf_wlfw_session_smoke
     vqeaf_wcn3990_ce_smoke vqeaf_wcn3990_bt_smoke
     vqeaf_slim_qcom_ngd_smoke vqeaf_slim_ngd_bringup_smoke
     vqeaf_wcn3990_slim_smoke vqeaf_driver_core_smoke
@@ -212,6 +244,9 @@ add_test(NAME vqeaf_vfs_mount_smoke COMMAND vqeaf_vfs_mount_smoke)
 add_test(NAME vqeaf_settings_smoke COMMAND vqeaf_settings_smoke)
 add_test(NAME vqeaf_violet_tap_smoke COMMAND vqeaf_violet_tap_smoke)
 add_test(NAME vqeaf_violet_drivers_test COMMAND vqeaf_violet_drivers_test)
+add_test(NAME vqeaf_violet_platform_test
+  COMMAND vqeaf_violet_platform_test
+  ${CMAKE_CURRENT_SOURCE_DIR}/platform/violet/device-tree/build/violet-reference.dtb)
 add_test(NAME vqeaf_violet_boot_probe_test COMMAND vqeaf_violet_boot_probe_test)
 add_test(NAME vqeaf_violet_abl_dtb_probe_test
   COMMAND vqeaf_violet_boot_probe_test
@@ -220,6 +255,8 @@ add_test(NAME vqeaf_volume_lock_test COMMAND vqeaf_volume_lock_test)
 add_test(NAME vqeaf_qvf_encode_test COMMAND vqeaf_qvf_encode_test)
 add_test(NAME vqeaf_wcn3990_smoke COMMAND vqeaf_wcn3990_smoke)
 add_test(NAME vqeaf_wcn3990_phase2_smoke COMMAND vqeaf_wcn3990_phase2_smoke)
+add_test(NAME vqeaf_wifi_advanced_policy_test COMMAND vqeaf_wifi_advanced_policy_test)
+add_test(NAME vqeaf_wlfw_session_smoke COMMAND vqeaf_wlfw_session_smoke)
 add_test(NAME vqeaf_wcn3990_ce_smoke COMMAND vqeaf_wcn3990_ce_smoke)
 add_test(NAME vqeaf_wcn3990_bt_smoke COMMAND vqeaf_wcn3990_bt_smoke)
 add_test(NAME vqeaf_slim_qcom_ngd_smoke COMMAND vqeaf_slim_qcom_ngd_smoke)

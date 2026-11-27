@@ -93,7 +93,8 @@ static int unwind(VqeafWcn3990P2Device *d,VqeafWcn3990P2State s)
  }
  for(int i=(int)VQEAF_WCN3990_CE_MAX-1;i>=0;i--)
   if(irq_registered&(1u<<i)){
-   d->ops.free_irq(d->ops.ctx,d->resources.ce_irq[i],(uint8_t)i);
+   rc=d->ops.free_irq(d->ops.ctx,d->resources.ce_irq[i],(uint8_t)i);
+   if(rc)return rc; /* keep MSA/power/DMA intact while an IRQ may still fire */
    irq_registered=(uint16_t)(irq_registered&~(1u<<i));
   }
  if(s>=VQEAF_WCN_P2_MSA)d->ops.msa_release(d->ops.ctx);

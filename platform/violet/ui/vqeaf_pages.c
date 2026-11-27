@@ -39,6 +39,7 @@
 #include "vqeaf_qeapp_device.h"
 #include <vqeaf/qeapp_package.h>
 #include <vqeaf/settings.h>
+#include <vqeaf/wifi_advanced.h>
 #include "qeaf_native_abi.h"
 #include "icons/vqeaf_app_icons.h"
 #include "qeaf_version.h"
@@ -50,6 +51,7 @@
 static lv_obj_t *page_clock;
 static lv_obj_t *page_date;
 static void setup_wifi_back_cb(lv_event_t *event);
+static void wifi_advanced_open_cb(lv_event_t *event);
 
 /* Labels on the detail pages that follow live providers. They are rebound on
  * every rebuild, so at most one page's widgets are attached at a time. */
@@ -4032,6 +4034,7 @@ static const char *page_name(vqeaf_page_t page)
     case VQEAF_PAGE_QEAPP_STORE: return "Chợ QEAPP";
     case VQEAF_PAGE_SECURITY: return "Bảo mật";
     case VQEAF_PAGE_WIFI_AUDIT: return "Kiểm tra Wi-Fi";
+    case VQEAF_PAGE_WIFI_ADVANCED: return "Wi-Fi nâng cao";
     case VQEAF_PAGE_ADVISORIES: return "Cơ sở dữ liệu lỗ hổng";
     case VQEAF_PAGE_ADVISORY_DETAIL: return "Chi tiết advisory";
     case VQEAF_PAGE_PIN: return "Nhập PIN";
@@ -7227,6 +7230,120 @@ static void build_wifi(lv_obj_t *content)
         "wifi-stack.md.",
         VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
     lv_obj_set_width(note, lv_pct(100));
+
+    lv_obj_t *advanced = info_row(root, "Cài đặt Wi-Fi nâng cao",
+                                  "Backend, firmware và calibration");
+    lv_obj_add_flag(advanced, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(advanced, wifi_advanced_open_cb,
+                        LV_EVENT_CLICKED, NULL);
+}
+
+static lv_obj_t *g_wifi_advanced_fw_path;
+static lv_obj_t *g_wifi_advanced_cal_path;
+static char g_wifi_advanced_note[160];
+
+static void wifi_advanced_open_cb(lv_event_t *event)
+{
+    (void)event;
+    vqeaf_ui_show(VQEAF_PAGE_WIFI_ADVANCED);
+}
+
+static void wifi_advanced_cnss2_cb(lv_event_t *event)
+{
+    int rc;
+    (void)event;
+    /* Violet's DT advertises qcom,icnss on the integrated SNOC path. */
+    rc = vqeaf_wifi_backend_validate(VQEAF_WIFI_TRANSPORT_ICNSS_SNOC,
+                                     VQEAF_WIFI_BACKEND_CNSS2_PCIE, 0, 0);
+    snprintf(g_wifi_advanced_note, sizeof(g_wifi_advanced_note),
+             "CNSS2 PCI bị từ chối (%d): SM6150 Violet dùng ICNSS/SNOC; "
+             "không có WLAN PCIe để chuyển sang.", rc);
+    vqeaf_ui_show(VQEAF_PAGE_WIFI_ADVANCED);
+}
+
+static void wifi_advanced_stage_cb(lv_event_t *event)
+{
+    const char *fw = g_wifi_advanced_fw_path ?
+                     lv_textarea_get_text(g_wifi_advanced_fw_path) : "";
+    const char *cal = g_wifi_advanced_cal_path ?
+                      lv_textarea_get_text(g_wifi_advanced_cal_path) : "";
+    int a, b;
+    (void)event;
+    a = vqeaf_settings_set_str("wifi.fw.stage", fw);
+    b = vqeaf_settings_set_str("wifi.cal.stage", cal);
+    if(a == 0 && b == 0)
+        snprintf(g_wifi_advanced_note, sizeof(g_wifi_advanced_note),
+                 "Đã lưu đường dẫn vào Settings. Chưa cài firmware/calibration.");
+    else
+        snprintf(g_wifi_advanced_note, sizeof(g_wifi_advanced_note),
+                 "Không lưu được đường dẫn (%d / %d).", a, b);
+    vqeaf_ui_show(VQEAF_PAGE_WIFI_ADVANCED);
+}
+
+static void build_wifi_advanced(lv_obj_t *content)
+{
+    lv_obj_t *root = page_root(content);
+    const char *fw_path = vqeaf_settings_get_str("wifi.fw.stage", "");
+    const char *cal_path = vqeaf_settings_get_str("wifi.cal.stage", "");
+    detail_header_back(root, "Wi-Fi nâng cao", VQEAF_PAGE_WIFI);
+
+    vqeaf_label(root, "Bộ điều khiển WLAN", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    lv_obj_t *backend = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(backend, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(backend, 12, 0);
+    info_row(backend, "Backend hiện tại", "ICNSS / Q6-integrated SNOC (WCN3990)");
+    info_row(backend, "Lựa chọn tự động", "Được hỗ trợ khi phát hiện đúng transport");
+    lv_obj_t *pci = info_row(backend, "CNSS2 PCIe",
+                             "Không có PCIe WLAN và CNSS2 native driver trong bản build này");
+    lv_obj_add_flag(pci, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(pci, wifi_advanced_cnss2_cb, LV_EVENT_CLICKED, NULL);
+
+    vqeaf_label(root, "Firmware và board data", VQEAF_FONT_TITLE, VQEAF_C_TEXT);
+    lv_obj_t *fw = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(fw, LV_FLEX_FLOW_COLUMN);
+    vqeaf_label(fw, "Đường dẫn firmware package (chỉ staging)",
+                VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    g_wifi_advanced_fw_path = lv_textarea_create(fw);
+    lv_obj_set_size(g_wifi_advanced_fw_path, lv_pct(100), 62);
+    lv_textarea_set_one_line(g_wifi_advanced_fw_path, true);
+    lv_textarea_set_max_length(g_wifi_advanced_fw_path, VQEAF_SETTINGS_STR_MAX - 1u);
+    lv_textarea_set_placeholder_text(g_wifi_advanced_fw_path,
+                                     "/UserData/firmware/wlan-package.qfw");
+    lv_textarea_set_text(g_wifi_advanced_fw_path, fw_path);
+    vqeaf_label(fw, "Đường dẫn calibration của đúng thiết bị",
+                VQEAF_FONT_CAPTION, VQEAF_C_TEXT_DIM);
+    g_wifi_advanced_cal_path = lv_textarea_create(fw);
+    lv_obj_set_size(g_wifi_advanced_cal_path, lv_pct(100), 62);
+    lv_textarea_set_one_line(g_wifi_advanced_cal_path, true);
+    lv_textarea_set_max_length(g_wifi_advanced_cal_path, VQEAF_SETTINGS_STR_MAX - 1u);
+    lv_textarea_set_placeholder_text(g_wifi_advanced_cal_path,
+                                     "/UserData/backup-violet/calibration.bin");
+    lv_textarea_set_text(g_wifi_advanced_cal_path, cal_path);
+    lv_obj_t *save = info_row(fw, "Lưu đường dẫn staging",
+                              "Chỉ lưu cấu hình QEAF, không nạp thiết bị");
+    lv_obj_add_flag(save, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(save, wifi_advanced_stage_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *guard = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(guard, LV_FLEX_FLOW_COLUMN);
+    vqeaf_label(guard, "Điều kiện trước khi thay firmware/calibration",
+                VQEAF_FONT_BODY, VQEAF_C_TEXT);
+    vqeaf_label(guard,
+        "Cần chữ ký nhà phát hành hợp lệ, SHA-256 đúng, board/chip ID khớp, "
+        "bản sao calibration gốc đã xác minh và MAC nhà máy hợp lệ. QEAF "
+        "chưa có verifier/chính sách ký hoàn chỉnh cho gói radio nên thao tác "
+        "cài đặt đang bị khóa.",
+        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+    vqeaf_label(guard,
+        "Không tạo MAC giả, không thay calibration, không ghi p74/persist và "
+        "không thay firmware đang dùng trong quá trình staging.",
+        VQEAF_FONT_CAPTION, VQEAF_C_TEXT_MUTE);
+
+    if(g_wifi_advanced_note[0] != '\0') {
+        lv_obj_t *note = vqeaf_card(root, lv_pct(100), LV_SIZE_CONTENT);
+        vqeaf_label(note, g_wifi_advanced_note, VQEAF_FONT_CAPTION,
+                    VQEAF_C_TEXT_DIM);
+    }
 }
 
 /* ---- first-boot setup ---------------------------------------------------- */
@@ -11072,6 +11189,7 @@ void vqeaf_pages_build(vqeaf_page_t page, lv_obj_t *content)
     case VQEAF_PAGE_QEAPP_STORE: build_qeapp_store(content); break;
     case VQEAF_PAGE_SECURITY: build_security(content); break;
     case VQEAF_PAGE_WIFI_AUDIT: build_wifi_audit(content); break;
+    case VQEAF_PAGE_WIFI_ADVANCED: build_wifi_advanced(content); break;
     case VQEAF_PAGE_ADVISORIES: build_advisories(content); break;
     case VQEAF_PAGE_ADVISORY_DETAIL: build_advisory_detail(content); break;
     case VQEAF_PAGE_PIN:     build_pin(content); break;

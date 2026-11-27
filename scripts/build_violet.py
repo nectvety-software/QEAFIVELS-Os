@@ -107,6 +107,9 @@ SOURCES = [
     os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "firmware_boot.c"),
     # Portable firmware container validation, shared with the host tests.
     os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "wifi_firmware.c"),
+    os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "wifi_advanced.c"),
+    os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "wlfw_client.c"),
+    os.path.join(ROOT, "kernel", "drivers", "wifi", "wcn3990", "wlfw_session.c"),
     os.path.join(VIOLET, "wifi_fw_check.c"),
     os.path.join(VIOLET, "qrtr_probe.c"),
     # Pre-existing recorder work in main_violet.c calls these; the file was

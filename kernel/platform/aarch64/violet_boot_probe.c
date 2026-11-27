@@ -1,5 +1,6 @@
 #include <string.h>
 #include "vqeaf/violet_boot.h"
+#include "vqeaf/violet_platform.h"
 #include "mre_fdt.h"
 #include "mre_violet.h"
 #include "mre_mmu.h"
@@ -40,6 +41,11 @@ int vqeaf_violet_probe_dtb(const void *blob, size_t available,
     st = mre_violet_discover(&fdt, &g_mre_info);
     out->discovery_status = (int32_t)st;
     if (st != MRE_OK) return (int)st;
+
+    /* ICNSS discovery is additive: a device may boot without WLAN support.
+     * Only the resource parser runs here; power, firmware and PD remain OFF. */
+    out->icnss_discovery_status =
+        (int32_t)vqeaf_violet_probe(blob, fdt.total_size);
 
     out->dtb_source_flags = source_flags;
     out->board_identity_candidate = g_mre_info.board_identity_verified;
@@ -118,6 +124,10 @@ int vqeaf_violet_build_mmu(const vqeaf_violet_kernel_layout_t *layout)
     mre_layout.rodata_end = layout->rodata_end;
     st = mre_violet_build_page_tables(&g_mre_info, &mre_layout);
     if (st != MRE_OK) return (int)st;
+    if(g_public_info.icnss_discovery_status == 0) {
+        int wifi_map_rc = vqeaf_violet_map_snoc_mmu();
+        if(wifi_map_rc != 0) return wifi_map_rc;
+    }
     g_mmu_built = 1u;
     return 0;
 }

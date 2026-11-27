@@ -194,8 +194,12 @@ int main(int argc, char **argv)
     assert(r->mmio[0][0] == 0x18800000ull);
     assert(r->mmio[0][1] == 0x800000ull);
     assert(r->ce_irq_count == 12);
-    assert(r->ce_irq[0] == 414);
-    assert(r->ce_irq[11] == 425);
+    assert(r->irq_parent_is_gic == 1);
+    assert(r->irq_parent_is_pdc == 1);
+    assert(r->ce_irq[0] == 446);
+    assert(r->ce_irq_type[0] == 0u);
+    assert(r->ce_irq_flags[0] == 0u);
+    assert(r->ce_irq[11] == 457);
     assert(r->msa_requested_size == 0x100000u);
     /* MSA resolved via qcom,wlan-msa-fixed-region phandle -> reserved-memory
      * reg, using the parent's 2+2 address/size cells (from the real DTS). */
@@ -204,6 +208,12 @@ int main(int argc, char **argv)
     assert(r->msa_size == 0x200000ull);
     assert(r->msa_size >= r->msa_requested_size);
     assert(r->has_smmu == 1 && r->smmu_id == 0x1640u);
+    assert(r->smmu_s1_bypass == 1);
+    assert(r->smmu_iova_base == 0xa0000000ull && r->smmu_iova_size == 0x10000000ull);
+    assert(r->smmu_ipa_base == 0xb0000000ull && r->smmu_ipa_size == 0x10000ull);
+    assert(strcmp(r->reg_names[0], "membase") == 0);
+    assert(strcmp(r->reg_names[1], "smmu_iova_base") == 0);
+    assert(strcmp(r->reg_names[2], "smmu_iova_ipa") == 0);
     /* Regulator supplies are discovered from DT but enabling is UNSUPPORTED. */
     assert(r->regulator_count == 4);
     assert(strcmp(r->regulator_supplies[0], "vdd-cx-mx-supply") == 0);
@@ -221,7 +231,7 @@ int main(int argc, char **argv)
     assert(vqeaf_violet_probe(overflow_dtb, overflow_len) == 0);
     r = vqeaf_violet_resources();
     assert(r != NULL && r->ce_irq_count == 13);
-    assert(vqeaf_violet_bind_phase2() == -EINVAL);
+    assert(vqeaf_violet_bind_phase2() == -ENODEV);
     assert(vqeaf_wcn3990_phase2_state() == VQEAF_WCN_P2_OFF);
     free(overflow_dtb);
     assert(vqeaf_violet_probe(dtb, len) == 0);
@@ -234,7 +244,7 @@ int main(int argc, char **argv)
             saved_irqs[i] = rd32(dtb + data_off + i * 12u + 4u);
         wr32(dtb + data_off + 11u * 12u + 4u, 426u);
         assert(vqeaf_violet_probe(dtb, len) == 0);
-        assert(vqeaf_violet_bind_wcn3990() == -EINVAL);
+        assert(vqeaf_violet_bind_wcn3990() == -ENOSYS);
         for(uint32_t i = 0; i < VQEAF_WCN3990_CE_MAX; i++)
             wr32(dtb + data_off + i * 12u + 4u, saved_irqs[i]);
         assert(vqeaf_violet_probe(dtb, len) == 0);
@@ -242,18 +252,18 @@ int main(int argc, char **argv)
         for(uint32_t i = 1; i < VQEAF_WCN3990_CE_MAX; i++)
             wr32(dtb + data_off + i * 12u + 4u, i + 31u);
         assert(vqeaf_violet_probe(dtb, len) == 0);
-        assert(vqeaf_violet_bind_wcn3990() == -EINVAL);
+        assert(vqeaf_violet_bind_wcn3990() == -ENOSYS);
         for(uint32_t i = 0; i < VQEAF_WCN3990_CE_MAX; i++)
             wr32(dtb + data_off + i * 12u + 4u, saved_irqs[i]);
         assert(vqeaf_violet_probe(dtb, len) == 0);
     }
 
-    /* Resource discovery is now complete, but the freestanding kernel has no
-     * MMIO primitive: probe must stop at map_snoc with -ENOSYS and roll back.
-     * This is a controlled failure, never a fake success. */
+    /* DT resource discovery succeeds, but no real PMIC/clock/SMMU/DMA
+     * provider is registered in this host fixture. Phase-2 must stop before
+     * allocating resources, enabling IRQs or powering WLAN. */
+    assert(vqeaf_violet_hw_provider_ready() == 0);
     assert(vqeaf_violet_bind_phase2() == -ENOSYS);
-    assert(vqeaf_wcn3990_phase2_state() == VQEAF_WCN_P2_FAILED);
-    assert(vqeaf_wcn3990_phase2_error() == -ENOSYS);
+    assert(vqeaf_wcn3990_phase2_state() == VQEAF_WCN_P2_OFF);
     assert(vqeaf_violet_bind_wcn3990() == -ENOSYS);
 
     free(dtb);

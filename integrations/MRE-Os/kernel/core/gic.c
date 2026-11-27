@@ -41,8 +41,25 @@ static int wait_clear(uintptr_t base, uint32_t off, uint32_t mask)
 uint32_t mre_gic_irq_id(uint32_t iar) { return iar & 0x3FFu; }
 mre_status_t mre_gic_register_handler(uint32_t irq, mre_irq_handler_t fn, void *ctx)
 {
-    if(irq>=GIC_MAX_IRQS || fn==NULL) return MRE_E_INVALID;
-    g_handlers[irq].handler=fn; g_handlers[irq].context=ctx; return MRE_OK;
+    uint64_t saved_daif = 0u;
+    if(!g_ready || irq >= g_cfg.interrupt_count || fn == NULL)
+        return MRE_E_INVALID;
+#if defined(__aarch64__)
+    __asm__ volatile("mrs %0, daif\nmsr daifset, #2" : "=r"(saved_daif) :: "memory");
+#endif
+    if(g_handlers[irq].handler != NULL) {
+#if defined(__aarch64__)
+        __asm__ volatile("msr daif, %0" :: "r"(saved_daif) : "memory");
+#endif
+        return MRE_E_EXISTS;
+    }
+    g_handlers[irq].context = ctx;
+    g_handlers[irq].handler = fn;
+    mre_arch_dsb_sy();
+#if defined(__aarch64__)
+    __asm__ volatile("msr daif, %0" :: "r"(saved_daif) : "memory");
+#endif
+    return MRE_OK;
 }
 mre_status_t mre_gic_configure(const mre_gic_config_t *c)
 {
@@ -127,7 +144,47 @@ mre_status_t mre_gic_enable_irq(uint32_t irq)
         *reg32(g_redist_cpu,GICR_ISENABLER0)=1u<<irq;
     else
         *reg32(g_cfg.distributor_base,GICD_ISENABLER+(irq/32u)*4u)=1u<<(irq%32u);
-    mre_arch_dsb_sy(); return MRE_OK;
+    mre_arch_dsb_sy();
+    return MRE_OK;
+}
+
+mre_status_t mre_gic_disable_irq(uint32_t irq)
+{
+    if(!g_ready || irq>=g_cfg.interrupt_count) return MRE_E_INVALID;
+    if(g_cfg.version==MRE_GIC_V3 && irq<32u) {
+        if(g_redist_cpu == 0u) return MRE_E_NOT_FOUND;
+        *reg32(g_redist_cpu,GICR_ICENABLER0)=1u<<irq;
+        mre_arch_dsb_sy();
+        mre_arch_isb();
+        return MRE_OK;
+    }
+    *reg32(g_cfg.distributor_base,
+           GICD_ICENABLER+(irq/32u)*4u)=1u<<(irq%32u);
+    mre_arch_dsb_sy();
+    if(!wait_clear(g_cfg.distributor_base,GICD_CTLR,GICD_CTLR_RWP))
+        return MRE_E_BUSY;
+    mre_arch_isb();
+    return MRE_OK;
+}
+
+mre_status_t mre_gic_unregister_handler(uint32_t irq)
+{
+    uint64_t saved_daif = 0u;
+    mre_status_t st;
+    if(!g_ready || irq>=g_cfg.interrupt_count) return MRE_E_INVALID;
+    st = mre_gic_disable_irq(irq);
+    if(st != MRE_OK) return st;
+#if defined(__aarch64__)
+    __asm__ volatile("mrs %0, daif\nmsr daifset, #2" : "=r"(saved_daif) :: "memory");
+#endif
+    mre_arch_dsb_sy();
+    g_handlers[irq].handler = NULL;
+    g_handlers[irq].context = NULL;
+    mre_arch_dsb_sy();
+#if defined(__aarch64__)
+    __asm__ volatile("msr daif, %0" :: "r"(saved_daif) : "memory");
+#endif
+    return MRE_OK;
 }
 uint32_t mre_gic_acknowledge(void)
 {
@@ -153,7 +210,7 @@ void mre_gic_dispatch(void)
 {
     uint32_t irq=mre_gic_acknowledge();
     if(irq==GIC_SPURIOUS_ID) return;
-    if(irq<GIC_MAX_IRQS && g_handlers[irq].handler)
+    if(irq<g_cfg.interrupt_count && irq<GIC_MAX_IRQS && g_handlers[irq].handler)
         g_handlers[irq].handler(irq,g_handlers[irq].context);
     mre_gic_end(irq);
 }
